@@ -14,6 +14,7 @@ import {
   monthMatrix,
   parseDateStr,
   toDateStr,
+  todayStr,
   weekStartOf,
 } from '../src/lib/dates';
 import { defaultCycleEnd, cycleNameFromStart } from '../src/lib/defaults';
@@ -166,3 +167,94 @@ const ids = new Set(Array.from({ length: 1000 }, () => uid()));
 assert.strictEqual(ids.size, 1000);
 
 console.log('✅ all logic tests passed');
+
+// ── search ──
+{
+  const d = createInitialData();
+  d.onboarded = true;
+  d.learning.push({
+    id: 'l1',
+    title: 'AWS IAM deep dive',
+    type: 'course',
+    categoryId: 'area-learning',
+    status: 'in-progress',
+    progress: 40,
+    notes: 'IAM policies and roles',
+    whatILearned: 'How to scope IAM permissions',
+    startDate: '2026-09-01',
+    createdAt: '2026-09-01',
+  } as any);
+  d.goals.push({
+    id: 'g1',
+    level: 'monthly',
+    title: 'Pass IAM certification',
+    description: 'IAM study plan',
+    categoryId: 'area-career',
+    startDate: '2026-09-01',
+    status: 'in-progress',
+    progress: 10,
+    milestones: [],
+    notes: '',
+    relatedHabitIds: [],
+    createdAt: '2026-09-01',
+  } as any);
+  d.achievements.push({
+    id: 'a1',
+    date: '2026-09-15',
+    description: 'Designed IAM role architecture',
+    impact: 'Secured 3 accounts',
+    skillIds: [],
+    notes: '',
+    createdAt: '2026-09-15',
+  } as any);
+  d.daily['2026-09-05'] = {
+    priorities: [{ id: 'p', text: 'Study IAM policies', done: true }],
+    areas: {},
+    journal: { learned: 'IAM best practices' } as any,
+    updatedAt: '',
+  };
+  const { searchAll } = await import('../src/lib/search');
+  const results = searchAll(d, 'iam');
+  const kinds = new Set(results.map((r) => r.kind));
+  assert.ok(kinds.has('learning'), 'learning found');
+  assert.ok(kinds.has('goal'), 'goal found');
+  assert.ok(kinds.has('achievement'), 'achievement found');
+  assert.ok(kinds.has('journal'), 'journal found');
+  assert.ok(results[0].score >= results[results.length - 1].score, 'sorted by score');
+  const none = searchAll(d, 'zzzznothing');
+  assert.strictEqual(none.length, 0);
+}
+
+// ── multi-cycle: past cycle stays as history, new cycle is current ──
+{
+  const d = createInitialData();
+  d.cycles = [
+    { id: 'c1', name: 'Sep 2026 → Aug 2027', startDate: '2026-09-01', endDate: '2027-08-31', createdAt: '2026-09-01' },
+    { id: 'c2', name: 'Sep 2027 → Aug 2028', startDate: '2027-09-01', endDate: '2028-08-31', createdAt: '2027-08-01' },
+  ];
+  const { cycleForDate, currentCycle } = await import('../src/lib/dates');
+  const in2026 = cycleForDate(d.cycles, '2026-11-15');
+  assert.strictEqual(in2026?.id, 'c1', 'old cycle still resolves its dates');
+  const t = todayStr();
+  const cur = currentCycle(d.cycles);
+  if (t <= '2027-08-31') assert.strictEqual(cur?.id, 'c1', 'current cycle is c1 now');
+  else assert.strictEqual(cur?.id, 'c2', 'current cycle is c2 later');
+  // before the first cycle → nearest upcoming cycle
+  const pre = createInitialData();
+  pre.cycles = [d.cycles[0]];
+  assert.strictEqual(currentCycle(pre.cycles)?.id, 'c1', 'nearest upcoming cycle chosen before start');
+}
+
+// ── mergeDeep migration safety ──
+{
+  const { mergeDeep } = await import('../src/lib/merge');
+  const base = { a: { x: 1, y: 2 }, list: [1, 2], s: 'old' };
+  const patch = { a: { y: 9 }, list: [3], s: 'new', extra: true };
+  const merged = mergeDeep(base, patch) as any;
+  assert.deepStrictEqual(merged.a, { x: 1, y: 9 });
+  assert.deepStrictEqual(merged.list, [3]);
+  assert.strictEqual(merged.s, 'new');
+  assert.strictEqual(merged.extra, true);
+}
+
+console.log('✅ extended tests passed');

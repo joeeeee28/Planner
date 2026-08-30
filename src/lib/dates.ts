@@ -168,12 +168,17 @@ export function cycleForDate(cycles: GrowthCycle[], date: DateStr): GrowthCycle 
     .sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
 }
 
-/** The "current" cycle: the one containing today, else the latest overall. */
+/** The "current" cycle: the one containing today, else the nearest by start date. */
 export function currentCycle(cycles: GrowthCycle[]): GrowthCycle | undefined {
   const t = todayStr();
   const c = cycleForDate(cycles, t);
   if (c) return c;
-  return [...cycles].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
+  if (cycles.length === 0) return undefined;
+  // No cycle contains today (before the first cycle, between cycles, or after
+  // the last) — pick the one whose start date is nearest to today.
+  return [...cycles].sort(
+    (a, b) => Math.abs(diffDays(a.startDate, t)) - Math.abs(diffDays(b.startDate, t)),
+  )[0];
 }
 
 export function cycleDayNumber(cycle: GrowthCycle, date: DateStr): number {
