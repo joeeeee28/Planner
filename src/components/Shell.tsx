@@ -109,6 +109,26 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {open ? <IconClose /> : <IconMenu />}
           </button>
           <div className="topbar-right">
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const url = window.location.href;
+                navigator.clipboard
+                  .writeText(url)
+                  .then(() => {
+                    const b = document.getElementById('share-btn') as HTMLButtonElement | null;
+                    if (b) b.textContent = '✓ Copied';
+                    setTimeout(() => {
+                      if (b) b.textContent = '🔗 Share';
+                    }, 1600);
+                  })
+                  .catch(() => alert('Copy failed — select the address bar instead.'));
+              }}
+              id="share-btn"
+              title="Copy a shareable link to this page"
+            >
+              🔗 Share
+            </button>
             <div className="search-box" ref={searchRef}>
               <span className="search-icon">
                 <IconSearch />
