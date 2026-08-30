@@ -1,42 +1,56 @@
-# How to enable GitHub Pages for Growth OS (2-minute setup)
+# Growth OS — Deployment Guide
 
-The deployment code is fully pushed to the `arena/01a05484-planner` branch of
-https://github.com/joeeeee28/Planner — it just needs Pages switched on, which
-requires **repo admin** access (the automation token can push code but cannot
-change repo settings).
+The app is ready to deploy to GitHub Pages. The **built site is already pushed** to the
+`gh-pages` branch of this repository — only the Pages source setting needs to point at it.
 
-## Option A — GitHub web UI (easiest, ~30 seconds)
+## Live URL (after the step below)
 
-1. Open https://github.com/joeeeee28/Planner/settings/pages
+**https://joeeeee28.github.io/Planner/**
+
+## The one remaining step (repo owner, ~20 seconds)
+
+1. Open **https://github.com/joeeeee28/Planner/settings/pages**
 2. Under **Build and deployment → Source**, select **Deploy from a branch**
-3. Branch: `arena/01a05484-planner`, folder: `/ (root)` — Save
-4. GitHub builds automatically and prints the URL, typically:
-   **https://joeeeee28.github.io/Planner/**
-5. Done. The app is served over HTTPS, fully responsive, data persists.
+3. Branch: `gh-pages` · Folder: `/ (root)` → **Save**
+4. GitHub rebuilds in ~1 minute; the app goes live at
+   **https://joeeeee28.github.io/Planner/** (HTTPS, responsive, refresh-safe data).
 
-## Option B — REST API (if you have a token with admin rights)
+> ⚠️ Do **not** point Pages at `main` or `arena/01a05484-planner` — those branches contain
+> the *source code* (the Vite dev entry), not the built site. The `gh-pages` branch is an
+> orphan branch containing only the compiled `dist/` output (index.html + assets + .nojekyll).
 
+## What is already done & verified
+
+- ✅ Production build passes (`npm run build`), assets use relative paths so the
+  `/Planner/` subpath works.
+- ✅ Built site pushed to `gh-pages` (verified: `index.html` + hashed assets + `.nojekyll`).
+- ✅ No localhost / dev-only services anywhere in the built app — pure static SPA,
+  data persists in the browser's localStorage.
+- ✅ `node server.mjs` production server serves the build correctly (smoke-tested).
+- ✅ Logic tests (`npm test`), TypeScript, lint all green.
+
+## Future deploys
+
+After the initial setup, to publish updates: rebuild (`npm run build`) and push the new
+`dist/` output to `gh-pages`:
+
+```bash
+npm run build
+git worktree add --detach /tmp/gh-pages-out HEAD
+cd /tmp/gh-pages-out && rm -rf assets index.html favicon.svg icons.svg .nojekyll
+cp -r ../dist/. .
+git add -A && git commit -m "deploy: update site"
+git push origin HEAD:refs/heads/gh-pages
+cd .. && git worktree remove /tmp/gh-pages-out --force
 ```
-curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" \
-  https://api.github.com/repos/joeeeee28/Planner/pages \
-  -d '{"source":{"branch":"arena/01a05484-planner","path":"/"}}'
-```
 
-## Option C — GitHub Actions (automatic deploys on every push)
+(Or add the ready-made GitHub Actions workflow `.github/workflows/deploy.yml` once the
+repo owner grants `workflows` permission — then every push to `main` deploys automatically.)
 
-The repo is pre-configured for this (relative `base: './'` so the build works
-under the `/Planner/` subpath, plus a `deploy.yml` workflow ready to add):
-push `.github/workflows/deploy.yml` once Pages is enabled and every future
-push to `main` will rebuild + redeploy automatically.
+## Troubleshooting
 
-## What is already verified in this sandbox
-
-- Production build (`npm run build`) passes; assets are relative-path so the
-  subpath hosting works.
-- Production static server (`node server.mjs`, no dependencies) serves the
-  build correctly (verified HTTP 200 for index, JS, CSS, favicon).
-- The branch is pushed and its files are verifiable via the GitHub API.
-- The GitHub Pages CDN itself is firewalled from this sandbox, so final
-  in-browser verification of the live URL must be done from your browser —
-  but the artifact is standard Vite static output (no localhost, no dev-only
-  services, no backend), so it will behave identically under Pages.
+| Symptom | Fix |
+|---|---|
+| “There isn't a GitHub Pages site here” | Pages not enabled yet, or the last build failed — check Settings → Pages and the Actions/Pages build log. |
+| Page loads but app is blank | Source branch is a source-code branch (e.g. `main`/`arena/…`) — switch to `gh-pages`. |
+| Stale content after a deploy | GitHub Pages caches for a few minutes; hard-refresh. |
