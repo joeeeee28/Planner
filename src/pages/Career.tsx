@@ -23,7 +23,7 @@ const PROJECT_STATUS: Record<ProjectStatus, string> = {
 };
 
 export function CareerPage() {
-  const [route] = useRoute();
+  const route = useRoute();
   const tab = (TABS.find((t) => t.id === route[1])?.id ?? 'skills') as Tab;
 
   return (

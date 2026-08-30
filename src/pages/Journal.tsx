@@ -28,7 +28,7 @@ const PROMPTS: { key: keyof import('../lib/types').DayJournal; label: string; pl
 
 export function JournalPage() {
   const { data, update } = useApp();
-  const [route] = useRoute();
+  const route = useRoute();
   const date = route[1] ?? todayStr();
   const t = todayStr();
   const [monthOffset, setMonthOffset] = useState(0);

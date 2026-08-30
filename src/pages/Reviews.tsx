@@ -32,7 +32,7 @@ const EMPTY_WEEK: WeekReview = {
 };
 
 export function ReviewsPage() {
-  const [route] = useRoute();
+  const route = useRoute();
   const sub = route[1];
 
   if (sub === 'week') return <WeekReviewPage weekStart={route[2] ?? todayStr()} />;

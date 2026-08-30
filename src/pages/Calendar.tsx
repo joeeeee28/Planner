@@ -33,7 +33,7 @@ const isMonthKey = (s: string) => /^\d{4}-\d{2}$/.test(s);
 
 export function CalendarPage() {
   const { data } = useApp();
-  const [route] = useRoute();
+  const route = useRoute();
   const [view, setView] = useState<View>(() => {
     const v = route[1] as View;
     return ['day', 'week', 'month', 'year'].includes(v) ? v : 'month';

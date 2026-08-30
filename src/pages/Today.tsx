@@ -22,7 +22,7 @@ const emptyJournal = {
 
 export function TodayPage() {
   const { data, update } = useApp();
-  const [route] = useRoute();
+  const route = useRoute();
   const date = route[1] ?? todayStr();
   const entry: DayEntry = data.daily[date] ?? {
     priorities: [],

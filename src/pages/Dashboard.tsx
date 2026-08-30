@@ -37,7 +37,7 @@ function PageTitle({ title, sub }: { title: string; sub?: string }) {
 
 export function DashboardPage() {
   const { data, update } = useApp();
-  const [route] = useRoute();
+  const route = useRoute();
   const today = route[1] ?? todayStr();
   const entry = data.daily[today] ?? {
     priorities: [],

@@ -40,7 +40,7 @@ function ThemeManager() {
 
 function Router() {
   const { data } = useApp();
-  const [route] = useRoute();
+  const route = useRoute();
   const section = route[0] ?? 'dashboard';
 
   useEffect(() => {
