@@ -66,13 +66,14 @@ export function CalendarPage() {
 
   const switchView = (v: View) => {
     setView(v);
-    const dayCursor = isMonthKey(cursor) ? `${cursor}-01` : cursor;
+    const isDateKey = /^\d{4}-\d{2}-\d{2}$/.test(cursor);
+    const dayCursor = isMonthKey(cursor) ? `${cursor}-01` : isDateKey ? cursor : todayStr();
     if (v === 'month') {
       const m = isMonthKey(cursor) ? cursor : monthKeyOf(dayCursor);
       setCursor(m);
       navigate(`calendar/month/${m}`);
     } else if (v === 'year') {
-      const y = Number(dayCursor.slice(0, 4));
+      const y = Number(dayCursor.slice(0, 4)) || new Date().getFullYear();
       setCursor(`${y}-01`);
       navigate(`calendar/year/${y}`);
     } else if (v === 'week') {
