@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { navigate } from '../lib/router';
+import { formatDateMed } from '../lib/dates';
 import { Modal } from '../components/ui';
 import { IconDownload, IconUpload, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
@@ -68,8 +70,8 @@ export function SettingsPage() {
     <div>
       <div className="flex flex-wrap mb-16">
         <div>
-          <h1 className="topbar-title">Settings</h1>
-          <div className="topbar-sub">Make the system yours — categories, appearance, data.</div>
+          <h1 className="t-title">Settings</h1>
+          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>Make the system yours — categories, appearance, data.</div>
         </div>
       </div>
 
@@ -219,6 +221,110 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="card">
+          <h2 className="card-title">💰 Financial categories</h2>
+          <p className="card-sub">Custom categories for income and expenses. Used in Money and Quick Add.</p>
+          <div className="grid grid-2">
+            <div>
+              <div className="form-label">Income categories</div>
+              {data.settings.finance.incomeCategories.map((c, i) => (
+                <div className="task-item" key={`inc-${i}`}>
+                  <input
+                    className="task-text"
+                    value={c}
+                    onChange={(e) => {
+                      const list = [...data.settings.finance.incomeCategories];
+                      list[i] = e.target.value;
+                      setSettings({ finance: { ...data.settings.finance, incomeCategories: list } });
+                    }}
+                  />
+                  <button
+                    className="task-delete"
+                    onClick={() =>
+                      setSettings({
+                        finance: { ...data.settings.finance, incomeCategories: data.settings.finance.incomeCategories.filter((_, j) => j !== i) },
+                      })
+                    }
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                className="btn btn-sm mt-8"
+                onClick={() => setSettings({ finance: { ...data.settings.finance, incomeCategories: [...data.settings.finance.incomeCategories, 'New category'] } })}
+              >
+                + Add
+              </button>
+            </div>
+            <div>
+              <div className="form-label">Expense categories</div>
+              {data.settings.finance.expenseCategories.map((c, i) => (
+                <div className="task-item" key={`exp-${i}`}>
+                  <input
+                    className="task-text"
+                    value={c}
+                    onChange={(e) => {
+                      const list = [...data.settings.finance.expenseCategories];
+                      list[i] = e.target.value;
+                      setSettings({ finance: { ...data.settings.finance, expenseCategories: list } });
+                    }}
+                  />
+                  <button
+                    className="task-delete"
+                    onClick={() =>
+                      setSettings({
+                        finance: { ...data.settings.finance, expenseCategories: data.settings.finance.expenseCategories.filter((_, j) => j !== i) },
+                      })
+                    }
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                className="btn btn-sm mt-8"
+                onClick={() => setSettings({ finance: { ...data.settings.finance, expenseCategories: [...data.settings.finance.expenseCategories, 'New category'] } })}
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+          <div className="form-row mt-8" style={{ maxWidth: 260 }}>
+            <label className="form-label">Currency</label>
+            <select
+              value={data.settings.finance.currency}
+              onChange={(e) => setSettings({ finance: { ...data.settings.finance, currency: e.target.value } })}
+            >
+              <option value="INR">₹ INR</option>
+              <option value="USD">$ USD</option>
+              <option value="EUR">€ EUR</option>
+              <option value="GBP">£ GBP</option>
+              <option value="AED">AED</option>
+              <option value="SGD">S$ SGD</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="card-title">🔄 Growth cycle</h2>
+          <p className="card-sub">Your current personal year and how to start the next one.</p>
+          {(() => {
+            const cyc = data.cycles[data.cycles.length - 1];
+            if (!cyc) return <p className="small muted">No cycle yet — start one in the onboarding or Growth → Cycles.</p>;
+            return (
+              <div>
+                <div className="stat-row"><span className="k">Cycle</span><span className="v">{cyc.name}</span></div>
+                <div className="stat-row"><span className="k">Starts</span><span className="v">{formatDateMed(cyc.startDate)}</span></div>
+                <div className="stat-row"><span className="k">Ends</span><span className="v">{formatDateMed(cyc.endDate)}</span></div>
+              </div>
+            );
+          })()}
+          <button className="btn btn-sm mt-8" onClick={() => navigate('growth/cycles')}>
+            Manage cycles →
+          </button>
         </div>
 
         <div className="card" style={{ gridColumn: '1 / -1' }}>

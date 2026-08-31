@@ -155,7 +155,7 @@ const WEEK_FIELD_PLACEHOLDERS: Record<string, string> = {
   personalGrowth: 'How did you grow as a person?',
 };
 
-function WeekReviewPage({ weekStart }: { weekStart: string }) {
+export function WeekReviewPage({ weekStart }: { weekStart: string }) {
   const { data, update } = useApp();
   const t = todayStr();
   const ws = weekStartOf(weekStart, data.settings.weekStartsOn);
@@ -278,7 +278,7 @@ const MONTH_REVIEW_PLACEHOLDERS: Record<string, string> = {
   shouldChange: 'Adjustments for next month…',
 };
 
-function MonthReviewPage({ mk }: { mk: MonthKey }) {
+export function MonthReviewPage({ mk }: { mk: MonthKey }) {
   const { data, update } = useApp();
   const t = todayStr();
   const monthQuestions = data.settings.reviewQuestions?.monthly ?? DEFAULT_REVIEW_QUESTIONS.monthly;
@@ -492,7 +492,7 @@ function MonthReviewPage({ mk }: { mk: MonthKey }) {
 
 // ── Cycle review ─────────────────────────────────────────────────────────────
 
-function CycleReviewPage({ cycleId }: { cycleId?: string }) {
+export function CycleReviewPage({ cycleId }: { cycleId?: string }) {
   const { data, update } = useApp();
   const [open, setOpen] = useState(false);
 

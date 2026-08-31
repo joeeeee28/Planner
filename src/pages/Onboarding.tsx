@@ -7,7 +7,7 @@ import { uid } from '../lib/uid';
 import { ProgressBar } from '../components/ui';
 import type { Habit, Goal } from '../lib/types';
 
-const STEPS = ['Focus areas', 'First goals', 'Habits', 'Career focus', 'Start your cycle'];
+const STEPS = ['Focus areas', 'First goals', 'Habits', 'Career focus', 'Savings goal', 'Start your cycle'];
 const TOTAL_STEPS = STEPS.length;
 
 export function Onboarding() {
@@ -21,6 +21,8 @@ export function Onboarding() {
   const [currentPosition, setCurrentPosition] = useState('');
   const [targetDirection, setTargetDirection] = useState('');
   const [cycleStart, setCycleStart] = useState(DEFAULT_CYCLE_START);
+  const [savingsName, setSavingsName] = useState('');
+  const [savingsTarget, setSavingsTarget] = useState('');
   const [name, setName] = useState('');
   const [showAll, setShowAll] = useState(false);
 
@@ -32,6 +34,7 @@ export function Onboarding() {
       case 1: return true; // goals optional
       case 2: return true;
       case 3: return true;
+      case 4: return true; // savings goal optional
       default: return true;
     }
   })();
@@ -66,6 +69,21 @@ export function Onboarding() {
           relatedHabitIds: [],
           createdAt: t,
         } as Goal);
+      }
+      // savings goal (optional)
+      const sName = savingsName.trim();
+      const sTarget = Number(savingsTarget);
+      if (sName && sTarget > 0) {
+        d.savingsGoals.push({
+          id: uid('sgoal'),
+          name: sName,
+          targetAmount: sTarget,
+          currentAmount: 0,
+          targetDate: cycleStart,
+          monthlyContributionTarget: undefined,
+          notes: 'First savings goal',
+          createdAt: t,
+        });
       }
       // career
       d.career.currentPosition = currentPosition.trim();
@@ -222,6 +240,24 @@ export function Onboarding() {
 
           {step === 4 && (
             <div>
+              <h2 className="card-title" style={{ fontSize: 19 }}>Set a savings goal</h2>
+              <p className="card-sub">
+                Optional — a first money target for your new year. You can add more anytime in Money → Savings goals.
+              </p>
+              <div className="form-row">
+                <label className="form-label">Goal name</label>
+                <input value={savingsName} onChange={(e) => setSavingsName(e.target.value)} placeholder="e.g. Emergency fund" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Target amount (INR)</label>
+                <input type="number" min="0" value={savingsTarget} onChange={(e) => setSavingsTarget(e.target.value)} placeholder="e.g. 100000" />
+              </div>
+              <div className="form-hint">You can skip this and add goals later.</div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div>
               <h2 className="card-title" style={{ fontSize: 19 }}>Start your growth cycle</h2>
               <p className="card-sub">
                 A cycle is your personal year — from this date, everything is tracked against it. When it ends, start another; all
@@ -255,7 +291,7 @@ export function Onboarding() {
             </button>
           ) : (
             <button className="btn btn-primary" onClick={finish}>
-              🚀 Start — Day 1 of my growth cycle
+              Start — Day 1 of my growth cycle
             </button>
           )}
         </div>

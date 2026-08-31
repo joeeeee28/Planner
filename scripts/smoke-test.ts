@@ -101,23 +101,33 @@ async function main() {
   const cases: { name: string; url: string; stored: string | null }[] = [
     // Test 1 — fresh user, bare URL (the exact production crash scenario)
     { name: 'fresh user, bare URL (no hash)', url: 'https://joeeeee28.github.io/Planner/', stored: null },
-    // Test 3 — fresh user, empty states on every route
-    { name: 'onboarded, empty data, /dashboard', url: 'https://joeeeee28.github.io/Planner/#/dashboard', stored: '{"onboarded":true}' },
+    // Test 3 — fresh user, empty states on every route (new navigation)
+    { name: 'onboarded, empty data, /home', url: 'https://joeeeee28.github.io/Planner/#/home', stored: '{"onboarded":true}' },
     { name: 'onboarded, empty data, /today', url: 'https://joeeeee28.github.io/Planner/#/today', stored: '{"onboarded":true}' },
     { name: 'onboarded, /today/2026-09-01', url: 'https://joeeeee28.github.io/Planner/#/today/2026-09-01', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /calendar (month)', url: 'https://joeeeee28.github.io/Planner/#/calendar', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /calendar/month/2026-09', url: 'https://joeeeee28.github.io/Planner/#/calendar/month/2026-09', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /calendar/year/2027', url: 'https://joeeeee28.github.io/Planner/#/calendar/year/2027', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /plan/calendar/2026-09', url: 'https://joeeeee28.github.io/Planner/#/plan/calendar/2026-09', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /plan/year/2027', url: 'https://joeeeee28.github.io/Planner/#/plan/year/2027', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /plan/month/2026-09', url: 'https://joeeeee28.github.io/Planner/#/plan/month/2026-09', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /plan/week/2026-09-01', url: 'https://joeeeee28.github.io/Planner/#/plan/week/2026-09-01', stored: '{"onboarded":true}' },
     { name: 'onboarded, /goals', url: 'https://joeeeee28.github.io/Planner/#/goals', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /habits', url: 'https://joeeeee28.github.io/Planner/#/habits', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /learning', url: 'https://joeeeee28.github.io/Planner/#/learning', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /career', url: 'https://joeeeee28.github.io/Planner/#/career', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /journal', url: 'https://joeeeee28.github.io/Planner/#/journal', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /reviews', url: 'https://joeeeee28.github.io/Planner/#/reviews', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /reviews/month/2026-09', url: 'https://joeeeee28.github.io/Planner/#/reviews/month/2026-09', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /analytics', url: 'https://joeeeee28.github.io/Planner/#/analytics', stored: '{"onboarded":true}' },
-    { name: 'onboarded, /cycles', url: 'https://joeeeee28.github.io/Planner/#/cycles', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /growth/habits', url: 'https://joeeeee28.github.io/Planner/#/growth/habits', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /growth/learning', url: 'https://joeeeee28.github.io/Planner/#/growth/learning', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /growth/career', url: 'https://joeeeee28.github.io/Planner/#/growth/career', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /growth/cycles', url: 'https://joeeeee28.github.io/Planner/#/growth/cycles', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /money', url: 'https://joeeeee28.github.io/Planner/#/money', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /money/transactions', url: 'https://joeeeee28.github.io/Planner/#/money/transactions', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /money/goals', url: 'https://joeeeee28.github.io/Planner/#/money/goals', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /journal/2026-09-05', url: 'https://joeeeee28.github.io/Planner/#/journal/2026-09-05', stored: '{"onboarded":true}' },
+    { name: 'onboarded, /insights', url: 'https://joeeeee28.github.io/Planner/#/insights', stored: '{"onboarded":true}' },
     { name: 'onboarded, /settings', url: 'https://joeeeee28.github.io/Planner/#/settings', stored: '{"onboarded":true}' },
+    // legacy redirects must still resolve
+    { name: 'legacy /dashboard → home', url: 'https://joeeeee28.github.io/Planner/#/dashboard', stored: '{"onboarded":true}' },
+    { name: 'legacy /calendar → plan', url: 'https://joeeeee28.github.io/Planner/#/calendar', stored: '{"onboarded":true}' },
+    { name: 'legacy /habits → growth/habits', url: 'https://joeeeee28.github.io/Planner/#/habits', stored: '{"onboarded":true}' },
+    { name: 'legacy /learning → growth/learning', url: 'https://joeeeee28.github.io/Planner/#/learning', stored: '{"onboarded":true}' },
+    { name: 'legacy /career → growth/career', url: 'https://joeeeee28.github.io/Planner/#/career', stored: '{"onboarded":true}' },
+    { name: 'legacy /cycles → growth/cycles', url: 'https://joeeeee28.github.io/Planner/#/cycles', stored: '{"onboarded":true}' },
+    { name: 'legacy /reviews/month/2026-09 → plan/month', url: 'https://joeeeee28.github.io/Planner/#/reviews/month/2026-09', stored: '{"onboarded":true}' },
   ];
 
   let failed = 0;
@@ -147,8 +157,8 @@ async function main() {
         },
       },
     });
-    const r1 = await renderApp('https://joeeeee28.github.io/Planner/#/dashboard', stored);
-    const r2 = await renderApp('https://joeeeee28.github.io/Planner/#/dashboard', stored);
+    const r1 = await renderApp('https://joeeeee28.github.io/Planner/#/home', stored);
+    const r2 = await renderApp('https://joeeeee28.github.io/Planner/#/home', stored);
     const ok = r1.errors.length === 0 && r2.errors.length === 0 && r1.rendered && r2.rendered;
     if (!ok) failed++;
     console.log(`${ok ? '✅' : '❌'} refresh: seeded data renders on repeat loads`);

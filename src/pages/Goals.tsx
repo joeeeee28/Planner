@@ -196,9 +196,9 @@ export function GoalsPage() {
     <div>
       <div className="flex flex-wrap mb-16">
         <div>
-          <h1 className="topbar-title">Goals</h1>
-          <div className="topbar-sub">
-            Long-term → yearly → quarterly → monthly → weekly → daily actions. Goals never expire when a month ends.
+          <h1 className="t-title">Goals</h1>
+          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+            Long-term → yearly → quarterly → monthly → weekly → daily actions. Goals never expire.
           </div>
         </div>
         <div className="spacer" />
@@ -280,12 +280,16 @@ export function GoalsPage() {
                   </div>
                 </div>
 
-                {g.description && <p className="small muted" style={{ margin: '6px 0 0' }}>{g.description}</p>}
+                {g.description && <p className="goal-why mt-8">{g.description}</p>}
                 {parent && (
                   <div className="tiny muted">
                     Under: <b>{parent.title}</b>
                   </div>
                 )}
+                <div className="goal-next">
+                  <span>Next:</span>
+                  <b>{g.milestones.find((m) => !m.done)?.title ?? (g.status === 'completed' ? 'Completed ✓' : 'Define a milestone')}</b>
+                </div>
 
                 <div className="flex" style={{ gap: 8 }}>
                   <ProgressBar pct={prog} color={g.status === 'completed' ? 'green' : 'teal'} />

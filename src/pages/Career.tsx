@@ -7,12 +7,13 @@ import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
 
-type Tab = 'skills' | 'projects' | 'achievements' | 'roadmap';
+type Tab = 'direction' | 'skills' | 'projects' | 'achievements' | 'evidence';
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'direction', label: 'Direction' },
   { id: 'skills', label: 'Skills' },
   { id: 'projects', label: 'Projects' },
   { id: 'achievements', label: 'Achievements' },
-  { id: 'roadmap', label: 'Career roadmap' },
+  { id: 'evidence', label: 'Evidence' },
 ];
 
 const PROJECT_STATUS: Record<ProjectStatus, string> = {
@@ -22,31 +23,25 @@ const PROJECT_STATUS: Record<ProjectStatus, string> = {
   'on-hold': 'On hold',
 };
 
-export function CareerPage() {
+export function CareerTab() {
   const route = useRoute();
-  const tab = (TABS.find((t) => t.id === route[1])?.id ?? 'skills') as Tab;
+  const tab = (TABS.find((t) => t.id === route[1])?.id ?? 'direction') as Tab;
 
   return (
     <div>
-      <div className="flex flex-wrap mb-16">
-        <div>
-          <h1 className="topbar-title">Professional Growth</h1>
-          <div className="topbar-sub">Skills, projects, achievements and your long-term career roadmap.</div>
-        </div>
-      </div>
-
       <div className="tabs">
         {TABS.map((t) => (
-          <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => navigate(`career/${t.id}`)}>
+          <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => navigate(`growth/career/${t.id}`)}>
             {t.label}
           </button>
         ))}
       </div>
 
+      {tab === 'direction' && <RoadmapTab />}
       {tab === 'skills' && <SkillsTab />}
       {tab === 'projects' && <ProjectsTab />}
       {tab === 'achievements' && <AchievementsTab />}
-      {tab === 'roadmap' && <RoadmapTab />}
+      {tab === 'evidence' && <EvidenceTab />}
     </div>
   );
 }
@@ -626,6 +621,71 @@ function RoadmapTab() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ── Evidence — the career record ─────────────────────────────────────────────
+
+function EvidenceTab() {
+  const { data } = useApp();
+  const currency = '—';
+  void currency;
+  const completed = data.projects.filter((p) => p.status === 'completed');
+  const achievements = [...data.achievements].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
+
+  return (
+    <div>
+      <div className="grid grid-2" style={{ alignItems: 'start' }}>
+        <div className="panel">
+          <h2 className="panel-title">Career record</h2>
+          <p className="panel-sub">Everything that proves your progress, in one place.</p>
+          <div className="stat-row"><span className="k">Current position</span><span className="v">{data.career.currentPosition || '—'}</span></div>
+          <div className="stat-row"><span className="k">Direction</span><span className="v">{data.career.targetDirection || '—'}</span></div>
+          <div className="stat-row"><span className="k">Skills tracked</span><span className="v t-num">{data.skills.length}</span></div>
+          <div className="stat-row"><span className="k">Projects</span><span className="v t-num">{completed.length} completed</span></div>
+          <div className="stat-row"><span className="k">Achievements</span><span className="v t-num">{data.achievements.length}</span></div>
+          <div className="stat-row"><span className="k">Roadmap milestones</span><span className="v t-num">{data.career.milestones.filter((m) => m.done).length}/{data.career.milestones.length}</span></div>
+        </div>
+
+        <div className="panel">
+          <h2 className="panel-title">Skills</h2>
+          <p className="panel-sub">Current level → target</p>
+          {data.skills.length === 0 && <p className="small muted">Add skills in the Skills tab.</p>}
+          {data.skills.slice(0, 8).map((sk) => (
+            <div className="stat-row" key={sk.id}>
+              <span className="k">{sk.name}</span>
+              <span className="v t-num">{sk.currentLevel} → {sk.targetLevel}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel mt-16">
+        <h2 className="panel-title">Achievements timeline</h2>
+        <p className="panel-sub">Your professional accomplishments, newest first.</p>
+        {achievements.length === 0 && <p className="small muted">Record achievements as they happen — they build your record.</p>}
+        {achievements.map((a) => (
+          <div className="stat-row" key={a.id}>
+            <span className="k" style={{ minWidth: 90 }}>{formatDateMed(a.date)}</span>
+            <span className="grow" style={{ fontSize: 13.5 }}>{a.description}</span>
+            {a.impact && <span className="tiny muted" style={{ maxWidth: 260, textAlign: 'right' }}>{a.impact}</span>}
+          </div>
+        ))}
+      </div>
+
+      {completed.length > 0 && (
+        <div className="panel mt-16">
+          <h2 className="panel-title">Completed projects</h2>
+          {completed.map((p) => (
+            <div className="stat-row" key={p.id}>
+              <span className="k">{p.name}</span>
+              <span className="v small">{p.outcomes || p.role || '—'}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

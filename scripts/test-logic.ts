@@ -258,3 +258,100 @@ console.log('✅ all logic tests passed');
 }
 
 console.log('✅ extended tests passed');
+
+// ── finance helpers ──
+{
+  const f = await import('../src/lib/finance');
+  const { createInitialData: mkData } = await import('../src/lib/defaults');
+
+  // formatMoney — en-IN grouping
+  assert.strictEqual(f.formatMoney(0), '₹0');
+  assert.strictEqual(f.formatMoney(1234), '₹1,234');
+  assert.strictEqual(f.formatMoney(123456.7), '₹1,23,457');
+  assert.strictEqual(f.formatMoney(9999999), '₹99,99,999');
+  assert.strictEqual(f.formatMoney(100000, 'INR', true), '₹1L');
+  assert.strictEqual(f.formatMoney(2500000, 'INR', true), '₹25L');
+  assert.strictEqual(f.formatMoney(10000000, 'INR', true), '₹1Cr');
+  assert.strictEqual(f.formatMoney(1500, 'USD'), '$1,500');
+
+  // Build transactions relative to the current month so tests pass on any run date.
+  const now = todayStr();
+  const mk0 = monthKeyOf(now); // current month
+  const mk1 = monthKeyOf(addMonths(now, -1)); // previous month
+  const mk2 = monthKeyOf(addMonths(now, 1)); // next month
+  const d0 = (n: number) => `${mk0}-${String(n).padStart(2, '0')}`;
+  const d1 = (n: number) => `${mk1}-${String(n).padStart(2, '0')}`;
+  const d2 = (n: number) => `${mk2}-${String(n).padStart(2, '0')}`;
+  const txs = [
+    { id: 'a', type: 'income' as const, amount: 60000, category: 'Salary', date: d0(5), description: 'salary', createdAt: '' },
+    { id: 'b', type: 'expense' as const, amount: 8000, category: 'Rent', date: d0(6), description: '', createdAt: '' },
+    { id: 'c', type: 'expense' as const, amount: 1200, category: 'Food', date: d0(7), description: '', createdAt: '' },
+    { id: 'd', type: 'income' as const, amount: 5000, category: 'Freelance', date: d2(2), description: '', createdAt: '' },
+    { id: 'e', type: 'expense' as const, amount: 1000, category: 'Food', date: d2(3), description: '', createdAt: '' },
+    { id: 'f', type: 'expense' as const, amount: 2000, category: 'Food', date: d1(30), description: '', createdAt: '' },
+  ] as any[];
+
+  const m0 = f.monthTotals(txs, mk0);
+  assert.strictEqual(m0.income, 60000, 'current month income');
+  assert.strictEqual(m0.expense, 9200, 'current month expense');
+  assert.strictEqual(m0.saved, 50800, 'current month saved');
+
+  assert.strictEqual(f.txsInMonth(txs, mk0).length, 3, 'month filter');
+  assert.strictEqual(f.txsInRange(txs, `${mk0}-01`, `${mk2}-31`).length, 5, 'range filter');
+  const tot = f.totals(txs);
+  assert.strictEqual(tot.income, 65000);
+  assert.strictEqual(tot.expense, 12200);
+  assert.strictEqual(tot.saved, 52800);
+
+  assert.strictEqual(f.savingsRate(60000, 9200), 85, 'savings rate 85%');
+  assert.strictEqual(f.savingsRate(0, 100), 0, 'no income → 0 rate');
+
+  assert.strictEqual(f.totalSaved({ savingsGoals: [{ id: 'g1', name: 'EF', targetAmount: 100000, currentAmount: 25000, createdAt: 'x' }] } as any), 25000, 'total saved = sum of goal balances');
+
+  assert.strictEqual(f.goalPct({ currentAmount: 25, targetAmount: 100 }), 25);
+  assert.strictEqual(f.goalPct({ currentAmount: 120, targetAmount: 100 }), 100, 'capped at 100');
+  assert.strictEqual(f.goalPct({ currentAmount: 0, targetAmount: 0 }), 0, 'zero target');
+
+  const bd = f.categoryBreakdown(txs, 'expense', mk0);
+  assert.deepStrictEqual(bd, [
+    { category: 'Rent', amount: 8000, pct: 87 },
+    { category: 'Food', amount: 1200, pct: 13 },
+  ], 'expense breakdown by category');
+  assert.deepStrictEqual(f.largestCategory(txs, mk0), { category: 'Rent', amount: 8000 }, 'largest category');
+  assert.strictEqual(f.largestCategory(txs, '2099-12'), null, 'empty month → null');
+
+  const series = f.monthlyMoneySeries({ transactions: txs } as any, 12);
+  assert.ok(series.length === 12, '12 points');
+  const cur = series.find((p: any) => p.month === mk0);
+  const prev = series.find((p: any) => p.month === mk1);
+  assert.strictEqual(prev?.saved, -2000, 'previous month saved');
+  assert.strictEqual(cur?.saved, 50800, 'current month saved');
+  assert.strictEqual(cur?.label, monthKeyLabel(mk0), 'label');
+
+  assert.strictEqual(f.avgMonthlySavings({ transactions: txs } as any, 3), (50800 + -2000) / 2, 'avg of months with data');
+
+  const gs = [{ id: 'g1', name: 'EF', targetAmount: 100000, currentAmount: 10000, createdAt: 'x' }];
+  const after = f.contributeToGoal(gs, 'g1', 5000);
+  assert.strictEqual(after[0].currentAmount, 15000, 'contribute adds');
+  const untouched = f.contributeToGoal(gs, 'missing', 5);
+  assert.strictEqual(untouched[0].currentAmount, 10000, 'unknown goal unchanged');
+  assert.strictEqual(untouched.length, 1, 'unknown goal keeps list');
+  assert.strictEqual(f.todaySpending([]), 0, 'no txs');
+  assert.strictEqual(f.todaySpending(txs), 0, 'no tx today');
+
+  // settings.finance defaults exist on fresh data
+  const fresh = mkData();
+  assert.deepStrictEqual(fresh.settings.finance.expenseCategories.slice(0, 3), ['Food', 'Transport', 'Shopping']);
+  assert.ok(fresh.settings.finance.incomeCategories.includes('Salary'));
+  assert.strictEqual(fresh.settings.finance.currency, 'INR');
+  assert.deepStrictEqual(fresh.transactions, [], 'fresh transactions');
+  assert.deepStrictEqual(fresh.savingsGoals, [], 'fresh savings goals');
+}
+
+
+function monthKeyLabel(mk: string): string {
+  const [y, m] = mk.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+}
+
+console.log('✅ finance tests passed');

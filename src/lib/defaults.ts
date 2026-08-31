@@ -33,7 +33,9 @@ export const DEFAULT_GROWTH_AREAS: GrowthArea[] = [
   { id: 'area-personal', name: 'Personal Growth', icon: '🌱', color: '#22c55e' },
   { id: 'area-wellbeing', name: 'Wellbeing', icon: '🧘', color: '#8b5cf6' },
   { id: 'area-relationships', name: 'Relationships', icon: '👥', color: '#f59e0b' },
+  { id: 'area-finance', name: 'Finance', icon: '💰', color: '#14b8a6' },
   { id: 'area-life', name: 'Hobbies & Life', icon: '🎨', color: '#ec4899' },
+  { id: 'area-other', name: 'Other', icon: '🗂', color: '#94a3b8' },
 ];
 
 /** Category labels used for monthly goals (editable per month). */
@@ -101,6 +103,21 @@ export function emptyMonthPlan(): MonthPlan {
   };
 }
 
+export const DEFAULT_INCOME_CATEGORIES = ['Salary', 'Freelance', 'Bonus', 'Investments', 'Other'];
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Food',
+  'Transport',
+  'Shopping',
+  'Bills',
+  'Education',
+  'Entertainment',
+  'Travel',
+  'Family',
+  'Health',
+  'Other',
+];
+export const DEFAULT_CURRENCY = 'INR';
+
 export const DEFAULT_REVIEW_QUESTIONS = {
   weekly: [
     '🏆 Wins',
@@ -166,6 +183,11 @@ export function createInitialData(): AppData {
         weekly: [...DEFAULT_REVIEW_QUESTIONS.weekly],
         monthly: [...DEFAULT_REVIEW_QUESTIONS.monthly],
       },
+      finance: {
+        incomeCategories: [...DEFAULT_INCOME_CATEGORIES],
+        expenseCategories: [...DEFAULT_EXPENSE_CATEGORIES],
+        currency: DEFAULT_CURRENCY,
+      },
     },
     cycles: [],
     growthAreas: DEFAULT_GROWTH_AREAS.map((a) => ({ ...a })),
@@ -180,6 +202,8 @@ export function createInitialData(): AppData {
     achievements: [],
     career: { ...EMPTY_CAREER },
     learning: [],
+    transactions: [],
+    savingsGoals: [],
     cycleReviews: {},
     createdAt: today,
     updatedAt: today,

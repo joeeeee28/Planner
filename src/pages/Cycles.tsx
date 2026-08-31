@@ -9,7 +9,7 @@ import { IconPlus } from '../components/icons';
 import { uid } from '../lib/uid';
 import type { GrowthCycle } from '../lib/types';
 
-export function CyclesPage() {
+export function CyclesTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState(false);
   const [name, setName] = useState('');
@@ -76,8 +76,8 @@ export function CyclesPage() {
     <div>
       <div className="flex flex-wrap mb-16">
         <div>
-          <h1 className="topbar-title">Growth Cycles</h1>
-          <div className="topbar-sub">
+          <h1 className="t-title">Growth cycles</h1>
+          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
             Each cycle is a full year of growth. Past cycles stay as historical data — start a new one anytime.
           </div>
         </div>

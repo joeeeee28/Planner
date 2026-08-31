@@ -175,3 +175,53 @@ export const IconCheck = ({ size = 16 }: IconProps) => (
     <path d="M20 6L9 17l-5-5" />
   </svg>
 );
+
+export const IconHome = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M3 10.5L12 3l9 7.5" />
+    <path d="M5 9.5V21h14V9.5" />
+  </svg>
+);
+
+export const IconPlan = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4" />
+  </svg>
+);
+
+export const IconGrowth = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M3 17l5-5 4 3 7-8" />
+    <path d="M15 7h4v4" />
+  </svg>
+);
+
+export const IconMoney = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2.6" />
+    <path d="M6 12h.01M18 12h.01" />
+  </svg>
+);
+
+export const IconInsights = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M12 2a10 10 0 1 0 10 10" />
+    <path d="M12 6v6l4 2" />
+  </svg>
+);
+
+export const IconArrowRight = ({ size = 15 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </svg>
+);
+
+export const IconTarget = ({ size = 15 }: IconProps) => (
+  <svg {...base(size)}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="5" />
+    <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+  </svg>
+);

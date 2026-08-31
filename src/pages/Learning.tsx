@@ -55,7 +55,7 @@ const emptyDraft = (): Draft => ({
   completionDate: '',
 });
 
-export function LearningPage() {
+export function LearningTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState<null | { item?: LearningItem }>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
@@ -145,8 +145,8 @@ export function LearningPage() {
     <div>
       <div className="flex flex-wrap mb-16">
         <div>
-          <h1 className="topbar-title">Learning Hub</h1>
-          <div className="topbar-sub">Track what you consume — and what you actually learned.</div>
+          <h1 className="t-title">Learning</h1>
+          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>Track what you consume — and what you actually learned.</div>
         </div>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={openNew}>

@@ -3,38 +3,22 @@ import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { currentCycle } from '../lib/dates';
 import { searchAll, type SearchResult } from '../lib/search';
-import {
-  IconCalendar,
-  IconCareer,
-  IconChart,
-  IconCycle,
-  IconDashboard,
-  IconGoal,
-  IconHabit,
-  IconJournal,
-  IconLearning,
-  IconMenu,
-  IconReviews,
-  IconSearch,
-  IconSettings,
-  IconToday,
-  IconClose,
-} from './icons';
+import { IconHome, IconToday, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
+import { QuickAddModal } from './QuickAdd';
 
 const NAV_MAIN = [
-  { path: 'dashboard', label: 'Dashboard', icon: IconDashboard },
+  { path: 'home', label: 'Home', icon: IconHome },
   { path: 'today', label: 'Today', icon: IconToday },
-  { path: 'calendar', label: 'Calendar', icon: IconCalendar },
+  { path: 'plan', label: 'Plan', icon: IconPlan },
   { path: 'goals', label: 'Goals', icon: IconGoal },
-  { path: 'habits', label: 'Habits', icon: IconHabit },
-  { path: 'learning', label: 'Learning', icon: IconLearning },
-  { path: 'career', label: 'Career', icon: IconCareer },
+  { path: 'growth', label: 'Growth', icon: IconGrowth },
+  { path: 'money', label: 'Money', icon: IconMoney },
   { path: 'journal', label: 'Journal', icon: IconJournal },
-  { path: 'reviews', label: 'Reviews', icon: IconReviews },
-  { path: 'analytics', label: 'Analytics', icon: IconChart },
-  { path: 'cycles', label: 'Growth Cycles', icon: IconCycle },
+  { path: 'insights', label: 'Insights', icon: IconInsights },
   { path: 'settings', label: 'Settings', icon: IconSettings },
 ];
+
+const MOBILE_MAIN = ['home', 'today', 'plan', 'money', 'journal'];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const route = useRoute();
@@ -42,9 +26,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [focused, setFocused] = useState(false);
+  const [quickAdd, setQuickAdd] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const section = route[0] ?? 'dashboard';
+  const section = route[0] ?? 'home';
 
   useEffect(() => {
     setOpen(false);
@@ -59,7 +44,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const results = useMemo<SearchResult[]>(() => (q.trim().length >= 1 ? searchAll(data, q) : []), [data, q]);
+  const results = useMemo<SearchResult[]>(
+    () => (q.trim().length >= 1 ? searchAll(data, q) : []),
+    [data, q],
+  );
 
   const cycle = currentCycle(data.cycles);
   const active = (path: string) => (section === path ? 'active' : '');
@@ -67,11 +55,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const sidebar = (
     <aside className={`sidebar ${open ? 'open' : ''}`}>
       <div className="sidebar-brand">
-        <span className="brand-mark">🌱</span>
-        <span>Growth OS</span>
+        <span className="brand-mark">◍</span>
+        <span className="brand-name">Growth OS</span>
       </div>
       <nav className="sidebar-nav">
-        <div className="nav-section-label">Your system</div>
         {NAV_MAIN.map((item) => {
           const Icon = item.icon;
           return (
@@ -81,7 +68,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               onClick={() => navigate(item.path)}
             >
               <span className="nav-icon">
-                <Icon size={17} />
+                <Icon size={16} />
               </span>
               {item.label}
             </button>
@@ -90,11 +77,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </nav>
       <div className="sidebar-footer">
         {cycle ? (
-          <span className="cycle-pill" title={cycle.name}>
-            🔄 {cycle.name}
-          </span>
+          <div className="cycle-pill" title={cycle.name}>
+            <span className="dot" />
+            {cycle.name}
+          </div>
         ) : (
-          <span className="tiny muted">No cycle yet</span>
+          <div className="cycle-pill">
+            <span className="dot" />
+            No cycle yet
+          </div>
         )}
       </div>
     </aside>
@@ -105,30 +96,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
       {sidebar}
       <main className="main">
         <div className="topbar">
-          <button className="btn btn-ghost menu-toggle" onClick={() => setOpen(!open)} aria-label="Menu">
+          <button
+            className="btn btn-ghost menu-toggle"
+            onClick={() => setOpen(!open)}
+            aria-label="Menu"
+          >
             {open ? <IconClose /> : <IconMenu />}
           </button>
           <div className="topbar-right">
-            <button
-              className="btn btn-sm"
-              onClick={() => {
-                const url = window.location.href;
-                navigator.clipboard
-                  .writeText(url)
-                  .then(() => {
-                    const b = document.getElementById('share-btn') as HTMLButtonElement | null;
-                    if (b) b.textContent = '✓ Copied';
-                    setTimeout(() => {
-                      if (b) b.textContent = '🔗 Share';
-                    }, 1600);
-                  })
-                  .catch(() => alert('Copy failed — select the address bar instead.'));
-              }}
-              id="share-btn"
-              title="Copy a shareable link to this page"
-            >
-              🔗 Share
-            </button>
             <div className="search-box" ref={searchRef}>
               <span className="search-icon">
                 <IconSearch />
@@ -137,7 +112,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onFocus={() => setFocused(true)}
-                placeholder="Search everything…"
+                placeholder="Search…"
               />
               {focused && q.trim().length >= 1 && (
                 <div className="search-results">
@@ -160,10 +135,51 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             </div>
+            <button className="btn btn-ghost btn-icon" title="Share this page" onClick={() => {
+              navigator.clipboard.writeText(window.location.href)
+                .then(() => { const b = document.getElementById('share-btn') as HTMLButtonElement | null; if (b) b.textContent = '✓'; setTimeout(() => { if (b) b.textContent = '↗'; }, 1500); })
+                .catch(() => alert('Copy failed — select the address bar instead.'));
+            }} id="share-btn">↗</button>
+            <button className="btn btn-primary quick-add-btn" onClick={() => setQuickAdd(true)}>
+              <IconPlus size={14} /> <span className="qa-label">Quick add</span>
+            </button>
           </div>
         </div>
         {children}
       </main>
+
+      {/* mobile bottom nav */}
+      <nav className="mobile-nav">
+        {NAV_MAIN.filter((n) => MOBILE_MAIN.includes(n.path)).map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.path}
+              className={`mn-item ${section === item.path ? 'active' : ''}`}
+              onClick={() => navigate(item.path)}
+            >
+              <span className="ic">
+                <Icon size={18} />
+              </span>
+              {item.label}
+            </button>
+          );
+        })}
+        <button className="mn-item" onClick={() => setQuickAdd(true)}>
+          <span className="ic" style={{ color: 'var(--accent)' }}>
+            <IconPlus size={20} />
+          </span>
+          Add
+        </button>
+        <button className={`mn-item ${!MOBILE_MAIN.includes(section) ? 'active' : ''}`} onClick={() => setOpen(!open)}>
+          <span className="ic">
+            <IconMenu size={18} />
+          </span>
+          More
+        </button>
+      </nav>
+
+      {quickAdd && <QuickAddModal onClose={() => setQuickAdd(false)} />}
     </div>
   );
 }

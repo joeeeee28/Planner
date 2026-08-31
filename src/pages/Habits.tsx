@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { addDays, daysInMonth, monthLabel, monthMatrix, parseDateStr, todayStr, monthKeyOf, toDateStr } from '../lib/dates';
+import { addDays, daysInMonth, formatDateMed, monthLabel, monthMatrix, parseDateStr, todayStr, monthKeyOf, toDateStr } from '../lib/dates';
 import { habitMonthlySeries, habitScheduledOn, habitStats, type HabitStats } from '../lib/analytics';
 import type { Habit } from '../lib/types';
 import { Modal, ProgressBar, EmptyState, cx } from '../components/ui';
@@ -11,7 +11,7 @@ const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EMOJIS = ['💪', '📚', '🧠', '✍️', '💧', '🚶', '📵', '🧘', '🏃', '🥗', '😴', '🎯', '🌅', '🎸', '💻', '🙏'];
 const COLORS = ['#10b981', '#6366f1', '#0ea5e9', '#8b5cf6', '#38bdf8', '#22c55e', '#f43f5e', '#a78bfa', '#f59e0b', '#ec4899'];
 
-export function HabitsPage() {
+export function HabitsTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState<null | { habit?: Habit }>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -31,18 +31,43 @@ export function HabitsPage() {
       return { ...d };
     });
 
+  const todayScheduled = data.habits.filter((h) => h.active && habitScheduledOn(h, t));
+
   return (
     <div>
       <div className="flex flex-wrap mb-16">
         <div>
-          <h1 className="topbar-title">Habits</h1>
-          <div className="topbar-sub">Small actions, done consistently. Streaks and history stay forever.</div>
+          <h1 className="t-title">Habits</h1>
+          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>Small actions, done consistently.</div>
         </div>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={() => setModal({})}>
           <IconPlus size={15} /> New habit
         </button>
       </div>
+
+      {/* Today — the only thing that matters */}
+      <section className="panel section-gap">
+        <h2 className="panel-title">Today</h2>
+        <p className="panel-sub">{formatDateMed(t)}</p>
+        {todayScheduled.length === 0 ? (
+          <p className="small muted">No habits scheduled today. Create one or pick its days.</p>
+        ) : (
+          todayScheduled.map((h) => {
+            const done = !!data.habitCompletions[h.id]?.[t];
+            return (
+              <div className="habit-row" key={h.id}>
+                <span className="habit-emoji" style={{ background: 'var(--surface-2)' }}>{h.icon}</span>
+                <span className="h-name" style={done ? { textDecoration: 'line-through', color: 'var(--ink-3)' } : undefined}>{h.name}</span>
+                {data.habitCompletions[h.id]?.[t] && <span className="badge badge-accent">done</span>}
+                <button className={`btn btn-sm ${done ? 'btn-accent' : ''}`} onClick={() => toggle(h.id, t)}>
+                  {done ? '✓ Done' : 'Mark done'}
+                </button>
+              </div>
+            );
+          })
+        )}
+      </section>
 
       {activeHabits.length === 0 && (
         <div className="card mb-16">

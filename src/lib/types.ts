@@ -63,6 +63,8 @@ export interface DayEntry {
   journal: DayJournal;
   /** 1–5 overall day rating. */
   rating?: number;
+  /** Free-form tags for the day's journal entry. */
+  tags?: string[];
   updatedAt: string;
 }
 
@@ -257,6 +259,8 @@ export interface MonthlyReview {
 
 export interface MonthPlan {
   focus: string;
+  /** Optional savings target (in the configured currency) for this month. */
+  savingsTarget?: number;
   goals: MonthGoalItem[];
   review: MonthlyReview;
   updatedAt: string;
@@ -305,6 +309,13 @@ export interface CycleReview {
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+export interface FinanceSettings {
+  incomeCategories: string[];
+  expenseCategories: string[];
+  /** ISO 4217 currency code, e.g. INR, USD. */
+  currency: string;
+}
+
 export interface Settings {
   name: string;
   theme: ThemeMode;
@@ -314,6 +325,34 @@ export interface Settings {
     weekly: string[]; // 8 prompts: wins…personalGrowth
     monthly: string[]; // 7 prompts: biggestAchievement…shouldChange
   };
+  finance: FinanceSettings;
+}
+
+// ── Money / finance ──────────────────────────────────────────────────────────
+
+export type TxType = 'income' | 'expense';
+
+export interface Transaction {
+  id: ID;
+  type: TxType;
+  amount: number; // positive number; type determines direction
+  date: DateStr;
+  category: string;
+  description?: string;
+  paymentType?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SavingsGoal {
+  id: ID;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  targetDate?: DateStr;
+  monthlyContributionTarget?: number;
+  notes?: string;
+  createdAt: string;
 }
 
 // ── Root store ───────────────────────────────────────────────────────────────
@@ -335,6 +374,8 @@ export interface AppData {
   achievements: Achievement[];
   career: CareerPlan;
   learning: LearningItem[];
+  transactions: Transaction[];
+  savingsGoals: SavingsGoal[];
   cycleReviews: Record<ID, CycleReview>;
   createdAt: string;
   updatedAt: string;
