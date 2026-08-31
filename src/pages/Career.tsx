@@ -630,8 +630,6 @@ function RoadmapTab() {
 
 function EvidenceTab() {
   const { data } = useApp();
-  const currency = '—';
-  void currency;
   const completed = data.projects.filter((p) => p.status === 'completed');
   const achievements = [...data.achievements].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
 

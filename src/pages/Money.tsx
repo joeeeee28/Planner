@@ -4,6 +4,7 @@ import { useRoute, navigate } from '../lib/router';
 import { formatDateMed, monthKeyOf, todayStr, addMonths, parseDateStr } from '../lib/dates';
 import {
   formatMoney,
+  totals,
   monthTotals,
   totalSaved,
   goalPct,
@@ -181,6 +182,8 @@ function OverviewTab() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      <HistorySection />
 
       <div className="panel">
         <h2 className="panel-title">Privacy</h2>
@@ -515,4 +518,91 @@ function GoalsTab() {
       )}
     </div>
   );
+}
+
+
+// ── History: month / quarter / year ──────────────────────────────────────────
+
+type Period = 'month' | 'quarter' | 'year';
+
+function HistorySection() {
+  const { data } = useApp();
+  const [period, setPeriod] = useState<Period>('month');
+  const currency = data.settings.finance.currency;
+  const t = todayStr();
+
+  const range = (() => {
+    const y = Number(t.slice(0, 4));
+    const m = Number(t.slice(5, 7));
+    if (period === 'year') return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y) };
+    if (period === 'quarter') {
+      const q = Math.floor((m - 1) / 3) + 1;
+      const fromM = (q - 1) * 3 + 1;
+      return {
+        from: `${y}-${String(fromM).padStart(2, '0')}-01`,
+        to: `${y}-${String(fromM + 2).padStart(2, '0')}-31`,
+        label: `Q${q} ${y}`,
+      };
+    }
+    return { from: `${t.slice(0, 7)}-01`, to: `${t.slice(0, 7)}-31`, label: monthName(t.slice(0, 7)) };
+  })();
+
+  const txs = data.transactions.filter((x) => x.date >= range.from && x.date <= range.to);
+  const tot = totals(txs);
+  const rate = savingsRate(tot.income, tot.expense);
+  const topCat = (() => {
+    const byCat: Record<string, number> = {};
+    for (const x of txs) if (x.type === 'expense') byCat[x.category] = (byCat[x.category] ?? 0) + x.amount;
+    let best: { category: string; amount: number } | null = null;
+    for (const [category, amount] of Object.entries(byCat)) {
+      if (!best || amount > best.amount) best = { category, amount };
+    }
+    return best;
+  })();
+
+  return (
+    <div className="panel section-gap">
+      <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8 }}>
+        <div>
+          <h2 className="panel-title">History</h2>
+          <p className="panel-sub">{range.label}</p>
+        </div>
+        <div className="flex" style={{ gap: 6 }}>
+          {(['month', 'quarter', 'year'] as Period[]).map((p) => (
+            <button key={p} className={`btn btn-sm ${period === p ? 'btn-accent' : ''}`} onClick={() => setPeriod(p)}>
+              {p[0].toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-4 mt-16">
+        <div className="panel-flat">
+          <div className="stat-label">Income</div>
+          <div className="stat-value money-pos" style={{ fontSize: 19 }}>{formatMoney(tot.income, currency)}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Expenses</div>
+          <div className="stat-value" style={{ fontSize: 19 }}>{formatMoney(tot.expense, currency)}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Saved</div>
+          <div className="stat-value" style={{ fontSize: 19, color: tot.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{formatMoney(tot.saved, currency)}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Savings rate</div>
+          <div className="stat-value" style={{ fontSize: 19 }}>{rate}%</div>
+        </div>
+      </div>
+      {topCat && (
+        <p className="small muted mt-16" style={{ marginBottom: 0 }}>
+          Largest expense in this period: <b>{topCat.category}</b> ({formatMoney(topCat.amount, currency)}).
+        </p>
+      )}
+    </div>
+  );
+}
+
+function monthName(mk: string) {
+  const [y, m] = mk.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }

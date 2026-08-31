@@ -274,7 +274,7 @@ function YearAtGlance({ year }: { year: number }) {
           const mm = monthTotals(data.transactions, mk);
           const goalsDone = data.goals.filter((g) => g.status === 'completed' && g.completedDate?.slice(0, 7) === mk).length;
           const quintile = Math.round(comp.pct / 20);
-          const past = mk < monthKeyOf(t);
+          const past = mk <= monthKeyOf(t);
           return (
             <button
               key={mk}
