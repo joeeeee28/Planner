@@ -8,6 +8,8 @@ import type {
   AppData,
   DateStr,
   DayEntry,
+  Goal,
+  GoalTargetType,
   GrowthArea,
   Habit,
   HabitCompletions,
@@ -229,8 +231,54 @@ export function goalAutoProgress(goal: { milestones: { done: boolean }[] }): num
 export function goalEffectiveProgress(goal: {
   milestones: { done: boolean }[];
   progress: number;
+  targetType?: GoalTargetType;
+  targetValue?: number;
+  currentValue?: number;
 }): number {
+  // Target engine takes precedence when configured.
+  if (goal.targetType && goal.targetType !== 'none' && goal.targetValue && goal.targetValue > 0) {
+    const cur = goal.currentValue ?? 0;
+    if (goal.targetType === 'completion') return cur >= goal.targetValue ? 100 : 0;
+    return Math.min(100, Math.max(0, Math.round((cur / goal.targetValue) * 100)));
+  }
   return goalAutoProgress(goal) ?? goal.progress;
+}
+
+export type GoalDeadlineStatus = 'no-deadline' | 'completed' | 'due-soon' | 'overdue' | 'on-track' | 'at-risk';
+
+export interface GoalDeadlineInfo {
+  status: GoalDeadlineStatus;
+  daysLeft: number | null;
+  label: string;
+}
+
+/**
+ * Deadline health based on ACTUAL progress vs time remaining — never invented.
+ * - no-deadline: no targetDate
+ * - completed: status completed or progress 100
+ * - overdue: targetDate < today and not complete
+ * - due-soon: within 14 days
+ * - at-risk: progress pct < expected linear progress (time elapsed / total time)
+ * - on-track: otherwise
+ */
+export function goalDeadlineInfo(
+  goal: Pick<Goal, 'status' | 'targetDate' | 'startDate'> & { progress: number; milestones: { done: boolean }[]; targetType?: GoalTargetType; targetValue?: number; currentValue?: number },
+  now: DateStr = todayStr(),
+): GoalDeadlineInfo {
+  if (goal.status === 'completed' || goalEffectiveProgress(goal) >= 100) {
+    return { status: 'completed', daysLeft: 0, label: 'Completed' };
+  }
+  if (!goal.targetDate) return { status: 'no-deadline', daysLeft: null, label: 'No deadline' };
+  const daysLeft = diffDays(now, goal.targetDate);
+  if (daysLeft < 0) return { status: 'overdue', daysLeft, label: `Overdue by ${Math.abs(daysLeft)}d` };
+  if (daysLeft <= 14) return { status: 'due-soon', daysLeft, label: `Due in ${daysLeft}d` };
+  // At-risk: behind expected linear progress.
+  const total = Math.max(1, diffDays(goal.startDate, goal.targetDate));
+  const elapsed = Math.max(0, diffDays(goal.startDate, now));
+  const expected = Math.min(100, Math.round((elapsed / total) * 100));
+  const actual = goalEffectiveProgress(goal);
+  if (actual < expected - 15) return { status: 'at-risk', daysLeft, label: `At risk (${actual}% vs ${expected}% expected)` };
+  return { status: 'on-track', daysLeft, label: `On track · ${daysLeft}d left` };
 }
 
 // ── Cycle-level summaries ────────────────────────────────────────────────────
@@ -456,4 +504,110 @@ export function milestoneDates(goals: AppData['goals']): DateStr[] {
 /** Which growth cycle contains `date`. */
 export function cycleForDateInfo(data: AppData, date: DateStr) {
   return cycleForDate(data.cycles, date);
+}
+
+// ── Period summaries (quarterly / yearly reviews) ───────────────────────────
+
+export interface PeriodSummary {
+  daysInPeriod: number;
+  activeDays: number;
+  habitConsistency: number;
+  goalsCompleted: number;
+  goalsTotal: number;
+  learningCompleted: number;
+  achievements: number;
+  income: number;
+  expenses: number;
+  saved: number;
+  journalDays: number;
+}
+
+/**
+ * Auto-summary of real data over a date window — used by quarterly and
+ * yearly reviews. Every number is derived from stored data; zero or empty
+ * data yields zeros, never invented percentages.
+ */
+export function periodSummary(data: AppData, from: DateStr, to: DateStr): PeriodSummary {
+  const clamp = (d: string) => (d < from ? from : d > to ? to : d);
+  const start = clamp(from);
+  const end = clamp(to);
+  if (start > end) {
+    return {
+      daysInPeriod: 0,
+      activeDays: 0,
+      habitConsistency: 0,
+      goalsCompleted: 0,
+      goalsTotal: 0,
+      learningCompleted: 0,
+      achievements: 0,
+      income: 0,
+      expenses: 0,
+      saved: 0,
+      journalDays: 0,
+    };
+  }
+  const daysInPeriod = diffDays(start, end) + 1;
+
+  let activeDays = 0;
+  let journalDays = 0;
+  let done = 0;
+  let total = 0;
+  let d = start;
+  let guard = 0;
+  while (d <= end && guard < 4000) {
+    const entry = data.daily[d];
+    if (dayActive(entry, data.growthAreas)) activeDays++;
+    const j = entry?.journal;
+    if (j && (j.wentWell || j.learned || j.accomplished || j.freeform)) journalDays++;
+    const p = dayProgress(entry, data.growthAreas);
+    done += p.done;
+    total += p.total;
+    d = addDays(d, 1);
+    guard++;
+  }
+
+  const scheduledHabitDays = new Map<string, number>();
+  const doneHabitDays = new Map<string, number>();
+  for (const h of data.habits) {
+    let hd = start;
+    let guard2 = 0;
+    while (hd <= end && guard2 < 4000) {
+      if (habitScheduledOn(h, hd)) {
+        scheduledHabitDays.set(h.id, (scheduledHabitDays.get(h.id) ?? 0) + 1);
+        if (data.habitCompletions[h.id]?.[hd]) doneHabitDays.set(h.id, (doneHabitDays.get(h.id) ?? 0) + 1);
+      }
+      hd = addDays(hd, 1);
+      guard2++;
+    }
+  }
+  let habitScheduled = 0;
+  let habitDone = 0;
+  for (const [id, n] of scheduledHabitDays) {
+    habitScheduled += n;
+    habitDone += doneHabitDays.get(id) ?? 0;
+  }
+
+  const goals = data.goals.filter((g) => (g.completedDate ?? '') >= start && (g.completedDate ?? '') <= end);
+  const goalsTotal = data.goals.filter((g) => (g.startDate ?? '') <= end && g.status !== 'abandoned').length;
+
+  const income = data.transactions
+    .filter((tx) => tx.type === 'income' && tx.date >= start && tx.date <= end)
+    .reduce((a, t) => a + t.amount, 0);
+  const expenses = data.transactions
+    .filter((tx) => tx.type === 'expense' && tx.date >= start && tx.date <= end)
+    .reduce((a, t) => a + t.amount, 0);
+
+  return {
+    daysInPeriod,
+    activeDays,
+    habitConsistency: habitScheduled > 0 ? Math.round((habitDone / habitScheduled) * 100) : 0,
+    goalsCompleted: goals.length,
+    goalsTotal,
+    learningCompleted: data.learning.filter((l) => l.status === 'completed' && (l.completionDate ?? '') >= start && (l.completionDate ?? '') <= end).length,
+    achievements: data.achievements.filter((a) => a.date >= start && a.date <= end).length,
+    income,
+    expenses,
+    saved: income - expenses,
+    journalDays,
+  };
 }

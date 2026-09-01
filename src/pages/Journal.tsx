@@ -199,13 +199,19 @@ export function JournalPage() {
 
           <div className="card">
             <h2 className="card-title">📖 Reflections & reviews</h2>
-            <p className="card-sub">Step back regularly — weekly, monthly and per growth cycle.</p>
+            <p className="card-sub">Step back regularly — weekly, monthly, quarterly, yearly and per growth cycle.</p>
             <div className="flex flex-wrap" style={{ gap: 6 }}>
               <button className="btn btn-sm" onClick={() => navigate(`reviews/week/${todayStr()}`)}>
                 This week's review
               </button>
               <button className="btn btn-sm" onClick={() => navigate(`reviews/month/${t.slice(0, 7)}`)}>
                 This month's review
+              </button>
+              <button className="btn btn-sm" onClick={() => navigate(`reviews/quarter/${t.slice(0, 4)}-Q${Math.floor((Number(t.slice(5, 7)) - 1) / 3) + 1}`)}>
+                This quarter's review
+              </button>
+              <button className="btn btn-sm" onClick={() => navigate(`reviews/year/${t.slice(0, 4)}`)}>
+                This year's review
               </button>
               <button className="btn btn-sm" onClick={() => navigate('reviews')}>
                 All reviews

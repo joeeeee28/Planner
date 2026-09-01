@@ -189,6 +189,7 @@ function ProjectsTab() {
     endDate: '',
     outcomes: '',
     achievements: '',
+    url: '',
   };
   const [draft, setDraft] = useState(empty);
 
@@ -207,6 +208,7 @@ function ProjectsTab() {
       endDate: p.endDate ?? '',
       outcomes: p.outcomes,
       achievements: p.achievements,
+      url: p.url ?? '',
     });
     setModal({ project: p });
   };
@@ -293,6 +295,11 @@ function ProjectsTab() {
                   <b>Outcomes:</b> {p.outcomes}
                 </div>
               )}
+              {p.url && (
+                <div className="small mt-8">
+                  <a href={p.url} target="_blank" rel="noreferrer">🔗 Evidence link</a>
+                </div>
+              )}
               {p.achievements && (
                 <div className="small mt-8" style={{ color: 'var(--success)' }}>
                   🏆 {p.achievements}
@@ -350,6 +357,15 @@ function ProjectsTab() {
           <div className="form-row">
             <label className="form-label">Achievements</label>
             <textarea rows={2} value={draft.achievements} onChange={(e) => setDraft({ ...draft, achievements: e.target.value })} placeholder="Awards, recognition, milestones…" />
+          </div>
+          <div className="form-row">
+            <label className="form-label">Evidence link</label>
+            <input
+              type="url"
+              value={draft.url}
+              onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+              placeholder="https://github.com/… portfolio, doc, deployment"
+            />
           </div>
           <div className="flex" style={{ justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn" onClick={() => setModal(null)}>
@@ -678,7 +694,12 @@ function EvidenceTab() {
           <h2 className="panel-title">Completed projects</h2>
           {completed.map((p) => (
             <div className="stat-row" key={p.id}>
-              <span className="k">{p.name}</span>
+              <span className="k">
+                {p.name}
+                {p.url && (
+                  <a href={p.url} target="_blank" rel="noreferrer" className="tiny" style={{ marginLeft: 6 }}>🔗</a>
+                )}
+              </span>
               <span className="v small">{p.outcomes || p.role || '—'}</span>
             </div>
           ))}

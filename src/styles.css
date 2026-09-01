@@ -1552,3 +1552,54 @@ textarea {
   font-size: 13px;
   margin-top: 2px;
 }
+
+/* ── Home trend bars ── */
+.trend-bar {
+  display: inline-block;
+  border-radius: 3px 3px 0 0;
+  min-width: 6px;
+}
+.trend-bar.pos { background: var(--pos); opacity: 0.9; }
+.trend-bar.neg { background: var(--neg); opacity: 0.75; }
+.trend-bar.inline {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: baseline;
+}
+.income-trend {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px;
+}
+.income-trend:hover { border-color: var(--line-strong); }
+.pos-text { color: var(--pos); }
+.neg-text { color: var(--neg); }
+
+/* ── Scrollable tab bar (Money) ── */
+.tabs-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tabs-scroll .tab { white-space: nowrap; }
+
+/* ── Form check row ── */
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.form-check input { width: auto; }
+
+/* ── Calendar dots: journal & recurring ── */
+.cal-dot.journal { background: var(--warn); }
+.cal-dot.recurring { background: var(--pos); }

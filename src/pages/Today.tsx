@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { addDays, formatDateLong, isToday, todayStr, cycleDayNumber, currentCycle, weekdayName } from '../lib/dates';
-import { dayProgress, habitScheduledOn } from '../lib/analytics';
+import { dayProgress, habitScheduledOn, goalEffectiveProgress, goalDeadlineInfo } from '../lib/analytics';
 import { formatMoney, monthTotals, goalPct, todaySpending, todayIncome } from '../lib/finance';
 import { ProgressBar, TaskList, EmptyState, Stars } from '../components/ui';
 import { IconChevronLeft, IconChevronRight, IconArrowRight } from '../components/icons';
@@ -227,6 +227,71 @@ export function TodayPage() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* GOALS — next actions */}
+      <section className="panel section-gap">
+        <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+          <h2 className="panel-title">Goal next actions</h2>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('goals')}>
+            All goals <IconArrowRight size={13} />
+          </button>
+        </div>
+        {(() => {
+          const active = data.goals
+            .filter((g) => g.status === 'in-progress' || g.status === 'not-started')
+            .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+          if (active.length === 0) {
+            return (
+              <p className="small muted" style={{ margin: 0 }}>
+                No active goals. Create one in Goals and its next action will appear here.
+              </p>
+            );
+          }
+          return (
+            <div className="flex flex-col" style={{ gap: 6 }}>
+              {active.slice(0, 5).map((g) => {
+                const next = g.milestones.find((m) => !m.done);
+                const dl = goalDeadlineInfo(g);
+                return (
+                  <div className="task-item" key={g.id} style={{ padding: '5px 0' }}>
+                    <input
+                      type="checkbox"
+                      className="task-check"
+                      checked={!!next && next.done}
+                      disabled={!next}
+                      onChange={() => {
+                        if (!next) return;
+                        update((d) => {
+                          d.goals = d.goals.map((x) =>
+                            x.id === g.id
+                              ? {
+                                  ...x,
+                                  milestones: x.milestones.map((m) => (m.id === next.id ? { ...m, done: !m.done } : m)),
+                                  progress: Math.round((x.milestones.filter((m) => m.id !== next.id || !m.done).length / x.milestones.length) * 100),
+                                }
+                              : x,
+                          );
+                          return { ...d };
+                        });
+                      }}
+                    />
+                    <span className="grow">
+                      <span className="small" style={{ fontWeight: 600 }}>{g.title}</span>
+                      <span className="small muted" style={{ marginLeft: 8 }}>
+                        {next ? next.title : '— no milestones yet —'}
+                      </span>
+                    </span>
+                    <span className="tiny muted t-num">{goalEffectiveProgress(g)}%</span>
+                    {dl.status !== 'no-deadline' && dl.status !== 'completed' && (
+                      <span className={`badge tiny ${dl.status === 'overdue' ? 'badge-danger' : dl.status === 'due-soon' || dl.status === 'at-risk' ? 'badge-warning' : ''}`}>{dl.label}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </section>
 
       {/* REFLECT */}

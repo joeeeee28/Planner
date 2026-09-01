@@ -15,7 +15,10 @@ export type SearchKind =
   | 'project'
   | 'achievement'
   | 'skill'
-  | 'note';
+  | 'note'
+  | 'transaction'
+  | 'savings'
+  | 'budget';
 
 export interface SearchResult {
   kind: SearchKind;
@@ -244,6 +247,54 @@ export function searchAll(data: AppData, query: string): SearchResult[] {
         snippet: snippet(pool, q),
         route: `#/reviews/cycle/${cr.cycleId}`,
         score: 8 + n,
+      });
+    }
+  }
+
+  // Transactions
+  for (const tx of data.transactions) {
+    const pool = [tx.description ?? '', tx.notes ?? '', tx.category].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'transaction',
+        id: tx.id,
+        title: `${tx.type === 'income' ? 'Income' : 'Expense'} — ${tx.category}`,
+        snippet: snippet(pool, q),
+        date: tx.date,
+        route: '#/money/transactions',
+        score: 12 + n,
+      });
+    }
+  }
+
+  // Savings goals
+  for (const g of data.savingsGoals) {
+    const pool = [g.name, ...(g.contributions ?? []).map((c) => c.note ?? '')].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'savings',
+        id: g.id,
+        title: `Savings goal: ${g.name}`,
+        snippet: snippet(pool, q),
+        route: '#/money/goals',
+        score: 12 + n,
+      });
+    }
+  }
+
+  // Budgets
+  for (const b of data.budgets) {
+    const n = hits(b.category, q);
+    if (n > 0) {
+      push({
+        kind: 'budget',
+        id: `${b.id}`,
+        title: `Budget: ${b.category}`,
+        snippet: `${monthLabel(b.month)} — limit ${b.limit}`,
+        route: '#/money/budgets',
+        score: 10 + n,
       });
     }
   }

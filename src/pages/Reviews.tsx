@@ -11,11 +11,12 @@ import {
   weekDates,
   weekStartOf,
 } from '../lib/dates';
-import { cycleSummary, dayHabitInfo, habitStats, monthKeyCompletion, windowCompletion } from '../lib/analytics';
+import { cycleSummary, dayHabitInfo, habitStats, monthKeyCompletion, windowCompletion, periodSummary } from '../lib/analytics';
 import { MONTH_GOAL_CATEGORIES, DEFAULT_REVIEW_QUESTIONS } from '../lib/defaults';
+import { formatMoney } from '../lib/finance';
 import { Modal, ProgressBar, Pct, Stars, EmptyState } from '../components/ui';
 import { uid } from '../lib/uid';
-import type { MonthPlan, MonthKey, WeekReview, CycleReview } from '../lib/types';
+import type { MonthPlan, MonthKey, WeekReview, CycleReview, PeriodReview, DateStr } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
 
 const EMPTY_WEEK: WeekReview = {
@@ -37,6 +38,8 @@ export function ReviewsPage() {
 
   if (sub === 'week') return <WeekReviewPage weekStart={route[2] ?? todayStr()} />;
   if (sub === 'month') return <MonthReviewPage mk={route[2] ?? todayStr().slice(0, 7)} />;
+  if (sub === 'quarter') return <PeriodReviewPage kind="quarter" keyVal={route[2]} />;
+  if (sub === 'year') return <PeriodReviewPage kind="year" keyVal={route[2]} />;
   if (sub === 'cycle') return <CycleReviewPage cycleId={route[2]} />;
   return <ReviewsIndex />;
 }
@@ -69,6 +72,20 @@ function ReviewsIndex() {
           <p className="card-sub">{monthLabel(t.slice(0, 7))}</p>
           <button className="btn btn-primary btn-sm" onClick={() => navigate(`reviews/month/${t.slice(0, 7)}`)}>
             Open monthly workspace
+          </button>
+        </div>
+        <div className="card">
+          <h2 className="card-title">📗 This quarter</h2>
+          <p className="card-sub">Q{Math.floor((Number(t.slice(5, 7)) - 1) / 3) + 1} {t.slice(0, 4)}</p>
+          <button className="btn btn-sm" onClick={() => navigate(`reviews/quarter/${t.slice(0, 4)}-Q${Math.floor((Number(t.slice(5, 7)) - 1) / 3) + 1}`)}>
+            Open quarterly review
+          </button>
+        </div>
+        <div className="card">
+          <h2 className="card-title">📕 This year</h2>
+          <p className="card-sub">{t.slice(0, 4)}</p>
+          <button className="btn btn-sm" onClick={() => navigate(`reviews/year/${t.slice(0, 4)}`)}>
+            Open yearly review
           </button>
         </div>
       </div>
@@ -655,4 +672,137 @@ export function CycleReviewPage({ cycleId }: { cycleId?: string }) {
       )}
     </div>
   );
+}
+
+// ── Quarterly & yearly reviews ───────────────────────────────────────────────
+
+function quarterRange(qk: string): { from: DateStr; to: DateStr; label: string } {
+  const [y, q] = qk.split('-Q').map(Number);
+  const from = `${y}-${String((q - 1) * 3 + 1).padStart(2, '0')}-01`;
+  const toMonth = q * 3;
+  const to = `${y}-${String(toMonth).padStart(2, '0')}-${String(new Date(y, toMonth, 0).getDate()).padStart(2, '0')}`;
+  return { from, to, label: `Q${q} ${y}` };
+}
+
+function yearRange(yk: string): { from: DateStr; to: DateStr; label: string } {
+  const y = Number(yk);
+  return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y) };
+}
+
+function PeriodReviewPage({ kind, keyVal }: { kind: 'quarter' | 'year'; keyVal?: string }) {
+  const { data, update } = useApp();
+  const t = todayStr();
+  const key = keyVal ?? (kind === 'quarter' ? `${t.slice(0, 4)}-Q${Math.floor((Number(t.slice(5, 7)) - 1) / 3) + 1}` : t.slice(0, 4));
+  const range = kind === 'quarter' ? quarterRange(key) : yearRange(key);
+  const stats = periodSummary(data, range.from, range.to);
+  const review: PeriodReview = data.periodReviews[key] ?? { text: '', updatedAt: '' };
+  const isCurrent =
+    kind === 'quarter'
+      ? key === `${t.slice(0, 4)}-Q${Math.floor((Number(t.slice(5, 7)) - 1) / 3) + 1}`
+      : key === t.slice(0, 4);
+
+  const prev = kind === 'quarter' ? quarterPrev(key) : String(Number(key) - 1);
+  const next = kind === 'quarter' ? quarterNext(key) : String(Number(key) + 1);
+
+  const setText = (text: string) =>
+    update((d) => {
+      d.periodReviews[key] = { text, updatedAt: new Date().toISOString() };
+      return { ...d };
+    });
+
+  const money = data.settings.finance.currency;
+
+  return (
+    <div>
+      <div className="flex flex-wrap mb-16">
+        <div>
+          <h1 className="topbar-title">{kind === 'quarter' ? 'Quarterly review' : 'Yearly review'} — {range.label}</h1>
+          <div className="topbar-sub">
+            {range.from} → {range.to} · {isCurrent ? 'current period' : 'past period'}
+          </div>
+        </div>
+        <div className="spacer" />
+        <div className="flex" style={{ gap: 6 }}>
+          <button className="btn btn-icon btn-sm" onClick={() => navigate(`reviews/${kind}/${prev}`)} aria-label="Previous period">
+            <IconChevronLeft size={14} />
+          </button>
+          <button className="btn btn-sm" onClick={() => navigate(`reviews/${kind}/${key}`)}>
+            {isCurrent ? 'Current' : 'Go to current'}
+          </button>
+          <button className="btn btn-icon btn-sm" onClick={() => navigate(`reviews/${kind}/${next}`)} aria-label="Next period">
+            <IconChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Auto-generated numbers — all derived from real stored data. */}
+      <div className="grid grid-4 mb-16">
+        <div className="stat">
+          <div className="stat-label">Active days</div>
+          <div className="stat-value" style={{ fontSize: 22 }}>{stats.activeDays}<small> / {stats.daysInPeriod}</small></div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Habit consistency</div>
+          <div className="stat-value" style={{ fontSize: 22 }}>{stats.habitConsistency}%</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Goals completed</div>
+          <div className="stat-value" style={{ fontSize: 22 }}>{stats.goalsCompleted}<small> / {stats.goalsTotal}</small></div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Journal days</div>
+          <div className="stat-value" style={{ fontSize: 22 }}>{stats.journalDays}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-4 mb-16">
+        <div className="stat">
+          <div className="stat-label">Income</div>
+          <div className="stat-value" style={{ fontSize: 18 }}>{formatMoney(stats.income, money)}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Expenses</div>
+          <div className="stat-value" style={{ fontSize: 18 }}>{formatMoney(stats.expenses, money)}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Saved</div>
+          <div className="stat-value" style={{ fontSize: 18, color: stats.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{formatMoney(stats.saved, money)}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Learning & wins</div>
+          <div className="stat-value" style={{ fontSize: 18 }}>{stats.learningCompleted} / {stats.achievements}</div>
+        </div>
+      </div>
+
+      <div className="card mb-16">
+        <h2 className="card-title">📝 Review</h2>
+        <p className="card-sub">
+          {kind === 'quarter' ? 'What did these three months teach you?' : 'The year in review — what to keep, what to change.'}
+        </p>
+        <textarea
+          rows={7}
+          style={{ width: '100%' }}
+          value={review.text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={
+            kind === 'quarter'
+              ? 'Biggest wins, lessons, what you will do differently next quarter…'
+              : 'Highlights of the year, lessons learned, and your focus for next year…'
+          }
+        />
+        <div className="tiny muted" style={{ marginTop: 6 }}>
+          {review.updatedAt ? `Saved ${formatDateMed(review.updatedAt.slice(0, 10))}` : 'Your words stay on this device.'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function quarterPrev(qk: string): string {
+  const [y, q] = qk.split('-Q').map(Number);
+  return q === 1 ? `${y - 1}-Q4` : `${y}-Q${q - 1}`;
+}
+function quarterNext(qk: string): string {
+  const [y, q] = qk.split('-Q').map(Number);
+  return q === 4 ? `${y + 1}-Q1` : `${y}-Q${q + 1}`;
 }

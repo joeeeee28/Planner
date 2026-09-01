@@ -22,13 +22,39 @@ import {
   monthKeyCompletion,
   cycleSummary,
 } from '../lib/analytics';
-import { formatMoney, monthTotals, totalSaved } from '../lib/finance';
+import { formatMoney, monthTotals, totalSaved, nextOccurrence } from '../lib/finance';
+import type { Transaction } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
 import { MonthReviewPage, WeekReviewPage } from './Reviews';
 import { currentCycle } from '../lib/dates';
-type View = 'calendar' | 'year' | 'month' | 'week';
+type View = 'calendar' | 'year' | 'quarter' | 'month' | 'week';
+
+function quarterOf(date: string): string {
+  return `${date.slice(0, 4)}-Q${Math.floor((Number(date.slice(5, 7)) - 1) / 3) + 1}`;
+}
+function quarterKeyOfDate(date: string): string {
+  return quarterOf(date);
+}
+function quarterMonths(qk: string): [number, number, number] {
+  const q = Number(qk.split('-Q')[1]);
+  return [(q - 1) * 3 + 1, (q - 1) * 3 + 2, (q - 1) * 3 + 3] as [number, number, number];
+}
 
 const isMonthKey = (s: string) => /^\d{4}-\d{2}$/.test(s);
+
+/** True when a recurring transaction has an occurrence exactly on `date`. */
+function occursOnDate(tx: Transaction, date: string): boolean {
+  if (!tx.recurrence) return false;
+  const last = tx.lastGenerated ?? tx.date;
+  if (date < last) return false;
+  let cur = last;
+  let guard = 0;
+  while (cur < date && guard < 2000) {
+    cur = nextOccurrence(cur, tx.recurrence);
+    guard++;
+  }
+  return cur === date;
+}
 
 export function PlanPage() {
   const { data } = useApp();
@@ -36,7 +62,7 @@ export function PlanPage() {
   const today = todayStr();
   const [view, setView] = useState<View>(() => {
     const v = route[1] as View;
-    return ['calendar', 'year', 'month', 'week'].includes(v) ? v : 'calendar';
+    return ['calendar', 'year', 'quarter', 'month', 'week'].includes(v) ? v : 'calendar';
   });
   const [cursor, setCursor] = useState(() => route[2] ?? monthKeyOf(todayStr()));
 
@@ -47,7 +73,12 @@ export function PlanPage() {
   const change = (dir: number) => {
     if (view === 'calendar') setCursor(monthKeyOf(addMonths(`${cursor}-01`, dir)));
     else if (view === 'year') setCursor(`${curYear + dir}-01`);
-    else if (view === 'week') setCursor(addDays(weekStartOf(curDate, weekStartsOn), dir * 7));
+    else if (view === 'quarter') {
+      const [y, q] = cursor.split('-Q').map(Number);
+      const ny = q === 1 ? y - 1 : y;
+      const nq = q === 1 ? 4 : q - 1;
+      setCursor(`${ny}-Q${nq}`);
+    } else if (view === 'week') setCursor(addDays(weekStartOf(curDate, weekStartsOn), dir * 7));
     else setCursor(addDays(curDate, dir));
   };
 
@@ -61,6 +92,10 @@ export function PlanPage() {
     } else if (v === 'year') {
       setCursor(`${dayCursor.slice(0, 4)}-01`);
       navigate(`plan/year/${dayCursor.slice(0, 4)}`);
+    } else if (v === 'quarter') {
+      const qk = quarterKeyOfDate(dayCursor);
+      setCursor(qk);
+      navigate(`plan/quarter/${qk}`);
     } else if (v === 'week') {
       setCursor(weekStartOf(dayCursor, weekStartsOn));
       navigate(`plan/week/${weekStartOf(dayCursor, weekStartsOn)}`);
@@ -73,6 +108,7 @@ export function PlanPage() {
   const label = (() => {
     if (view === 'calendar') return monthLabel(cursor);
     if (view === 'year') return String(curYear);
+    if (view === 'quarter') return `Quarter ${cursor.replace('-Q', ' Q')}`;
     if (view === 'month') return `Monthly workspace — ${monthLabel(cursor)}`;
     if (view === 'week') return `Week of ${formatDateMed(weekStartOf(curDate, weekStartsOn))}`;
     return '';
@@ -97,7 +133,7 @@ export function PlanPage() {
             className="btn btn-sm"
             onClick={() =>
               setCursor(
-                view === 'calendar' ? monthKeyOf(today) : view === 'week' ? weekStartOf(today, weekStartsOn) : view === 'year' ? `${today.slice(0, 4)}-01` : today,
+                view === 'calendar' ? monthKeyOf(today) : view === 'week' ? weekStartOf(today, weekStartsOn) : view === 'year' ? `${today.slice(0, 4)}-01` : view === 'quarter' ? quarterOf(today) : today,
               )
             }
           >
@@ -108,9 +144,9 @@ export function PlanPage() {
       </div>
 
       <div className="tabs">
-        {(['calendar', 'year', 'month', 'week'] as View[]).map((v) => (
+        {(['calendar', 'year', 'quarter', 'month', 'week'] as View[]).map((v) => (
           <button key={v} className={`tab ${view === v ? 'active' : ''}`} onClick={() => switchView(v)}>
-            {v === 'calendar' ? 'Calendar' : v === 'year' ? 'Year at a glance' : v === 'month' ? 'This month' : 'This week'}
+            {v === 'calendar' ? 'Calendar' : v === 'year' ? 'Year' : v === 'quarter' ? 'Quarter' : v === 'month' ? 'Month' : 'Week'}
           </button>
         ))}
       </div>
@@ -123,6 +159,7 @@ export function PlanPage() {
         <MonthGrid year={curYear} month={curMonth} weekStartsOn={weekStartsOn} deadlines={deadlines} milestones={milestones} />
       )}
       {view === 'year' && <YearAtGlance year={curYear} />}
+      {view === 'quarter' && <QuarterView qk={cursor.includes('-Q') ? cursor : quarterOf(`${cursor}-01`)} />}
       {view === 'month' && <MonthReviewPage mk={isMonthKey(cursor) ? cursor : monthKeyOf(cursor)} />}
       {view === 'week' && <WeekReviewPage weekStart={curDate} />}
     </div>
@@ -161,6 +198,9 @@ function MonthGrid({
           const inMonth = d.slice(0, 7) === thisMonth;
           const status = dayStatus(data.daily[d], data.growthAreas);
           const habit = dayHabitInfo(data, d);
+          const j = data.daily[d]?.journal;
+          const hasJournal = !!(j && (j.wentWell || j.learned || j.accomplished || j.freeform || j.grateful));
+          const recurring = data.transactions.some((tx) => tx.recurrence && occursOnDate(tx, d));
           return (
             <button
               className={[
@@ -180,6 +220,8 @@ function MonthGrid({
                 {(deadlines.get(d) ?? 0) > 0 && <span className="cal-dot deadline" />}
                 {milestones.has(d) && <span className="cal-dot milestone" />}
                 {habit.scheduled > 0 && <span className="cal-dot habit" />}
+                {hasJournal && <span className="cal-dot journal" />}
+                {recurring && <span className="cal-dot recurring" />}
               </span>
             </button>
           );
@@ -191,6 +233,8 @@ function MonthGrid({
         <Legend color="neg" label="Goal deadline" />
         <Legend color="ink" label="Milestone" />
         <Legend color="muted" label="Habit day" />
+        <Legend color="warn" label="Journal entry" />
+        <Legend color="pos" label="Recurring income/expense" />
       </div>
     </div>
   );
@@ -325,6 +369,77 @@ function YearAtGlance({ year }: { year: number }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Quarter view ─────────────────────────────────────────────────────────────
+
+function QuarterView({ qk }: { qk: string }) {
+  const { data } = useApp();
+  const currency = data.settings.finance.currency;
+  const [y, q] = qk.split('-Q').map(Number);
+  const [m1, m2, m3] = quarterMonths(qk);
+  const months = [m1, m2, m3];
+  const from = `${y}-${String(m1).padStart(2, '0')}-01`;
+  const to = `${y}-${String(m3).padStart(2, '0')}-${String(daysInMonth(y, m3)).padStart(2, '0')}`;
+
+  const qMoney = (() => {
+    let income = 0;
+    let expense = 0;
+    for (const tx of data.transactions) {
+      if (tx.date >= from && tx.date <= to) {
+        if (tx.type === 'income') income += tx.amount;
+        else expense += tx.amount;
+      }
+    }
+    return { income, expense, saved: income - expense };
+  })();
+
+  let habitScheduled = 0;
+  let habitDone = 0;
+  let d = from;
+  let guard = 0;
+  while (d <= to && guard < 1200) {
+    const info = dayHabitInfo(data, d);
+    habitScheduled += info.scheduled;
+    habitDone += info.done;
+    d = addDays(d, 1);
+    guard++;
+  }
+  const habitPct = habitScheduled === 0 ? 0 : Math.round((habitDone / habitScheduled) * 100);
+
+  const goalsDone = data.goals.filter((g) => g.status === 'completed' && g.completedDate && g.completedDate >= from && g.completedDate <= to).length;
+  const deadlines = goalDeadlineMap(data.goals);
+  const milestones = new Set(milestoneDates(data.goals));
+
+  return (
+    <div>
+      <div className="grid grid-4 mb-24">
+        <div className="panel-flat">
+          <div className="stat-label">Q{q} {y} · income</div>
+          <div className="stat-value" style={{ fontSize: 20 }}>{formatMoney(qMoney.income, currency)}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Expenses</div>
+          <div className="stat-value" style={{ fontSize: 20 }}>{formatMoney(qMoney.expense, currency)}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Saved</div>
+          <div className="stat-value" style={{ fontSize: 20, color: qMoney.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{formatMoney(qMoney.saved, currency)}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Habits · goals</div>
+          <div className="stat-value" style={{ fontSize: 20 }}>{habitPct}%<small> · {goalsDone}✓</small></div>
+        </div>
+      </div>
+
+      <div className="grid grid-3" style={{ alignItems: 'start' }}>
+        {months.map((m) => {
+          const mk = `${y}-${String(m).padStart(2, '0')}`;
+          return <MonthGrid key={mk} year={y} month={m} weekStartsOn={data.settings.weekStartsOn} deadlines={deadlines} milestones={milestones} />;
+        })}
+      </div>
     </div>
   );
 }

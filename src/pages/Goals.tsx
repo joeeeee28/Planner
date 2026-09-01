@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatDateMed, todayStr } from '../lib/dates';
-import { goalEffectiveProgress } from '../lib/analytics';
-import { GOAL_LEVELS, GOAL_LEVEL_LABELS, type Goal, type GoalLevel, type GoalStatus } from '../lib/types';
+import { goalDeadlineInfo, goalEffectiveProgress } from '../lib/analytics';
+import { GOAL_LEVELS, GOAL_LEVEL_LABELS, type Goal, type GoalLevel, type GoalStatus, type GoalTargetType } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
@@ -23,6 +23,32 @@ const STATUS_CLASS: Record<GoalStatus, string> = {
   abandoned: 'badge-danger',
 };
 
+const TARGET_LABELS: Record<GoalTargetType, string> = {
+  none: 'No target',
+  number: 'Number',
+  amount: 'Amount',
+  percent: 'Percent',
+  habit: 'Habit',
+  completion: 'Completion',
+};
+
+const DEADLINE_CLASS: Record<string, string> = {
+  completed: 'badge-success',
+  overdue: 'badge-danger',
+  'due-soon': 'badge-warning',
+  'at-risk': 'badge-warning',
+  'on-track': 'badge-accent',
+};
+
+function targetSummary(g: Goal): string {
+  const t = g.targetType;
+  if (!t || t === 'none') return '';
+  const cur = g.currentValue ?? 0;
+  const val = g.targetValue ?? 0;
+  const fmt = (n: number) => (t === 'amount' ? '₹' + n.toLocaleString('en-IN') : String(n));
+  return `Progress: ${fmt(cur)} of ${fmt(val)} ${t === 'percent' ? '%' : t === 'number' ? 'units' : t === 'habit' ? 'sessions' : t === 'completion' ? 'items' : ''}`;
+}
+
 interface GoalDraft {
   level: GoalLevel;
   title: string;
@@ -36,6 +62,10 @@ interface GoalDraft {
   milestones: { id: string; title: string; done: boolean; date: string }[];
   notes: string;
   relatedHabitIds: string[];
+  targetType: GoalTargetType;
+  targetValue: string;
+  currentValue: string;
+  priority: number;
 }
 
 const emptyDraft = (): GoalDraft => ({
@@ -51,6 +81,10 @@ const emptyDraft = (): GoalDraft => ({
   milestones: [],
   notes: '',
   relatedHabitIds: [],
+  targetType: 'none',
+  targetValue: '',
+  currentValue: '',
+  priority: 0,
 });
 
 export function GoalsPage() {
@@ -85,6 +119,10 @@ export function GoalsPage() {
       milestones: g.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done, date: m.date ?? '' })),
       notes: g.notes,
       relatedHabitIds: g.relatedHabitIds,
+      targetType: g.targetType ?? 'none',
+      targetValue: g.targetValue != null ? String(g.targetValue) : '',
+      currentValue: g.currentValue != null ? String(g.currentValue) : '',
+      priority: g.priority ?? 0,
     });
     setModalOpen(true);
   };
@@ -109,6 +147,10 @@ export function GoalsPage() {
       milestones: draft.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done, date: m.date || undefined })),
       notes: draft.notes,
       relatedHabitIds: draft.relatedHabitIds,
+      targetType: draft.targetType,
+      targetValue: draft.targetValue.trim() === '' ? undefined : Number(draft.targetValue),
+      currentValue: draft.currentValue.trim() === '' ? undefined : Number(draft.currentValue),
+      priority: draft.priority,
     };
     update((d) => {
       if (editing) {
@@ -250,6 +292,7 @@ export function GoalsPage() {
         <div className="grid grid-2">
           {filtered.map((g) => {
             const prog = goalEffectiveProgress(g);
+            const deadline = goalDeadlineInfo(g);
             const parent = goalById(g.parentId);
             const related = habitsById(g.relatedHabitIds);
             const area = data.growthAreas.find((a) => a.id === g.categoryId);
@@ -268,6 +311,12 @@ export function GoalsPage() {
                           {area.icon} {area.name}
                         </span>
                       )}
+                      {g.targetType && g.targetType !== 'none' && (
+                        <span className="badge">{TARGET_LABELS[g.targetType]}</span>
+                      )}
+                      {deadline.status !== 'no-deadline' && (
+                        <span className={`badge tiny ${DEADLINE_CLASS[deadline.status]}`}>{deadline.label}</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex" style={{ gap: 4 }}>
@@ -284,6 +333,11 @@ export function GoalsPage() {
                 {parent && (
                   <div className="tiny muted">
                     Under: <b>{parent.title}</b>
+                  </div>
+                )}
+                {g.targetType && g.targetType !== 'none' && (
+                  <div className="tiny muted mt-8">
+                    {targetSummary(g)}
                   </div>
                 )}
                 <div className="goal-next">
@@ -462,6 +516,67 @@ function GoalModal({
           ))}
         </select>
       </div>
+
+      <div className="grid grid-2">
+        <div className="form-row">
+          <label className="form-label">Target type</label>
+          <select value={draft.targetType} onChange={(e) => set({ targetType: e.target.value as GoalTargetType })}>
+            {(Object.keys(TARGET_LABELS) as GoalTargetType[]).map((t) => (
+              <option key={t} value={t}>
+                {TARGET_LABELS[t]}
+              </option>
+            ))}
+          </select>
+          <div className="form-hint">How will you measure this goal?</div>
+        </div>
+        <div className="form-row">
+          <label className="form-label">Priority</label>
+          <select value={draft.priority} onChange={(e) => set({ priority: Number(e.target.value) })}>
+            <option value={0}>Normal</option>
+            <option value={1}>High</option>
+            <option value={2}>Top</option>
+          </select>
+        </div>
+      </div>
+
+      {draft.targetType !== 'none' && (
+        <div className="grid grid-2">
+          <div className="form-row">
+            <label className="form-label">Target value</label>
+            <input
+              type="number"
+              min={0}
+              inputMode="decimal"
+              value={draft.targetValue}
+              placeholder={draft.targetType === 'amount' ? 'e.g. 100000' : draft.targetType === 'percent' ? 'e.g. 80' : 'e.g. 30'}
+              onChange={(e) => set({ targetValue: e.target.value })}
+            />
+            <div className="form-hint">
+              {draft.targetType === 'amount'
+                ? 'Currency amount'
+                : draft.targetType === 'percent'
+                ? 'Target percentage'
+                : draft.targetType === 'habit'
+                ? 'Habit sessions to complete'
+                : draft.targetType === 'completion'
+                ? 'Items to complete'
+                : 'Units to reach'}
+            </div>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Current value</label>
+            <input
+              type="number"
+              min={0}
+              inputMode="decimal"
+              value={draft.currentValue}
+              placeholder="0"
+              onChange={(e) => set({ currentValue: e.target.value })}
+            />
+            <div className="form-hint">Progress is calculated automatically from these.</div>
+          </div>
+        </div>
+      )}
 
       <div className="form-row">
         <label className="form-label">Progress {auto ? `(auto from milestones: ${autoPct}%)` : ''}</label>

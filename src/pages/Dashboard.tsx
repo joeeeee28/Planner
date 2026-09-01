@@ -6,14 +6,16 @@ import {
   cycleProgressPct,
   cycleTotalDays,
   formatDateLong,
+  monthKeyOf,
+  monthLabel,
   todayStr,
   weekStartOf,
-  monthKeyOf,
 } from '../lib/dates';
 import { dayProgress, dayStreak, monthKeyCompletion, windowCompletion, goalEffectiveProgress, dayHabitInfo } from '../lib/analytics';
 import { navigate } from '../lib/router';
-import { formatMoney, monthTotals, totalSaved, goalPct, savingsRate } from '../lib/finance';
-import { ProgressBar, Pct, Stars } from '../components/ui';
+import { formatMoney, monthTotals, totalSaved, goalPct, savingsRate, monthlyMoneySeries } from '../lib/finance';
+import { goalDeadlineInfo } from '../lib/analytics';
+import { ProgressBar, Stars } from '../components/ui';
 import { IconArrowRight } from '../components/icons';
 import { uid } from '../lib/uid';
 
@@ -41,7 +43,6 @@ export function DashboardPage() {
   const habitInfo = dayHabitInfo(data, t);
 
   // goals
-  const activeGoals = data.goals.filter((g) => g.status === 'in-progress' || g.status === 'not-started').slice(0, 3);
   const goalsPct = (() => {
     const gs = data.goals.filter((g) => g.status !== 'abandoned');
     if (gs.length === 0) return 0;
@@ -53,6 +54,21 @@ export function DashboardPage() {
   const saved = totalSaved(data);
   const rate = savingsRate(mm.income, mm.expense);
   const savingsGoal = [...data.savingsGoals].sort((a, b) => b.targetAmount - a.targetAmount)[0];
+  const hasFinance = data.transactions.length > 0;
+  const miniTrend = monthlyMoneySeries(data, 6).map((p) => ({ ...p, key: p.month }));
+  const maxTrend = Math.max(1, ...miniTrend.map((p) => Math.max(p.income, p.expense)));
+
+  // active goals with deadline + next action (for the GOALS snapshot)
+  const activeGoals = data.goals
+    .filter((g) => g.status === 'in-progress' || g.status === 'not-started')
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || (b.targetDate ?? '9999').localeCompare(a.targetDate ?? '9999'))
+    .slice(0, 3)
+    .map((g) => ({
+      goal: g,
+      pct: goalEffectiveProgress(g),
+      deadline: goalDeadlineInfo(g),
+      nextAction: g.milestones.find((m) => !m.done)?.title ?? null,
+    }));
 
   // growth areas (this month)
   const areaPct = (areaId: string) => {
@@ -218,6 +234,95 @@ export function DashboardPage() {
         </section>
       </div>
 
+      {/* ── MONEY snapshot ── */}
+      <section className="section-gap">
+        <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
+          <h2 className="t-section" style={{ margin: 0 }}>Money</h2>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('money')}>Open Money <IconArrowRight size={13} /></button>
+        </div>
+        {hasFinance ? (
+          <>
+            <div className="grid grid-4">
+              <div className="panel-flat">
+                <div className="stat-label">Income {monthLabel(mk)}</div>
+                <div className="stat-value money-pos" style={{ fontSize: 19 }}>{formatMoney(mm.income, data.settings.finance.currency)}</div>
+              </div>
+              <div className="panel-flat">
+                <div className="stat-label">Spent {monthLabel(mk)}</div>
+                <div className="stat-value" style={{ fontSize: 19 }}>{formatMoney(mm.expense, data.settings.finance.currency)}</div>
+              </div>
+              <div className="panel-flat">
+                <div className="stat-label">Saved {monthLabel(mk)}</div>
+                <div className="stat-value" style={{ fontSize: 19, color: mm.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{formatMoney(mm.saved, data.settings.finance.currency)}</div>
+              </div>
+              <div className="panel-flat">
+                <div className="stat-label">Total saved</div>
+                <div className="stat-value money-pos" style={{ fontSize: 19 }}>{formatMoney(saved, data.settings.finance.currency)}</div>
+              </div>
+            </div>
+            <button className="panel-flat mt-16 income-trend" style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }} onClick={() => navigate('money')} aria-label="Income vs spending trend, last 6 months">
+              <div className="flex" style={{ justifyContent: 'space-between' }}>
+                <span className="small bold">Income vs spending — last 6 months</span>
+                <span className="tiny muted">{monthLabel(mk)}</span>
+              </div>
+              <div className="flex mt-16" style={{ gap: 4, alignItems: 'flex-end', height: 44 }}>
+                {miniTrend.map((p) => (
+                  <div key={p.key} className="grow flex" style={{ gap: 3, alignItems: 'flex-end', height: '100%' }}>
+                    <div className="trend-bar pos" style={{ height: `${Math.max(4, (p.income / maxTrend) * 100)}%` }} title={`${p.label} income ${formatMoney(p.income, data.settings.finance.currency)}`} />
+                    <div className="trend-bar neg" style={{ height: `${Math.max(4, (p.expense / maxTrend) * 100)}%` }} title={`${p.label} expenses ${formatMoney(p.expense, data.settings.finance.currency)}`} />
+                  </div>
+                ))}
+              </div>
+              <div className="flex mt-8" style={{ gap: 14 }}>
+                <span className="tiny muted"><span className="trend-bar pos inline" /> Income</span>
+                <span className="tiny muted"><span className="trend-bar neg inline" /> Spending</span>
+              </div>
+            </button>
+          </>
+        ) : (
+          <div className="panel">
+            <p className="small muted" style={{ margin: 0 }}>
+              Your financial picture starts here. <button className="btn btn-sm" onClick={() => navigate('money/transactions')}>Add your first income or expense</button>
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* ── GOALS snapshot ── */}
+      <section className="section-gap">
+        <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
+          <h2 className="t-section" style={{ margin: 0 }}>Goals</h2>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('goals')}>All goals <IconArrowRight size={13} /></button>
+        </div>
+        {activeGoals.length === 0 ? (
+          <div className="panel">
+            <p className="small muted" style={{ margin: 0 }}>
+              No active goals yet. <button className="btn btn-sm" onClick={() => navigate('goals')}>Create your first goal</button>
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-3">
+            {activeGoals.map(({ goal: g, pct, deadline, nextAction }) => (
+              <button key={g.id} className="panel-flat" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => navigate('goals')}>
+                <div className="flex" style={{ justifyContent: 'space-between' }}>
+                  <span className="small bold grow">{g.title}</span>
+                  <span className="small t-num" style={{ color: 'var(--ink-2)' }}>{pct}%</span>
+                </div>
+                <div className="mt-8"><ProgressBar pct={pct} /></div>
+                <div className="tiny muted mt-8">
+                  {deadline.status === 'no-deadline' ? 'No deadline' : deadline.label}
+                </div>
+                {nextAction && (
+                  <div className="tiny mt-8" style={{ color: 'var(--ink-2)' }}>
+                    Next: <b style={{ color: 'var(--ink)' }}>{nextAction}</b>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* ── 3. Am I moving forward ── */}
       <section className="section-gap">
         <h2 className="t-section">Am I moving forward?</h2>
@@ -235,7 +340,7 @@ export function DashboardPage() {
             </div>
           ))}
           {areas.length === 0 && (
-            <p className="small muted">Add tasks in any area to see your growth.</p>
+            <p className="small muted">Not enough data yet — add tasks in any area to see your growth pulse.</p>
           )}
         </div>
       </section>
@@ -322,29 +427,6 @@ export function DashboardPage() {
         </section>
       </div>
 
-      {/* ── Active goals ── */}
-      {activeGoals.length > 0 && (
-        <section>
-          <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
-            <h2 className="t-section" style={{ margin: 0 }}>Goals in motion</h2>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate('goals')}>All goals <IconArrowRight size={13} /></button>
-          </div>
-          <div className="grid grid-3">
-            {activeGoals.map((g) => (
-              <div className="goal-card" key={g.id} onClick={() => navigate('goals')} style={{ cursor: 'pointer' }}>
-                <div className="goal-title-row">
-                  <div className="bold" style={{ fontSize: 14 }}>{g.title}</div>
-                  <span className="badge tiny">{g.level.replace('-', ' ')}</span>
-                </div>
-                <div className="flex" style={{ gap: 8 }}>
-                  <ProgressBar pct={goalEffectiveProgress(g)} height={4} />
-                  <Pct value={goalEffectiveProgress(g)} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

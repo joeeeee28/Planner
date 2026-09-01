@@ -125,6 +125,15 @@ export interface Milestone {
   date?: DateStr;
 }
 
+/** How a goal's progress is measured. */
+export type GoalTargetType =
+  | 'none'
+  | 'number' // e.g. read 24 books
+  | 'amount' // e.g. save ₹3,00,000
+  | 'percent' // e.g. reach 80% proficiency
+  | 'habit' // e.g. exercise 4×/week
+  | 'completion'; // binary: done / not done
+
 export interface Goal {
   id: ID;
   level: GoalLevel;
@@ -133,6 +142,12 @@ export interface Goal {
   categoryId: ID; // growth area id
   parentId?: ID;
   startDate: DateStr;
+  /** Target engine (optional): how progress is measured. */
+  targetType?: GoalTargetType;
+  targetValue?: number;
+  currentValue?: number;
+  /** Optional priority (higher = more important). */
+  priority?: number;
   targetDate?: DateStr;
   completedDate?: DateStr;
   status: GoalStatus;
@@ -169,6 +184,8 @@ export interface Project {
   endDate?: DateStr;
   outcomes: string;
   achievements: string;
+  /** Evidence link (portfolio, repo, doc, deployment). */
+  url?: string;
   createdAt: DateStr;
 }
 
@@ -257,6 +274,12 @@ export interface MonthlyReview {
   rating?: number; // 1–10
 }
 
+export interface PeriodReview {
+  /** Free-form reflection written by the user. */
+  text: string;
+  updatedAt: string;
+}
+
 export interface MonthPlan {
   focus: string;
   /** Optional savings target (in the configured currency) for this month. */
@@ -309,11 +332,19 @@ export interface CycleReview {
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+/** Where financial data comes from. Manual is the only live provider today. */
+export type FinancialProvider = 'manual';
+
 export interface FinanceSettings {
   incomeCategories: string[];
   expenseCategories: string[];
   /** ISO 4217 currency code, e.g. INR, USD. */
   currency: string;
+  /**
+   * Data-source abstraction for future Account Aggregator / CSV / API
+   * integrations. Manual = local-first entry (current default).
+   */
+  provider?: FinancialProvider;
 }
 
 export interface Settings {
@@ -354,6 +385,14 @@ export interface Transaction {
   updatedAt?: string;
 }
 
+export interface SavingsContribution {
+  id: ID;
+  amount: number; // positive
+  date: DateStr;
+  note?: string;
+  createdAt: string;
+}
+
 export interface SavingsGoal {
   id: ID;
   name: string;
@@ -362,6 +401,31 @@ export interface SavingsGoal {
   targetDate?: DateStr;
   monthlyContributionTarget?: number;
   notes?: string;
+  createdAt: string;
+  /** Contribution history — currentAmount is derived from these when present. */
+  contributions?: SavingsContribution[];
+}
+
+/** Optional monthly category budget. */
+export interface Budget {
+  id: ID;
+  /** Month the budget applies to, e.g. 2026-09. */
+  month: MonthKey;
+  category: string;
+  limit: number; // positive amount
+  /** Optional: roll unused limit into next month (default false). */
+  rollover?: boolean;
+  createdAt: string;
+}
+
+/** Foundation for future reminders (goal deadlines, habit check-ins…). */
+export interface Reminder {
+  id: ID;
+  kind: 'goal-deadline' | 'task-deadline' | 'recurring-income' | 'recurring-expense' | 'habit' | 'monthly-review';
+  refId?: ID;
+  title: string;
+  date: DateStr;
+  done: boolean;
   createdAt: string;
 }
 
@@ -386,6 +450,10 @@ export interface AppData {
   learning: LearningItem[];
   transactions: Transaction[];
   savingsGoals: SavingsGoal[];
+  budgets: Budget[];
+  reminders: Reminder[];
+  /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
+  periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;
   createdAt: string;
   updatedAt: string;

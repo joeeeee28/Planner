@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { navigate } from '../lib/router';
 import { todayStr } from '../lib/dates';
+import { contributeToGoal } from '../lib/finance';
 import { Modal } from './ui';
 import { uid } from '../lib/uid';
 import type { Goal, Habit, LearningItem, Transaction, SavingsGoal } from '../lib/types';
@@ -118,21 +119,20 @@ export function QuickAddModal({ onClose }: { onClose: () => void }) {
       const amt = Number(amount);
       if (!amt || amt <= 0) return;
       update((d) => {
-        if (goalId) {
-          d.savingsGoals = d.savingsGoals.map((g) =>
-            g.id === goalId ? { ...g, currentAmount: (g.currentAmount || 0) + amt } : g,
-          );
-        } else if (d.savingsGoals.length > 0) {
-          d.savingsGoals[0] = { ...d.savingsGoals[0], currentAmount: (d.savingsGoals[0].currentAmount || 0) + amt };
-        } else {
-          d.savingsGoals.push({
+        let target = goalId ? d.savingsGoals.find((g) => g.id === goalId) : d.savingsGoals[0];
+        if (!target) {
+          const g = {
             id: uid('sgoal'),
             name: 'General savings',
             targetAmount: 0,
-            currentAmount: amt,
+            currentAmount: 0,
+            contributions: [],
             createdAt: t,
-          } as SavingsGoal);
+          } as SavingsGoal;
+          d.savingsGoals.push(g);
+          target = g;
         }
+        d.savingsGoals = contributeToGoal(d.savingsGoals, target.id, amt, t, note.trim() || undefined);
         return { ...d };
       });
       navigate('money/goals');

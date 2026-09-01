@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { addDays, todayStr, monthKeyOf, weekStartOf, monthLabel } from '../lib/dates';
+import { addDays, todayStr, monthKeyOf, weekStartOf, weekKeyOf, monthLabel } from '../lib/dates';
 import {
   habitStats,
   monthKeyCompletion,
@@ -9,7 +9,7 @@ import {
   goalEffectiveProgress,
   monthlyTrend,
 } from '../lib/analytics';
-import { monthTotals, savingsRate, largestCategory, formatMoney, monthlyMoneySeries, avgMonthlySavings, consecutiveIncomeGrowthMonths } from '../lib/finance';
+import { monthTotals, savingsRate, largestCategory, formatMoney, monthlyMoneySeries, avgMonthlySavings, consecutiveIncomeGrowthMonths, comparePeriods } from '../lib/finance';
 import { navigate } from '../lib/router';
 
 interface Insight {
@@ -181,9 +181,141 @@ export function InsightsPage() {
         </div>
       </div>
 
+      {/* ── Time comparisons: Current / Previous / Change ── */}
+      <ComparisonsSection />
+
       <p className="tiny muted mt-24" style={{ maxWidth: 560 }}>
         Insights are generated from your own data to help you understand patterns. They are not financial advice.
       </p>
     </div>
   );
+}
+
+function ComparisonsSection() {
+  const { data } = useApp();
+  const t = todayStr();
+  const mk = monthKeyOf(t);
+  const currency = data.settings.finance.currency;
+  const weekStart = weekStartOf(t, data.settings.weekStartsOn);
+
+  // week window: current (may be partial) vs full previous week
+  const prevWeekStart = weekKeyOf(addDays(weekStart, -7), data.settings.weekStartsOn);
+  const prevWeekEnd = addDays(prevWeekStart, 6);
+  const curWeek = windowCompletion(data, weekStart, t);
+  const prevWeek = windowCompletion(data, prevWeekStart, prevWeekEnd);
+  const curWeekHabits = data.habits.reduce((a, h) => a + habitStats(h, data.habitCompletions, weekStart, t).done, 0);
+  const prevWeekHabits = data.habits.reduce((a, h) => a + habitStats(h, data.habitCompletions, prevWeekStart, prevWeekEnd).done, 0);
+  const curWeekScheduled = data.habits.reduce((a, h) => a + habitStats(h, data.habitCompletions, weekStart, t).scheduled, 0);
+  const prevWeekScheduled = data.habits.reduce((a, h) => a + habitStats(h, data.habitCompletions, prevWeekStart, prevWeekEnd).scheduled, 0);
+
+  // money: month, quarter, year via comparePeriods
+  const monthCmp = comparePeriods(data.transactions, 'month', t);
+  const quarterCmp = comparePeriods(data.transactions, 'quarter', t);
+  const yearCmp = comparePeriods(data.transactions, 'year', t);
+  const prevMk = monthKeyOf(addDays(`${mk}-01`, -1));
+
+  const pct = (cur: number, prev: number) => (prev > 0 ? `${Math.round(((cur - prev) / prev) * 100)}%` : null);
+
+  const rows: { label: string; current: string; previous: string; change: string; tone: 'pos' | 'neg' | 'flat' }[] = [];
+
+  const addRow = (label: string, cur: number, prev: number, fmt: (n: number) => string) => {
+    const c = pct(cur, prev);
+    const delta = cur - prev;
+    rows.push({
+      label,
+      current: fmt(cur),
+      previous: fmt(prev),
+      change: c === null ? '—' : `${delta >= 0 ? '+' : ''}${fmt(delta)} (${delta >= 0 ? '+' : ''}${c})`,
+      tone: delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'flat',
+    });
+  };
+
+  const moneyFmt = (n: number) => formatMoney(n, currency);
+
+  // Planning comparisons
+  if (curWeek.total > 0 || prevWeek.total > 0) addRow('Tasks done — this week vs last week', curWeek.done, prevWeek.done, (n) => String(n));
+  if (monthP_has(data, mk)) addRow('Tasks done — this month vs last month', monthCompletionDone(data, mk), monthCompletionDone(data, prevMk), (n) => String(n));
+
+  // Habit comparisons
+  if (curWeekScheduled > 0 || prevWeekScheduled > 0) {
+    addRow('Habit check-ins — this week vs last week', curWeekHabits, prevWeekHabits, (n) => String(n));
+  }
+
+  // Money comparisons
+  const hasMoney = data.transactions.length > 0;
+  if (hasMoney) {
+    addRow('Income — this month vs last month', monthCmp.current.income, monthCmp.previous.income, moneyFmt);
+    addRow('Expenses — this month vs last month', monthCmp.current.expense, monthCmp.previous.expense, moneyFmt);
+    addRow('Saved — this month vs last month', monthCmp.current.saved, monthCmp.previous.saved, moneyFmt);
+    addRow('Income — this quarter vs previous', quarterCmp.current.income, quarterCmp.previous.income, moneyFmt);
+    addRow('Expenses — this quarter vs previous', quarterCmp.current.expense, quarterCmp.previous.expense, moneyFmt);
+    addRow('Income — this year vs previous', yearCmp.current.income, yearCmp.previous.income, moneyFmt);
+    addRow('Expenses — this year vs previous', yearCmp.current.expense, yearCmp.previous.expense, moneyFmt);
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="panel">
+        <h2 className="panel-title">Time comparisons</h2>
+        <p className="small muted" style={{ margin: 0 }}>
+          Comparisons appear once you have tasks, habits or transactions across two periods.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel">
+      <h2 className="panel-title">Time comparisons</h2>
+      <p className="panel-sub">Current vs previous period — week, month, quarter, year.</p>
+      <div className="cmp-table" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.6fr', gap: '8px 14px', alignItems: 'baseline', fontSize: 13.5 }}>
+        <span className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>Metric</span>
+        <span className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current</span>
+        <span className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>Previous</span>
+        <span className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>Change</span>
+        {rows.map((r, i) => (
+          <div key={i} className="cmp-row" style={{ display: 'contents' }}>
+            <span className="small">{r.label}</span>
+            <span className="small t-num">{r.current}</span>
+            <span className="small muted t-num">{r.previous}</span>
+            <span className="small t-num" style={{ color: r.tone === 'pos' ? 'var(--pos)' : r.tone === 'neg' ? 'var(--neg)' : 'var(--ink-2)' }}>{r.change}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// helpers for month completion across a full month key
+function monthCompletionDone(data: import('../lib/types').AppData, mk: string): number {
+  let done = 0;
+  let d = `${mk}-01`;
+  let guard = 0;
+  while (d.slice(0, 7) === mk && guard < 400) {
+    const entry = data.daily[d];
+    for (const a of data.growthAreas) {
+      const tasks = entry?.areas[a.id]?.tasks ?? [];
+      done += tasks.filter((x) => x.done).length;
+    }
+    d = addDays(d, 1);
+    guard++;
+  }
+  return done;
+}
+function monthP_has(data: import('../lib/types').AppData, mk: string): boolean {
+  return monthCompletionDone(data, mk) > 0 || monthCompletionTotal(data, mk) > 0;
+}
+function monthCompletionTotal(data: import('../lib/types').AppData, mk: string): number {
+  let total = 0;
+  let d = `${mk}-01`;
+  let guard = 0;
+  while (d.slice(0, 7) === mk && guard < 400) {
+    const entry = data.daily[d];
+    for (const a of data.growthAreas) {
+      total += (entry?.areas[a.id]?.tasks ?? []).length;
+    }
+    d = addDays(d, 1);
+    guard++;
+  }
+  return total;
 }

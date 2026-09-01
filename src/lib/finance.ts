@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AppData, DateStr, MonthKey, Recurrence, Transaction, TxType } from './types';
-import { addDays, addMonths, daysInMonth, monthKeyOf, parseDateStr, todayStr } from './dates';
+import { addDays, addMonths, daysInMonth, diffDays, monthKeyOf, parseDateStr, todayStr } from './dates';
 
 // ── Sanitization (data integrity) ────────────────────────────────────────────
 
@@ -235,15 +235,186 @@ export function recurringIncomes(txs: Transaction[]): Transaction[] {
   return txs.filter((t) => t.type === 'income' && t.recurrence);
 }
 
+// ── Cash flow periods (month / quarter / year) ───────────────────────────────
+
+export type CashFlowPeriod = 'month' | 'quarter' | 'year';
+
+/** Inclusive date range + label for a period containing `date`. */
+export function periodRange(period: CashFlowPeriod, date: DateStr = todayStr()): { from: DateStr; to: DateStr; label: string; key: string } {
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(5, 7));
+  if (period === 'year') {
+    return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y), key: String(y) };
+  }
+  if (period === 'quarter') {
+    const q = Math.floor((m - 1) / 3) + 1;
+    const fromM = (q - 1) * 3 + 1;
+    return {
+      from: `${y}-${String(fromM).padStart(2, '0')}-01`,
+      to: `${y}-${String(fromM + 2).padStart(2, '0')}-31`,
+      label: `Q${q} ${y}`,
+      key: `${y}-Q${q}`,
+    };
+  }
+  return {
+    from: `${date.slice(0, 7)}-01`,
+    to: `${date.slice(0, 7)}-31`,
+    label: parseDateStr(`${date.slice(0, 7)}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    key: date.slice(0, 7),
+  };
+}
+
+/** Shift a period key back by one period (for vs-previous comparisons). */
+export function previousPeriodKey(period: CashFlowPeriod, key: string): string {
+  if (period === 'month') {
+    const [y, m] = key.split('-').map(Number);
+    const prev = addMonths(`${y}-${String(m).padStart(2, '0')}-01`, -1);
+    return prev.slice(0, 7);
+  }
+  if (period === 'quarter') {
+    const y = Number(key.slice(0, 4));
+    const q = Number(key.slice(-1));
+    if (q === 1) return `${y - 1}-Q4`;
+    return `${y}-Q${q - 1}`;
+  }
+  return String(Number(key) - 1);
+}
+
+/** Totals for a named period key (month key / Qn key / year key). */
+export function periodTotals(txs: Transaction[], period: CashFlowPeriod, key: string): { income: number; expense: number; saved: number } {
+  const list = txs.filter((t) => {
+    if (period === 'month') return t.date.slice(0, 7) === key;
+    if (period === 'quarter') {
+      const y = Number(key.slice(0, 4));
+      const q = Number(key.slice(-1));
+      const m = Number(t.date.slice(5, 7));
+      const tq = Math.floor((m - 1) / 3) + 1;
+      return Number(t.date.slice(0, 4)) === y && tq === q;
+    }
+    return t.date.slice(0, 4) === key;
+  });
+  return totals(list);
+}
+
+export interface PeriodComparison {
+  current: { income: number; expense: number; saved: number };
+  previous: { income: number; expense: number; saved: number };
+  change: { income: number; expense: number; saved: number };
+  incomePct: number | null; // % change vs previous (null when previous = 0)
+  expensePct: number | null;
+}
+
+export function comparePeriods(txs: Transaction[], period: CashFlowPeriod, date: DateStr = todayStr()): PeriodComparison {
+  const range = periodRange(period, date);
+  const prevKey = previousPeriodKey(period, range.key);
+  const current = periodTotals(txs, period, range.key);
+  const previous = periodTotals(txs, period, prevKey);
+  const pct = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+  return {
+    current,
+    previous,
+    change: {
+      income: current.income - previous.income,
+      expense: current.expense - previous.expense,
+      saved: current.saved - previous.saved,
+    },
+    incomePct: pct(current.income, previous.income),
+    expensePct: pct(current.expense, previous.expense),
+  };
+}
+
+/** Quarterly totals for all quarters of a year. */
+export function quarterlyTotals(txs: Transaction[], year: number): { q: number; income: number; expense: number; saved: number }[] {
+  return [1, 2, 3, 4].map((q) => {
+    const key = `${year}-Q${q}`;
+    const t = periodTotals(txs, 'quarter', key);
+    return { q, ...t };
+  });
+}
+
+/** Year totals for a range of years (default: current year). */
+export function yearlyTotals(txs: Transaction[], year = Number(todayStr().slice(0, 4))) {
+  return periodTotals(txs, 'year', String(year));
+}
+
+// ── Budgets ──────────────────────────────────────────────────────────────────
+
+export interface BudgetStatus {
+  budget: AppData['budgets'][number];
+  spent: number;
+  remaining: number;
+  pct: number; // 0-100+ (over 100 = over budget)
+  state: 'under' | 'on-track' | 'near-limit' | 'over';
+}
+
+export function budgetStatuses(budgets: AppData['budgets'], txs: Transaction[], mk: MonthKey): BudgetStatus[] {
+  return budgets
+    .filter((b) => b.month === mk)
+    .map((b) => {
+      const spent = txs.filter((t) => t.type === 'expense' && t.category === b.category).reduce((a, t) => a + t.amount, 0);
+      const pct = b.limit > 0 ? Math.round((spent / b.limit) * 100) : 0;
+      const state: BudgetStatus['state'] = spent > b.limit ? 'over' : spent >= b.limit * 0.9 ? 'near-limit' : spent >= b.limit * 0.7 ? 'on-track' : 'under';
+      return { budget: b, spent, remaining: b.limit - spent, pct, state };
+    })
+    .sort((a, b) => b.pct - a.pct);
+}
+
+export function totalBudgeted(budgets: AppData['budgets'], mk: MonthKey): number {
+  return budgets.filter((b) => b.month === mk).reduce((a, b) => a + b.limit, 0);
+}
+
+export function totalBudgetSpent(budgets: AppData['budgets'], txs: Transaction[], mk: MonthKey): number {
+  return budgetStatuses(budgets, txs, mk).reduce((a, s) => a + s.spent, 0);
+}
+
 // ── Savings goal contributions ───────────────────────────────────────────────
 
-/** Contribute `amount` to a savings goal (targetDate-aware progress). */
+/** Contribute `amount` to a savings goal; records history when available. */
 export function contributeToGoal(
   goals: AppData['savingsGoals'],
   goalId: string,
   amount: number,
+  date: DateStr = todayStr(),
+  note?: string,
 ): AppData['savingsGoals'] {
-  return goals.map((g) => (g.id === goalId ? { ...g, currentAmount: Math.max(0, (g.currentAmount || 0) + amount) } : g));
+  const amt = safeAmount(amount);
+  if (amt <= 0) return goals;
+  return goals.map((g) => {
+    if (g.id !== goalId) return g;
+    const contributions = [...(g.contributions ?? [])];
+    contributions.push({
+      id: `sc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      amount: amt,
+      date,
+      note,
+      createdAt: new Date().toISOString(),
+    });
+    return { ...g, currentAmount: (g.currentAmount || 0) + amt, contributions };
+  });
+}
+
+/** Remove a contribution and adjust the goal balance. */
+export function removeContribution(goals: AppData['savingsGoals'], goalId: string, contributionId: string): AppData['savingsGoals'] {
+  return goals.map((g) => {
+    if (g.id !== goalId || !g.contributions) return g;
+    const removed = g.contributions.find((c) => c.id === contributionId);
+    if (!removed) return g;
+    return {
+      ...g,
+      contributions: g.contributions.filter((c) => c.id !== contributionId),
+      currentAmount: Math.max(0, (g.currentAmount || 0) - removed.amount),
+    };
+  });
+}
+
+// ── Goal financial pace (YNAB-style "required monthly saving") ───────────────
+
+/** Required monthly saving to reach `target` by `targetDate` from now. */
+export function requiredMonthlySaving(target: number, current: number, targetDate: DateStr, now: DateStr = todayStr()): number {
+  const remaining = target - current;
+  if (remaining <= 0) return 0;
+  const months = Math.max(1, Math.round(diffDays(now, targetDate) / 30.44));
+  return Math.ceil(remaining / months);
 }
 
 /** Today's spending (for the daily MONEY snapshot). */

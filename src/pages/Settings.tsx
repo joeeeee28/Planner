@@ -54,6 +54,10 @@ export function SettingsPage() {
   };
 
   const onImportFile = (file: File) => {
+    // Replacement confirmation: replacing wipes current data.
+    if (importMode === 'replace' && !confirm('Replace all current data with this backup? This cannot be undone.')) {
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       try {
