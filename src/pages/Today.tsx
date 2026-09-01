@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { addDays, formatDateLong, isToday, todayStr, cycleDayNumber, currentCycle, weekdayName } from '../lib/dates';
 import { dayProgress, habitScheduledOn } from '../lib/analytics';
-import { formatMoney, monthTotals, totalSaved, goalPct, todaySpending } from '../lib/finance';
+import { formatMoney, monthTotals, goalPct, todaySpending, todayIncome } from '../lib/finance';
 import { ProgressBar, TaskList, EmptyState, Stars } from '../components/ui';
 import { IconChevronLeft, IconChevronRight, IconArrowRight } from '../components/icons';
 import { uid } from '../lib/uid';
@@ -69,7 +69,7 @@ export function TodayPage() {
   const mk = date.slice(0, 7);
   const mm = monthTotals(data.transactions, mk);
   const spentToday = todaySpending(data.transactions);
-  const saved = totalSaved(data);
+  const incomeToday = todayIncome(data.transactions);
   const topGoal = [...data.savingsGoals].sort((a, b) => b.targetAmount - a.targetAmount)[0];
 
   return (
@@ -192,9 +192,15 @@ export function TodayPage() {
         </div>
         <div className="grid grid-4">
           <div className="panel-flat">
+            <div className="stat-label">Income today</div>
+            <div className="stat-value" style={{ fontSize: 20, color: incomeToday > 0 ? 'var(--pos)' : undefined }}>
+              {incomeToday > 0 ? `+${formatMoney(incomeToday, currency)}` : formatMoney(0, currency)}
+            </div>
+          </div>
+          <div className="panel-flat">
             <div className="stat-label">Spent today</div>
             <div className="stat-value" style={{ fontSize: 20, color: spentToday > 0 ? 'var(--neg)' : undefined }}>
-              {formatMoney(spentToday, currency)}
+              {spentToday > 0 ? `−${formatMoney(spentToday, currency)}` : formatMoney(0, currency)}
             </div>
           </div>
           <div className="panel-flat">
@@ -206,10 +212,6 @@ export function TodayPage() {
             <div className="stat-value" style={{ fontSize: 20, color: mm.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
               {formatMoney(mm.saved, currency)}
             </div>
-          </div>
-          <div className="panel-flat">
-            <div className="stat-label">Total saved</div>
-            <div className="stat-value" style={{ fontSize: 20, color: 'var(--pos)' }}>{formatMoney(saved, currency)}</div>
           </div>
         </div>
         {topGoal && topGoal.targetAmount > 0 && (

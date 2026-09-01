@@ -99,15 +99,17 @@ export function QuickAddModal({ onClose }: { onClose: () => void }) {
       const amt = Number(amount);
       if (!amt || amt <= 0) return;
       update((d) => {
+        const cats = kind === 'income' ? d.settings.finance.incomeCategories : d.settings.finance.expenseCategories;
         d.transactions.push({
           id: uid('tx'),
           type: kind,
           amount: amt,
           date: t,
-          category: category || (kind === 'income' ? 'Other' : 'Other'),
+          category: category || cats[0] || 'Other',
           description: text.trim() || undefined,
           notes: note.trim() || undefined,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         } as Transaction);
         return { ...d };
       });

@@ -5,13 +5,46 @@
 // moved to IndexedDB, a backend, or sync services without redesigning pages.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AppData } from './types';
+import type { AppData, Transaction } from './types';
 import { SCHEMA_VERSION, STORAGE_KEY, createInitialData } from './defaults';
 import { mergeDeep } from './merge';
 
 let cached: AppData | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners = new Set<() => void>();
+
+/** Normalize stored transactions: coerce amounts to valid numbers, ensure a type. */
+function normalizeTransactions(list: unknown): Transaction[] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: Transaction[] = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const t = raw as Partial<Transaction>;
+    // Legacy records (pre-type) are treated as expenses; never crash on them.
+    const type = t.type === 'income' ? 'income' : 'expense';
+    const amount = Number.isFinite(t.amount) && (t.amount as number) > 0 ? (t.amount as number) : 0;
+    if (amount <= 0) continue;
+    const id = typeof t.id === 'string' && t.id ? t.id : `tx-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue; // drop duplicate IDs
+    seen.add(id);
+    out.push({
+      id,
+      type,
+      amount,
+      date: typeof t.date === 'string' ? t.date : '',
+      category: typeof t.category === 'string' && t.category ? t.category : 'Other',
+      description: typeof t.description === 'string' ? t.description : undefined,
+      paymentType: typeof t.paymentType === 'string' ? t.paymentType : undefined,
+      notes: typeof t.notes === 'string' ? t.notes : undefined,
+      recurrence: (t.recurrence === 'weekly' || t.recurrence === 'monthly' || t.recurrence === 'quarterly' || t.recurrence === 'yearly') ? t.recurrence : undefined,
+      lastGenerated: typeof t.lastGenerated === 'string' ? t.lastGenerated : undefined,
+      createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date().toISOString(),
+      updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : undefined,
+    });
+  }
+  return out;
+}
 
 export function loadData(): AppData {
   if (cached) return cached;
@@ -21,6 +54,8 @@ export function loadData(): AppData {
       const parsed = JSON.parse(raw) as Partial<AppData>;
       const base = createInitialData();
       cached = mergeDeep(base, parsed) as AppData;
+      // Backward-compatible migration: normalize transactions.
+      if (cached.transactions) cached.transactions = normalizeTransactions(cached.transactions);
       cached.version = SCHEMA_VERSION;
       return cached;
     }

@@ -9,7 +9,7 @@ import {
   goalEffectiveProgress,
   monthlyTrend,
 } from '../lib/analytics';
-import { monthTotals, savingsRate, largestCategory, formatMoney, monthlyMoneySeries, avgMonthlySavings } from '../lib/finance';
+import { monthTotals, savingsRate, largestCategory, formatMoney, monthlyMoneySeries, avgMonthlySavings, consecutiveIncomeGrowthMonths } from '../lib/finance';
 import { navigate } from '../lib/router';
 
 interface Insight {
@@ -98,6 +98,20 @@ export function InsightsPage() {
       else if (diff < 0) out.push({ icon: '◒', text: `Savings are ${formatMoney(Math.abs(diff), currency)} below last month.`, kind: 'warn', route: 'money' });
       const rate = savingsRate(mm.income, mm.expense);
       out.push({ icon: '◔', text: `This month you're saving ${rate}% of your income.`, kind: rate >= 20 ? 'pos' : 'info', route: 'money' });
+      // Income-specific observations (factual, not advice)
+      if (prev.income > 0 && mm.income > prev.income) {
+        out.push({ icon: '+', text: `Your income this month is ${formatMoney(mm.income - prev.income, currency)} higher than last month.`, kind: 'pos', route: 'money' });
+      } else if (prev.income > 0 && mm.income < prev.income) {
+        out.push({ icon: '−', text: `Your income this month is ${formatMoney(prev.income - mm.income, currency)} lower than last month.`, kind: 'warn', route: 'money' });
+      } else if (mm.income > 0 && prev.income === 0) {
+        out.push({ icon: '+', text: `This is your first month with recorded income (${formatMoney(mm.income, currency)}).`, kind: 'info', route: 'money' });
+      }
+      if (mm.income > 0) {
+        const expPct = Math.round((mm.expense / mm.income) * 100);
+        out.push({ icon: '◔', text: `Your expenses are ${expPct}% of your income this month.`, kind: expPct > 80 ? 'warn' : 'info', route: 'money' });
+      }
+      const growthStreak = consecutiveIncomeGrowthMonths(data, 12);
+      if (growthStreak >= 2) out.push({ icon: '↗', text: `Your income has increased for ${growthStreak} consecutive months.`, kind: 'pos', route: 'money' });
     }
     const topCat = largestCategory(data.transactions, mk);
     if (topCat && topCat.amount > 0) {

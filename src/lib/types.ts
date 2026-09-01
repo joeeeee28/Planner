@@ -332,16 +332,26 @@ export interface Settings {
 
 export type TxType = 'income' | 'expense';
 
+/** Recurrence schedule for recurring transactions (income or expense). */
+export type Recurrence = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+
 export interface Transaction {
   id: ID;
   type: TxType;
-  amount: number; // positive number; type determines direction
+  /** Positive number; type determines direction. */
+  amount: number;
   date: DateStr;
   category: string;
   description?: string;
   paymentType?: string;
   notes?: string;
+  /** Optional recurrence: e.g. 'monthly'. Only one transaction is generated per occurrence. */
+  recurrence?: Recurrence;
+  /** ISO timestamp of the last generated occurrence (dedupe marker). */
+  lastGenerated?: string;
   createdAt: string;
+  /** ISO timestamp of the last edit. */
+  updatedAt?: string;
 }
 
 export interface SavingsGoal {

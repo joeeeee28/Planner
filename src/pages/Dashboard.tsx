@@ -199,6 +199,14 @@ export function DashboardPage() {
               <span className="v t-num">{goalsPct}%</span>
             </div>
             <div className="stat-row">
+              <span className="k">Income this month</span>
+              <span className="v t-num money-pos">{formatMoney(mm.income, data.settings.finance.currency)}</span>
+            </div>
+            <div className="stat-row">
+              <span className="k">Spent this month</span>
+              <span className="v t-num">{formatMoney(mm.expense, data.settings.finance.currency)}</span>
+            </div>
+            <div className="stat-row">
               <span className="k">Savings this month</span>
               <span className="v t-num money-pos">{formatMoney(mm.saved, data.settings.finance.currency)}</span>
             </div>

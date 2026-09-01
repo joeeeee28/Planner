@@ -103,7 +103,7 @@ export function emptyMonthPlan(): MonthPlan {
   };
 }
 
-export const DEFAULT_INCOME_CATEGORIES = ['Salary', 'Freelance', 'Bonus', 'Investments', 'Other'];
+export const DEFAULT_INCOME_CATEGORIES = ['Salary', 'Freelance', 'Business', 'Interest', 'Investment', 'Bonus', 'Gift', 'Other'];
 export const DEFAULT_EXPENSE_CATEGORIES = [
   'Food',
   'Transport',

@@ -17,6 +17,15 @@ interface RenderResult {
   rendered: boolean;
 }
 
+const matchMediaStub = () => ({
+  matches: false,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {},
+  removeListener: () => {},
+  dispatchEvent: () => false,
+});
+
 async function renderApp(url: string, storedJson: string | null): Promise<RenderResult> {
   const errors: string[] = [];
 
@@ -39,14 +48,6 @@ async function renderApp(url: string, storedJson: string | null): Promise<Render
   try { (g as { getComputedStyle?: unknown }).getComputedStyle = window.getComputedStyle; } catch { /* noop */ }
   try { (g as { requestAnimationFrame?: unknown }).requestAnimationFrame = window.requestAnimationFrame.bind(window); } catch { /* noop */ }
   try { (g as { cancelAnimationFrame?: unknown }).cancelAnimationFrame = window.cancelAnimationFrame.bind(window); } catch { /* noop */ }
-  const matchMediaStub = () => ({
-    matches: false,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  });
   try { g.matchMedia = matchMediaStub; } catch { /* noop */ }
   try { (window as unknown as Record<string, unknown>).matchMedia = matchMediaStub; } catch { /* noop */ }
 
@@ -162,6 +163,90 @@ async function main() {
     const ok = r1.errors.length === 0 && r2.errors.length === 0 && r1.rendered && r2.rendered;
     if (!ok) failed++;
     console.log(`${ok ? '✅' : '❌'} refresh: seeded data renders on repeat loads`);
+  }
+
+  // Test 4 — income edit flow (the reported bug): open Edit on income row,
+  // change amount, save → same ID, no duplicate, persists.
+  {
+    const stored = JSON.stringify({
+      onboarded: true,
+      settings: { name: 'T', finance: { incomeCategories: ['Salary','Freelance','Business','Interest','Investment','Bonus','Gift','Other'], expenseCategories: ['Food','Transport'], currency: 'INR' } },
+      transactions: [
+        { id: 'tx-1', type: 'income', amount: 50000, date: '2026-09-01', category: 'Salary', description: 'September salary', paymentType: 'Bank', createdAt: '2026-09-01T10:00:00Z' },
+        { id: 'tx-2', type: 'expense', amount: 12000, date: '2026-09-02', category: 'Food', createdAt: '2026-09-02T10:00:00Z' },
+      ],
+    });
+    const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+      url: 'https://joeeeee28.github.io/Planner/#/money/transactions',
+      pretendToBeVisual: true,
+    });
+    const { window: w2 } = dom;
+    const g2 = globalThis as Record<string, unknown>;
+    try { g2.window = w2; } catch {}
+    try { g2.document = w2.document; } catch {}
+    try { g2.localStorage = w2.localStorage; } catch {}
+    try { g2.navigator = w2.navigator; } catch {}
+    try { g2.location = w2.location; } catch {}
+    try { g2.HTMLElement = w2.HTMLElement; } catch {}
+    try { g2.Node = w2.Node; } catch {}
+    try { g2.getComputedStyle = w2.getComputedStyle; } catch {}
+    try { g2.requestAnimationFrame = w2.requestAnimationFrame.bind(w2); } catch {}
+    try { g2.cancelAnimationFrame = w2.cancelAnimationFrame.bind(w2); } catch {}
+    try { g2.matchMedia = matchMediaStub; } catch {}
+    try { w2.matchMedia = matchMediaStub; } catch {}
+    try { g2.confirm = () => true; } catch {}
+    try { g2.alert = () => {}; } catch {}
+    w2.localStorage.clear();
+    w2.localStorage.setItem(STORAGE_KEY, stored);
+    // Reset the store module cache so loadData() reads the new seed.
+    const store = await import('../src/lib/store');
+    store.clearCache();
+    const { default: App2 } = await import('../src/App');
+    const { createRoot: createRoot2 } = await import('react-dom/client');
+    const React2 = (await import('react')).default;
+    try { g2.React = React2; } catch {}
+    const rootEl2 = w2.document.getElementById('root')!;
+    const root2 = createRoot2(rootEl2, {
+      onUncaughtError: (err: unknown) => { errs2.push(err instanceof Error ? err.stack ?? err.message : String(err)); },
+    } as any);
+    const errs2: string[] = [];
+    const origErr2 = console.error;
+    console.error = (...a: unknown[]) => { const m = a.map(String).join(' '); if (!m.includes('Warning:') && !m.includes('act(')) errs2.push(m); };
+    root2.render(React2.createElement(App2));
+    await new Promise((r) => setTimeout(r, 900));
+
+    const rows = [...w2.document.querySelectorAll('.tx-row')];
+    const incomeRow = rows.find((r) => r.textContent!.includes('September salary'));
+    let ok = !!incomeRow;
+    if (ok) {
+      const editBtn = [...incomeRow!.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Edit')!;
+      editBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const amountInput = [...w2.document.querySelectorAll('input')].find((i) => i.type === 'number');
+      ok = !!amountInput && amountInput!.value === '50000';
+      if (ok) {
+        const setter = Object.getOwnPropertyDescriptor(w2.HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(amountInput!, '55000');
+        amountInput!.dispatchEvent(new w2.Event('input', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 200));
+        const saveBtn = [...w2.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save changes');
+        ok = !!saveBtn;
+        if (ok) {
+          saveBtn!.click();
+          await new Promise((r) => setTimeout(r, 500));
+          const stored2 = JSON.parse(w2.localStorage.getItem(STORAGE_KEY)!);
+          const txs = stored2.transactions;
+          const edited = txs.find((x: any) => x.id === 'tx-1');
+          ok = txs.length === 2 && edited && edited.amount === 55000 && edited.type === 'income';
+        }
+      }
+    }
+    root2.unmount();
+    console.error = origErr2;
+    if (!ok || errs2.length > 0) failed++;
+    console.log(`${ok && errs2.length === 0 ? '✅' : '❌'} income edit 50,000 → 55,000: same ID, no duplicate, persisted`);
+    for (const e of errs2.slice(0, 3)) console.log('     ', String(e).split('\n')[0].slice(0, 220));
+    if (!ok) console.log('      ok flag:', ok);
   }
 
   if (failed > 0) {

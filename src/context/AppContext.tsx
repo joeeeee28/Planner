@@ -21,6 +21,7 @@ import {
   importData,
   resetAll,
 } from '../lib/store';
+import { materializeRecurring } from '../lib/finance';
 
 interface AppCtx {
   data: AppData;
@@ -40,6 +41,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return subscribeStore(() => setData(loadData()));
+  }, []);
+
+  // Materialize recurring transactions once per app load. Safe: only generates
+  // when a scheduled occurrence is actually due, and marks it so it can never
+  // duplicate — even if this effect runs again (StrictMode double-invoke).
+  const materializedRef = useRef(false);
+  useEffect(() => {
+    if (materializedRef.current) return;
+    materializedRef.current = true;
+    const current = dataRef.current;
+    if (!current.transactions.some((t) => t.recurrence)) return;
+    const { txs, generated } = materializeRecurring(current.transactions);
+    if (generated > 0) {
+      const next = { ...current, transactions: txs, updatedAt: new Date().toISOString() };
+      dataRef.current = next;
+      flushData(next);
+      setData(next);
+    }
   }, []);
 
   const update = useCallback((fn: (draft: AppData) => AppData) => {
