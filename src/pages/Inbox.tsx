@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { staleRows } from '../lib/stale';
 import { navigate } from '../lib/router';
 import { todayStr, formatDateMed } from '../lib/dates';
 import { inboxTasks, tasksOf, noteReschedule } from '../lib/plan';
@@ -23,6 +24,7 @@ export function InboxPage() {
   const { data, update } = useApp();
   const [showArchived, setShowArchived] = useState(false);
   const [capture, setCapture] = useState(false);
+  const t = todayStr();
 
   const tasks = tasksOf(data);
   const unscheduled = inboxTasks(tasks);
@@ -109,6 +111,29 @@ export function InboxPage() {
       </div>
 
       {capture && <QuickAddModal initialKind="note" onClose={() => setCapture(false)} />}
+
+      {/* needs a decision — stale items (aged > 7 days) get a gentle nudge */}
+      {(() => {
+        const stale = staleRows(data, t, 6).filter((r) => r.kind === 'inbox-item' || r.kind === 'inbox-task' || r.kind === 'task');
+        if (stale.length === 0) return null;
+        return (
+          <div className="panel-flat section-gap" style={{ background: 'var(--warn-soft)', borderColor: 'transparent' }}>
+            <div className="small bold" style={{ marginBottom: 6 }}>
+              Needs a decision
+            </div>
+            <div className="flex flex-col" style={{ gap: 4 }}>
+              {stale.map((r) => (
+                <div className="flex" key={r.key} style={{ gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                  <span className="grow small">
+                    “{r.title}” — <span className="tiny muted">{r.reason}</span>
+                  </span>
+                  <span className="tiny muted">Options: schedule · break down · archive · delete (you choose — nothing auto-removes)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* unscheduled tasks */}
       <section className="panel section-gap">

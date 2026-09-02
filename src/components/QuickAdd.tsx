@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { navigate } from '../lib/router';
+import { pushCommand, recentCommands } from '../lib/cmdHistory';
 import { todayStr, addDays } from '../lib/dates';
 import { contributeToGoal } from '../lib/finance';
 import { Modal } from './ui';
@@ -265,6 +266,62 @@ export function QuickAddModal({
             {k.label}
           </button>
         ))}
+      </div>
+
+      {/* Navigation commands (command menu) */}
+      <div className="qa-cmds mb-16">
+        <div className="tiny bold muted" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+          Go to
+        </div>
+        <div className="flex flex-wrap" style={{ gap: 6 }}>
+          {(
+            [
+              { id: 'today', label: 'Today', route: 'today' },
+              { id: 'plan', label: 'Plan', route: 'plan' },
+              { id: 'inbox', label: 'Inbox', route: 'inbox' },
+              { id: 'goals', label: 'Goals', route: 'goals' },
+              { id: 'money', label: 'Money', route: 'money' },
+              { id: 'journal', label: 'Journal', route: 'journal' },
+              { id: 'reviews', label: 'Reviews', route: 'reviews' },
+              { id: 'insights', label: 'Insights', route: 'insights' },
+            ] as { id: string; label: string; route: string }[]
+          ).map((c) => (
+            <button
+              key={c.id}
+              className="cmd-chip"
+              onClick={() => {
+                pushCommand('Go to ' + c.label);
+                onClose();
+                navigate(c.route);
+              }}
+            >
+              {c.label}
+            </button>
+          ))}
+          <button
+            className="cmd-chip"
+            onClick={() => {
+              pushCommand('Search');
+              onClose();
+              setTimeout(() => {
+                const input = document.querySelector<HTMLInputElement>('.search-box input');
+                input?.focus();
+              }, 0);
+            }}
+          >
+            Search
+          </button>
+        </div>
+        {recentCommands().length > 0 && (
+          <div className="flex flex-wrap" style={{ gap: 6, marginTop: 6 }}>
+            <span className="tiny muted" style={{ alignSelf: 'center' }}>Recent:</span>
+            {recentCommands().slice(0, 4).map((label) => (
+              <span key={label} className="tiny muted" style={{ background: 'var(--surface-2)', borderRadius: 99, padding: '2px 10px' }}>
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="form-row">

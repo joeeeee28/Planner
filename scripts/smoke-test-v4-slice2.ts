@@ -332,25 +332,40 @@ async function main() {
       'S2-4 workload awareness + one-tap rescheduling',
       [
         ['app renders signed in', () => waitFor(() => /, Jothika\./.test(s.body()))],
-        ['Today shows honest workload (“11h planned”, overloaded, non-punitive copy)', async () => {
+        ['Today shows honest workload (“11h planned”, overloaded, suggestion-only copy)', async () => {
           s.clickByText('Today');
           const ok = await waitFor(() => s.body().includes('11h planned'));
-          return ok && s.body().includes('heavily planned') && s.body().includes('another day');
+          return ok && s.body().includes('heavily planned') && s.body().includes('Review plan') && s.body().includes('Keep as planned');
         }],
-        ['one click moves a task to the next day', async () => {
+        ['one click moves the task off today (later preview shows it, nothing else moved)', async () => {
           const row = [...s.win.document.querySelectorAll('.ptask')].find((p) => p.textContent?.includes('Task 3'));
           if (!row) return false;
           const fwd = row.querySelector('.ptask-act[aria-label="Move one day forward"]') as HTMLElement | null;
           if (!fwd) return false;
           fwd.click();
-          return waitFor(() => !s.body().includes('Task 3'));
+          // Task 3 leaves the working buckets and is only previewed under Later this week.
+          const previewed = await waitFor(() => {
+            const later = [...s.win.document.querySelectorAll('.bucket-label')].find((b) => b.textContent === 'Later this week');
+            return !!later && later.parentElement?.textContent?.includes('Task 3');
+          });
+          return previewed && s.body().includes('Task 4');
         }],
         ['moved task appears on the next day', async () => {
           const nextBtn = s.win.document.querySelector('.btn-icon[aria-label="Next day"]') as HTMLElement | null;
           if (!nextBtn) return false;
           nextBtn.click();
-          const arrived = await waitFor(() => s.body().includes('Task 3'));
-          return arrived && !s.body().includes('Task 4');
+          // Wait for the real next-day page: dated route, no Later-preview chip
+          // from today left, the moved task rendered as a working row, and no
+          // other task from today carried over.
+          return waitFor(() => {
+            const h = s.win.location.hash;
+            const dated = h.startsWith('#/today/') && h !== '#/today';
+            const rows = [...s.win.document.querySelectorAll('.ptask')];
+            const task3Row = rows.some((p) => p.textContent?.includes('Task 3'));
+            const noTask4 = !s.body().includes('Task 4');
+            const singleRow = rows.length === 1;
+            return dated && task3Row && noTask4 && singleRow;
+          });
         }],
         ['zero runtime errors', () => s.errors.length === 0],
       ],

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import {
@@ -71,6 +71,28 @@ export function PlanPage() {
     if (r2) return r2;
     return view === 'day' || view === 'week' ? todayStr() : monthKeyOf(todayStr());
   });
+
+  // Adopt view + cursor when the URL changes while this page stays mounted
+  // (deep links from other pages, browser back/forward). Guards keep state and
+  // route always in the same shape.
+  useEffect(() => {
+    if (route[0] !== 'plan') return;
+    const v = route[1] as View;
+    const valid = ['calendar', 'year', 'quarter', 'month', 'week', 'day'].includes(v);
+    if (!valid) return;
+    const r2 = route[2];
+    const shapeOk =
+      (v === 'day' || v === 'week') ? !!r2 && /^\d{4}-\d{2}-\d{2}$/.test(r2)
+      : (v === 'calendar' || v === 'month') ? !!r2 && /^\d{4}-\d{2}$/.test(r2)
+      : v === 'quarter' ? !!r2 && /^\d{4}-Q[1-4]$/.test(r2)
+      : v === 'year' ? !!r2 && /^\d{4}/.test(r2)
+      : false;
+    if (!shapeOk) return;
+    setView((prev) => (prev === v ? prev : v));
+    const want = v === 'year' ? r2!.slice(0, 4) + '-01' : r2!;
+    setCursor((c) => (c === want ? c : want));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.join('/')]);
 
   const weekStartsOn = data.settings.weekStartsOn;
   const [curYear, curMonth] = (isMonthKey(cursor) ? cursor : `${cursor.slice(0, 4)}-01`).split('-').map(Number);

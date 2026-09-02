@@ -12,16 +12,12 @@ import { uid } from '../lib/uid';
 import { emptyAreaEntry } from '../lib/defaults';
 import {
   tasksOf,
-  tasksOn,
   inboxTasks,
-  daySections,
-  dayLoad,
-  dayLoadMessage,
-  fmtMinutes,
   nextTaskForGoal,
-  sortTasks,
   activeGoals,
 } from '../lib/plan';
+import { dayWorkload, adaptiveDay, fmt as wf } from '../lib/priority';
+import { dailyShutdownProposal, SHUTDOWN_PROMPTS } from '../lib/reviewIntel';
 import type { DayEntry, PlannedTask, TaskItem, Transaction } from '../lib/types';
 
 const emptyJournal = {
@@ -63,6 +59,10 @@ export function TodayPage() {
   const [openAreas, setOpenAreas] = useState<Record<string, boolean>>({});
   const [quickGoalId, setQuickGoalId] = useState<string | undefined>(undefined);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [keepLoad, setKeepLoad] = useState(false);
+  const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [shutdownAnswers, setShutdownAnswers] = useState<Record<string, string>>({});
+  const [shutdownDone, setShutdownDone] = useState(false);
 
   const cycle = currentCycle(data.cycles);
   const isFuture = date > t;
@@ -98,8 +98,8 @@ export function TodayPage() {
 
   // ── V4 planning surface ──
   const tasks = tasksOf(data);
-  const dayTasks = sortTasks(tasksOn(tasks, date));
-  const { now, next } = daySections(tasks, date, data.goals);
+  const adaptive = adaptiveDay(data, date, t);
+  const { now, next } = adaptive;
   const inboxCount = inboxTasks(tasks).length;
   const goalsById = new Map(data.goals.map((g) => [g.id, g]));
   const goalTitle = (id?: string) => (id ? goalsById.get(id)?.title : undefined);
@@ -115,7 +115,32 @@ export function TodayPage() {
       return { ...d };
     });
 
-  const load = dayLoad(tasks, date);
+  const work = dayWorkload(data, date);
+  const loadChipLevel = work.totalMin === 0 ? null : work.level;
+  const loadChipTitle = work.message;
+  // daily shutdown proposal (created only on explicit confirmation)
+  const shutdownProposal = isTodayDay ? dailyShutdownProposal(data, t) : null;
+  const tomorrow = addDays(t, 1);
+  const confirmShutdown = () => {
+    if (!shutdownProposal || shutdownProposal.priorities.length === 0 || shutdownDone) return;
+    const list = shutdownProposal.priorities;
+    update((d) => {
+      const cur = d.daily[tomorrow] ?? {
+        priorities: [],
+        areas: {},
+        journal: { ...emptyJournal },
+        updatedAt: '',
+      };
+      d.daily[tomorrow] = {
+        ...cur,
+        priorities: [...cur.priorities, ...list.map((text) => ({ id: uid('prio'), text, done: false }))],
+        updatedAt: new Date().toISOString(),
+      };
+      return { ...d };
+    });
+    setShutdownDone(true);
+    setShutdownOpen(false);
+  };
 
   // money — only what is relevant to this day
   const todaysTx = data.transactions
@@ -162,9 +187,9 @@ export function TodayPage() {
         </div>
         <div className="spacer" />
         <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
-          {dayTasks.length > 0 && (
-            <span className={`load-chip ${load.load.level}`} title={dayLoadMessage(load.planned, load.capacity, load.load.level)}>
-              {fmtMinutes(load.planned)} planned
+          {loadChipLevel && (
+            <span className={`load-chip ${loadChipLevel}`} title={loadChipTitle}>
+              {wf(work.totalMin)} planned
             </span>
           )}
           <button className="btn btn-icon" onClick={() => goto(-1)} aria-label="Previous day">
@@ -187,10 +212,28 @@ export function TodayPage() {
         </div>
       )}
 
-      {dayTasks.length > 0 && load.planned > 0 && (
-        <p className="tiny muted" style={{ marginTop: -8, marginBottom: 16 }}>
-          {dayLoadMessage(load.planned, load.capacity, load.load.level)}
-        </p>
+      {isTodayDay && !keepLoad && (work.level === 'overloaded' || work.level === 'full' || (work.level === 'light' && work.freeMin >= 90)) && (
+        <div className={`workload-banner ${work.level}`} role="status">
+          <div className="flex grow" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="workload-dot" aria-hidden="true" />
+            <span className="grow small">
+              <b>{work.label}.</b> {work.message}
+              {work.habitMin > 0 && (
+                <span className="tiny muted"> · includes {wf(work.habitMin)} of habit check-ins (default estimate)</span>
+              )}
+            </span>
+          </div>
+          {work.level === 'overloaded' || work.level === 'full' ? (
+            <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-sm" onClick={() => navigate(`plan/day/${date}`)}>Review plan</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setKeepLoad(true)}>Keep as planned</button>
+            </div>
+          ) : work.level === 'light' && inboxCount > 0 ? (
+            <button className="btn btn-sm" onClick={() => navigate('inbox')}>View Inbox</button>
+          ) : (
+            <span className="tiny muted">Open capacity — no need to fill it.</span>
+          )}
+        </div>
       )}
 
       {/* TOP PRIORITIES */}
@@ -264,22 +307,55 @@ export function TodayPage() {
             }
           />
         ) : (
-          <div className="mt-8">
-            {[...now, ...next].map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                goalTitle={goalTitle(task.goalId)}
-                onPatch={(p) => patchTask(task.id, p)}
-                onDelete={() => deleteTask(task.id)}
-              />
-            ))}
+          <div className="mt-8 flex flex-col" style={{ gap: 4 }}>
+            {now.length > 0 && (
+              <>
+                <div className="bucket-label">Do now</div>
+                {now.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    goalTitle={goalTitle(task.goalId)}
+                    onPatch={(p) => patchTask(task.id, p)}
+                    onDelete={() => deleteTask(task.id)}
+                  />
+                ))}
+              </>
+            )}
+            {now.length > 0 && next.length > 0 && <div className="divider" style={{ margin: '8px 0' }} />}
+            {next.length > 0 && (
+              <>
+                <div className="bucket-label">Up next</div>
+                {next.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    goalTitle={goalTitle(task.goalId)}
+                    onPatch={(p) => patchTask(task.id, p)}
+                    onDelete={() => deleteTask(task.id)}
+                  />
+                ))}
+              </>
+            )}
           </div>
         )}
-        {now.length > 0 && next.length > 0 && (
-          <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>
-            Below “Do now”, the rest of your day is in <b>Up next</b>.
-          </p>
+
+        {/* LATER — already planned for the next few days (never moved) */}
+        {adaptive.later.length > 0 && (
+          <>
+            <div className="divider" style={{ margin: '14px 0 10px' }} />
+            <div className="bucket-label">Later this week</div>
+            <div className="flex flex-col" style={{ gap: 4 }}>
+              {adaptive.later.map(({ task, day }) => (
+                <div className="tx-line" key={task.id}>
+                  <span className="grow small">{task.text}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => navigate(`plan/day/${day}`)}>
+                    {formatDateMed(day)}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </section>
 
@@ -536,6 +612,57 @@ export function TodayPage() {
           <span className="small muted">How was your day?</span>
           <Stars value={entry.rating ?? 0} onChange={(v) => updateEntry((e) => ({ ...e, rating: v }))} />
         </div>
+
+        {/* Optional daily shutdown ritual — proposes, never moves anything */}
+        {isTodayDay && (
+          <>
+            <div className="divider mt-16" />
+            <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="small bold">Daily shutdown</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShutdownOpen((v) => !v)} aria-expanded={shutdownOpen}>
+                {shutdownOpen ? 'Close' : shutdownDone ? 'Done for today ✓' : 'Start — 5 quiet questions'}
+              </button>
+            </div>
+            {shutdownOpen && (
+              <div className="mt-8">
+                {SHUTDOWN_PROMPTS.map((q) => (
+                  <textarea
+                    key={q.id}
+                    rows={2}
+                    className="mt-8"
+                    placeholder={q.question}
+                    value={shutdownAnswers[q.id] ?? ''}
+                    onChange={(e) => setShutdownAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                    aria-label={q.question}
+                  />
+                ))}
+                {shutdownProposal && shutdownProposal.priorities.length > 0 ? (
+                  <div className="panel-flat mt-8" style={{ background: 'var(--accent-soft)', borderColor: 'transparent' }}>
+                    <div className="small bold">Tomorrow's top priorities (proposed)</div>
+                    <ul className="small" style={{ margin: '6px 0 4px 18px', padding: 0 }}>
+                      {shutdownProposal.priorities.map((p2, i) => (
+                        <li key={i}>{p2}</li>
+                      ))}
+                    </ul>
+                    <p className="tiny muted" style={{ margin: '4px 0 8px' }}>
+                      {shutdownProposal.reason} Nothing is created or moved until you confirm.
+                    </p>
+                    <div className="flex" style={{ gap: 8 }}>
+                      <button className="btn btn-sm btn-primary" onClick={confirmShutdown}>
+                        Confirm for tomorrow
+                      </button>
+                      <button className="btn btn-sm" onClick={() => navigate('inbox')}>
+                        Review open items
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="small muted mt-8">Nothing open is scheduled — tomorrow can start with a clean capture.</p>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       {/* By area — detailed per-area lists & notes (existing workflow, kept) */}

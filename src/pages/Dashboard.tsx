@@ -14,6 +14,8 @@ import {
 import { dayProgress, dayStreak, goalEffectiveProgress, goalDeadlineInfo } from '../lib/analytics';
 import { navigate } from '../lib/router';
 import { attentionItems as computeAttention } from '../lib/attention';
+import { changeReport, changeDeltaLabel } from '../lib/change';
+import { nextBestAction } from '../lib/priority';
 import { formatMoney, monthTotals, goalPct, savingsRate, monthlyMoneySeries } from '../lib/finance';
 import { ProgressBar, Stars } from '../components/ui';
 import { IconArrowRight } from '../components/icons';
@@ -49,6 +51,7 @@ export function DashboardPage() {
   const cycle = currentCycle(data.cycles);
   const entry = data.daily[t];
   const currency = data.settings.finance.currency;
+  const [dismissedAction, setDismissedAction] = useState<string | null>(null);
 
   const dayP = dayProgress(entry, data.growthAreas);
   const streak = dayStreak(data);
@@ -56,6 +59,16 @@ export function DashboardPage() {
 
   // ── attention (evidence-based, calm, capped) ──
   const attentionItems = computeAttention(data);
+
+  // ── one next best action (single, explained, never auto-moves) ──
+  const nba = nextBestAction(data);
+  const showNba = nba !== null && dismissedAction !== nba.key;
+
+  // ── what changed this week (compact, clickable, no irrelevant rows) ──
+  const changedTop = changeReport(data, 'week')
+    .items.map((m) => ({ m, delta: Math.abs(m.current - m.previous) }))
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 4);
 
   // ── today summary line ──
   const priorities = entry?.priorities ?? [];
@@ -259,6 +272,39 @@ export function DashboardPage() {
         </div>
       </section>
 
+      {/* NEXT BEST ACTION — one recommendation with a reason; dismiss is
+          local-only and nothing is ever moved without the user. */}
+      {showNba && nba && (
+        <section className="panel nba-card section-gap" aria-label="Next best action">
+          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="panel-title">Next best action</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setDismissedAction(nba.key)}>
+              Not now
+            </button>
+          </div>
+          <div className="nba-title">
+            <span className="nba-ic" aria-hidden="true">→</span>
+            <b>{nba.title}</b>
+          </div>
+          <p className="nba-reason">
+            <span className="tiny muted">Reason:</span> {nba.reason}
+          </p>
+          <div className="flex mt-8" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-sm btn-primary" onClick={() => navigate(nba.route)}>
+              Do now
+            </button>
+            {nba.goalTitle && (
+              <button className="btn btn-sm" onClick={() => navigate(nba.route)}>
+                Open {nba.kind === 'goal' ? 'goal' : 'task'}
+              </button>
+            )}
+            <span className="tiny muted" style={{ alignSelf: 'center', marginLeft: 2 }}>
+              {nba.kind === 'goal' ? 'Nothing is created until you act.' : 'Nothing is moved until you decide.'}
+            </span>
+          </div>
+        </section>
+      )}
+
       {/* WHAT NEEDS ATTENTION */}
       {attentionItems.length > 0 && (
         <section className="attention section-gap" aria-label="What needs attention">
@@ -277,6 +323,36 @@ export function DashboardPage() {
                 <IconArrowRight size={13} />
               </button>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* WHAT CHANGED — this week vs last week (only real deltas) */}
+      {changedTop.length > 0 && (
+        <section className="section-gap" aria-label="What changed this week">
+          <div className="flex mb-16" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="t-section" style={{ margin: 0 }}>
+              What changed this week
+            </h2>
+            <span className="tiny muted">vs last week</span>
+          </div>
+          <div className="panel" style={{ padding: '4px 16px' }}>
+            {changedTop.map(({ m }, i) => {
+              const delta = m.current - m.previous;
+              const deltaLabel = changeDeltaLabel(m, (n) => formatMoney(n, currency));
+              return (
+                <div key={m.key}>
+                  {i > 0 && <div className="divider" />}
+                  <button className="changed-row" onClick={() => navigate(m.route ?? 'home')}>
+                    <span className="grow small">{m.label}</span>
+                    <span className="small t-num">
+                      {m.unit === 'money' ? formatMoney(m.current, currency) : m.current}
+                    </span>
+                    <span className={`changed-delta ${delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'}`}>{deltaLabel}</span>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

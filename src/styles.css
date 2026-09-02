@@ -2828,3 +2828,74 @@ textarea {
 /* plan calendar money / savings indicators */
 .cal-dot.money { background: var(--pos); }
 .cal-dot.savings { background: var(--accent-strong); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   V4 SLICE 4 — intelligence & guided surfaces
+   (calm, premium; everything below reuses the root palette)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Home — next best action */
+.nba-card { border: 1px solid color-mix(in srgb, var(--accent, #0b5f59) 30%, transparent); }
+.nba-title { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 15px; }
+.nba-ic {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft, rgba(11, 95, 89, 0.12)); color: var(--accent-strong, #0b5f59);
+  font-weight: 800; font-size: 14px; flex: none;
+}
+.nba-reason { margin: 8px 0 0 36px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+
+/* Home — what changed */
+.changed-row {
+  display: flex; align-items: baseline; gap: 12px; width: 100%;
+  padding: 9px 0; text-align: left; cursor: pointer;
+}
+.changed-row:hover .grow { color: var(--accent-strong); }
+.changed-delta { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.changed-delta.up { color: var(--pos); }
+.changed-delta.down { color: var(--neg); }
+.changed-delta.flat { color: var(--ink-2); }
+
+/* Today — workload banner (over-planning / open capacity) */
+.workload-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-radius: var(--r-md, 12px); padding: 10px 14px; margin: 0 0 16px; flex-wrap: wrap;
+}
+.workload-banner.overloaded, .workload-banner.full { background: var(--warn-soft); border: 1px solid transparent; }
+.workload-banner.light { background: var(--pos-soft); border: 1px solid transparent; }
+.workload-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.workload-banner.overloaded .workload-dot { background: var(--neg); }
+.workload-banner.full .workload-dot { background: var(--warn); }
+.workload-banner.light .workload-dot { background: var(--pos); }
+
+/* Today — adaptive buckets */
+.bucket-label {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-2); margin: 2px 0 6px;
+}
+
+/* Insights V2 */
+.insight-meta { display: block; margin-top: 2px; }
+.insight { align-items: flex-start; padding: 10px 0; }
+.insight .ic { margin-top: 2px; }
+
+/* Review chips (auto summaries) */
+.chip.review-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; padding: 4px 12px; font-size: 12px;
+  background: var(--surface-2); color: var(--ink);
+}
+.chip.review-chip.warn { background: var(--warn-soft); }
+.review-chip b { font-weight: 700; }
+
+/* command palette go-to chips */
+.cmd-chip {
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink); border-radius: 999px; padding: 4px 12px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.cmd-chip:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+/* load-chip variants used by review capacity + workload */
+/* 'Open capacity' maps to the light (positive) look; comfortable stays neutral. */
+.load-chip.open { color: var(--pos); background: var(--pos-soft); }

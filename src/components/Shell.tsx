@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
-import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
+import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
 import { QuickAddModal } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
 
@@ -22,6 +22,7 @@ const NAV_MAIN: NavItem[] = [
   { path: 'growth', label: 'Growth', icon: IconGrowth, group: 'grow' },
   { path: 'money', label: 'Money', icon: IconMoney, group: 'grow' },
   { path: 'journal', label: 'Journal', icon: IconJournal, group: 'grow' },
+  { path: 'reviews', label: 'Reviews', icon: IconReviews, group: 'do' },
   { path: 'insights', label: 'Insights', icon: IconInsights, group: 'grow' },
   { path: 'settings', label: 'Settings', icon: IconSettings, group: 'system' },
 ];
@@ -95,6 +96,45 @@ export function Shell({ children }: { children: React.ReactNode }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setQuickAdd((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Slice 4 shortcuts — single keys navigate when nothing is being typed:
+  // T Today · G Goals · M Money · P Plan · I Inbox · R Reviews · S Search ·
+  // N New task. Never intercept keyboard input in form fields.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+      }
+      const key = e.key.toLowerCase();
+      const map: Record<string, string> = {
+        t: 'today',
+        g: 'goals',
+        m: 'money',
+        p: 'plan',
+        i: 'inbox',
+        r: 'reviews',
+      };
+      if (key === 's') {
+        e.preventDefault();
+        const input = document.querySelector<HTMLInputElement>('.search-box input');
+        input?.focus();
+        return;
+      }
+      if (key === 'n') {
+        e.preventDefault();
+        setQuickAdd(true);
+        return;
+      }
+      if (map[key]) {
+        navigate(map[key]);
       }
     };
     window.addEventListener('keydown', onKey);

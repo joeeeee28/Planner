@@ -32,6 +32,7 @@ import {
   type BudgetStatus,
 } from '../lib/finance';
 import type { Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
+import { nextMonthForecast, savingsProjection } from '../lib/forecast';
 import { Modal, ProgressBar, EmptyState } from '../components/ui';
 import { IconPlus, IconTrash, IconEdit, IconCopy, IconArrowRight, IconChart } from '../components/icons';
 import { uid } from '../lib/uid';
@@ -470,6 +471,16 @@ function OverviewTab() {
                     {required !== null && required > 0 && <span>Required {formatMoney(required, currency)}/mo</span>}
                     {actual !== null && <span>Actual {formatMoney(actual, currency)}/mo</span>}
                   </div>
+                  {(() => {
+                    const proj = savingsProjection(g, t, currency);
+                    if (!proj.projectedLabel) return null;
+                    return (
+                      <div className="tiny mt-8 proj-line" style={{ color: 'var(--accent-strong)' }}>
+                        <b>Projection</b> (not a guarantee): {proj.projectedLabel}
+                        {proj.behindPerMonth ? ` · ${formatMoney(proj.behindPerMonth, currency, true)}/mo more keeps the target date` : ''}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -510,6 +521,50 @@ function OverviewTab() {
           </div>
         )}
       </div>
+
+      {/* Next-month forecast — clearly an ESTIMATE, never creates records */}
+      {(() => {
+        const fc = nextMonthForecast(data, t);
+        if (!fc.enoughData) {
+          return (
+            <div className="panel section-gap">
+              <h2 className="panel-title">Next month — forecast</h2>
+              <p className="small muted" style={{ margin: 0 }}>
+                Add a recurring income or expense (or two months of history) and Growth OS can estimate next month's cash flow. Estimates never create transactions.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <div className="panel section-gap">
+            <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+              <div>
+                <h2 className="panel-title" style={{ marginBottom: 2 }}>Next month — forecast ({fc.monthLabel})</h2>
+                <p className="panel-sub" style={{ marginBottom: 0 }}>{fc.basis}</p>
+              </div>
+              <span className="badge tiny warn">ESTIMATE</span>
+            </div>
+            <div className="mt-8 flex flex-col" style={{ gap: 4 }}>
+              {fc.rows.map((r) => (
+                <div className="tx-line" key={r.label}>
+                  <span className="grow small">{r.label}</span>
+                  <span className={`small t-num ${r.kind === 'income' ? 'money-pos' : ''}`}>
+                    {r.kind === 'income' ? '+' : '−'}{formatMoney(r.amount, currency)}<span className="tiny muted"> /mo</span>
+                  </span>
+                </div>
+              ))}
+              <div className="divider" />
+              <div className="tx-line">
+                <span className="grow small bold">Potential net cash flow</span>
+                <span className={`small bold t-num ${fc.net >= 0 ? 'money-pos' : ''}`}>{formatMoney(fc.net, currency)}/mo</span>
+              </div>
+            </div>
+            <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>
+              Estimate only — based on recurring records and recent history. Not a guarantee; no predicted transactions are created.
+            </p>
+          </div>
+        );
+      })()}
 
       <p className="tiny muted section-gap" style={{ maxWidth: 560 }}>
         🔒 Financial data is stored only in this account's private space — manual entry, local-first, no bank connectivity.

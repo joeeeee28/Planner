@@ -17,6 +17,7 @@ const GrowthPage = lazy(() => import('./pages/Growth').then((m) => ({ default: m
 const MoneyPage = lazy(() => import('./pages/Money').then((m) => ({ default: m.MoneyPage })));
 const JournalPage = lazy(() => import('./pages/Journal').then((m) => ({ default: m.JournalPage })));
 const InsightsPage = lazy(() => import('./pages/Insights').then((m) => ({ default: m.InsightsPage })));
+const ReviewsPage = lazy(() => import('./pages/Reviews').then((m) => ({ default: m.ReviewsPage })));
 const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })));
 
 function PageFallback() {
@@ -40,17 +41,12 @@ function ThemeManager() {
 
 /** Map legacy routes (v1 navigation) to the new structure. */
 function redirectLegacy(route: string[]): string[] | null {
-  const [sec, p1, p2] = route;
+  const [sec, p1] = route;
   switch (sec) {
     case 'dashboard':
       return ['home'];
     case 'calendar':
       return ['plan', 'calendar', p1 ?? ''];
-    case 'reviews':
-      if (p1 === 'week') return ['plan', 'week', p2 ?? ''];
-      if (p1 === 'month') return ['plan', 'month', p2 ?? ''];
-      if (p1 === 'cycle') return ['growth', 'cycles', 'review', p2 ?? ''];
-      return ['plan'];
     case 'habits':
       return ['growth', 'habits'];
     case 'learning':
@@ -115,6 +111,9 @@ function AppRouter() {
       break;
     case 'insights':
       page = <InsightsPage />;
+      break;
+    case 'reviews':
+      page = <ReviewsPage />;
       break;
     case 'settings':
       page = <SettingsPage />;

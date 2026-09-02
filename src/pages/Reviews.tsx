@@ -16,6 +16,9 @@ import { MONTH_GOAL_CATEGORIES, DEFAULT_REVIEW_QUESTIONS } from '../lib/defaults
 import { formatMoney } from '../lib/finance';
 import { Modal, ProgressBar, Pct, Stars, EmptyState } from '../components/ui';
 import { uid } from '../lib/uid';
+import { staleRows } from '../lib/stale';
+import { weekLookBack, monthSummary, weekCapacitySummary, quarterAutoRows, yearAutoRows } from '../lib/reviewIntel';
+import { fmt as wf } from '../lib/priority';
 import type { MonthPlan, MonthKey, WeekReview, CycleReview, PeriodReview, DateStr } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
 
@@ -58,6 +61,27 @@ function ReviewsIndex() {
           <div className="topbar-sub">Weekly check-ins, monthly plans & reviews, and growth-cycle retrospectives.</div>
         </div>
       </div>
+
+      {/* Reviews that are due — derived from activity vs written reviews */}
+      {(() => {
+        const due = staleRows(data, t, 6).filter((r) => r.kind === 'review');
+        if (due.length === 0) return null;
+        return (
+          <div className="panel-flat mb-16" style={{ background: 'var(--warn-soft)', borderColor: 'transparent' }}>
+            <div className="small bold" style={{ marginBottom: 6 }}>
+              📝 {due.length} review{due.length > 1 ? 's' : ''} waiting
+            </div>
+            <div className="flex flex-col" style={{ gap: 4 }}>
+              {due.map((r) => (
+                <button key={r.key} className="recent-row" onClick={() => navigate(r.route)}>
+                  <span className="grow small">{r.reason}</span>
+                  <span className="tiny muted">Write it →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-2 mb-16">
         <div className="card">
@@ -245,8 +269,72 @@ export function WeekReviewPage({ weekStart }: { weekStart: string }) {
         </div>
       </div>
 
+      {/* STEP 1 — LOOK BACK: your week in numbers (auto, from real records) */}
+      {(() => {
+        const lb = weekLookBack(data, ws);
+        if (!lb.hasData) return null;
+        const cap = weekCapacitySummary(data, ws);
+        const chips: { k: string; v: string }[] = [];
+        if (lb.tasksPlannedTotal > 0 || lb.tasksDone > 0) chips.push({ k: 'Tasks', v: `${lb.tasksDone} done${lb.tasksMissed > 0 ? ` · ${lb.tasksMissed} missed` : ''}` });
+        if (lb.habitsScheduled > 0) chips.push({ k: 'Habits', v: `${lb.habitsDone}/${lb.habitsScheduled}` });
+        if (lb.goalsCompleted > 0 || lb.goalActivity > 0) chips.push({ k: 'Goals', v: `${lb.goalActivity} actions · ${lb.goalsCompleted} completed` });
+        if (lb.learningDone > 0) chips.push({ k: 'Learning', v: `${lb.learningDone} completed` });
+        if (lb.journalDays > 0) chips.push({ k: 'Journal', v: `${lb.journalDays} days` });
+        if (lb.saved !== 0) chips.push({ k: 'Money', v: `net ${lb.saved > 0 ? '+' : ''}${lb.saved}` });
+        if (lb.overplannedDays > 0) chips.push({ k: 'Overplanned days', v: String(lb.overplannedDays) });
+        return (
+          <div className="card mb-16">
+            <div className="card-title">STEP 1 · LOOK BACK — your week in numbers</div>
+            <p className="card-sub">Derived from your records — nothing stored, nothing overwritten.</p>
+            {chips.length === 0 ? (
+              <p className="small muted">Not enough data this week yet — the numbers will fill in as you plan and complete.</p>
+            ) : (
+              <div className="flex flex-wrap" style={{ gap: 8 }}>
+                {chips.map((c) => (
+                  <span key={c.k} className="chip review-chip">
+                    <b>{c.k}:</b> {c.v}
+                  </span>
+                ))}
+              </div>
+            )}
+            {lb.postponed.length > 0 && (
+              <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>
+                Moved repeatedly: {lb.postponed.map((p) => `“${p.text}” ×${p.times}`).join(' · ')}
+              </p>
+            )}
+            <div className="divider" style={{ margin: '12px 0' }} />
+            <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <span className="small">
+                STEP 5 · CHECK CAPACITY —{' '}
+                <b>
+                  {wf(cap.plannedMin)} planned vs {wf(cap.capacityMin)} available
+                </b>
+              </span>
+              <span className={`load-chip ${cap.label.toLowerCase()}`}>{cap.label}</span>
+            </div>
+            <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>{cap.message}</p>
+          </div>
+        );
+      })()}
+
       <div className="card">
-        {weekFields.map((f) => (
+        <div className="form-row" style={{ paddingBottom: 2, marginBottom: 0 }}>
+          <label className="form-label" style={{ color: 'var(--accent-strong)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            STEP 1 · LOOK BACK
+          </label>
+        </div>
+        {weekFields.slice(0, 2).map((f) => (
+          <div className="form-row" key={f.key}>
+            <label className="form-label">{f.label}</label>
+            <textarea rows={2} value={(review[f.key] as string) ?? ''} placeholder={f.placeholder} onChange={(e) => set({ [f.key]: e.target.value })} />
+          </div>
+        ))}
+        <div className="form-row" style={{ paddingBottom: 2, marginBottom: 0 }}>
+          <label className="form-label" style={{ color: 'var(--accent-strong)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            STEP 2 · UNDERSTAND
+          </label>
+        </div>
+        {weekFields.slice(2).map((f) => (
           <div className="form-row" key={f.key}>
             <label className="form-label">{f.label}</label>
             <textarea rows={2} value={(review[f.key] as string) ?? ''} placeholder={f.placeholder} onChange={(e) => set({ [f.key]: e.target.value })} />
@@ -257,7 +345,7 @@ export function WeekReviewPage({ weekStart }: { weekStart: string }) {
           style={{ background: 'var(--accent-soft)', borderRadius: 12, padding: '14px 16px', marginBottom: 0 }}
         >
           <label className="form-label" style={{ color: 'var(--accent-strong)', fontSize: 13 }}>
-            🎯 The one thing I should improve next week
+            STEP 3 · CHOOSE — 🎯 the one thing I should improve next week
           </label>
           <textarea rows={2} value={review.oneThing} placeholder="Pick ONE thing…" onChange={(e) => set({ oneThing: e.target.value })} />
         </div>
@@ -479,6 +567,43 @@ export function MonthReviewPage({ mk }: { mk: MonthKey }) {
 
       {activeTab === 'review' && (
         <div>
+          {/* Auto summary — what improved / changed / stalled (display only) */}
+          {(() => {
+            const sum = monthSummary(data, mk);
+            const cols: { title: string; lines: typeof sum.improved }[] = [
+              { title: 'What improved?', lines: sum.improved },
+              { title: 'What changed?', lines: sum.changed },
+              { title: 'What stalled?', lines: sum.stalled },
+            ];
+            if (!sum.improved.length && !sum.changed.length && !sum.stalled.length) return null;
+            return (
+              <div className="card mb-16">
+                <h2 className="card-title">📊 Your month in numbers</h2>
+                <p className="card-sub">Auto-derived from your records — your saved answers below are never overwritten.</p>
+                <div className="grid grid-3" style={{ alignItems: 'start' }}>
+                  {cols.map((c) => (
+                    <div key={c.title}>
+                      <div className="small bold" style={{ marginBottom: 6 }}>{c.title}</div>
+                      {c.lines.length === 0 ? (
+                        <p className="tiny muted">Nothing to report yet.</p>
+                      ) : (
+                        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
+                          {c.lines.map((l, i) => (
+                            <li key={i} style={{ marginBottom: 5, color: l.tone === 'warn' ? 'var(--neg)' : 'var(--ink)' }}>
+                              {l.icon} {l.text}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>
+                  ONE FOCUS FOR NEXT MONTH is set in the monthly plan above — pick a single focus before the month ends.
+                </p>
+              </div>
+            );
+          })()}
           <div className="card">
             <div className="flex flex-wrap mb-8" style={{ justifyContent: 'space-between' }}>
               <h2 className="card-title">📝 End-of-month review</h2>
@@ -774,11 +899,33 @@ function PeriodReviewPage({ kind, keyVal }: { kind: 'quarter' | 'year'; keyVal?:
         </div>
       </div>
 
+      {(() => {
+        const rows = (kind === 'quarter' ? quarterAutoRows(data, range.from, range.to) : yearAutoRows(data, range.from, range.to)).filter((r) =>
+          ['Goals at risk (due near/within period end)', 'Milestones completed', 'Goals past their target date', 'Weekly reviews written', 'Total saved across goals'].includes(r.label),
+        );
+        if (rows.length === 0) return null;
+        return (
+          <div className="flex flex-wrap mb-16" style={{ gap: 8 }}>
+            {rows.map((r) => (
+              <span key={r.label} className={`chip review-chip ${r.tone === 'warn' ? 'warn' : ''}`}>
+                <b>{r.label}:</b> {r.value}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
       <div className="card mb-16">
         <h2 className="card-title">📝 Review</h2>
         <p className="card-sub">
           {kind === 'quarter' ? 'What did these three months teach you?' : 'The year in review — what to keep, what to change.'}
         </p>
+        <div className="tiny muted" style={{ marginBottom: 8 }}>
+          {kind === 'quarter' ? 'Questions to hold in mind:' : 'Prompts for the year:'}{' '}
+          {kind === 'quarter'
+            ? 'What should I stop? · What should I continue? · What should I start? · What is the most important outcome for next quarter?'
+            : 'Biggest wins · Biggest lessons · What changed · What remains unfinished · Next-year priorities'}
+        </div>
         <textarea
           rows={7}
           style={{ width: '100%' }}
