@@ -156,6 +156,8 @@ export interface Goal {
   milestones: Milestone[];
   notes: string;
   relatedHabitIds: ID[];
+  /** Optional link to an existing SavingsGoal (financial component). */
+  savingsGoalId?: ID;
   createdAt: DateStr;
 }
 
@@ -168,6 +170,8 @@ export interface Skill {
   targetLevel: number; // 0–100
   notes: string;
   categoryId?: ID;
+  /** Optional goal this skill supports. */
+  goalId?: ID;
   createdAt: DateStr;
 }
 
@@ -186,6 +190,8 @@ export interface Project {
   achievements: string;
   /** Evidence link (portfolio, repo, doc, deployment). */
   url?: string;
+  /** Optional goal this project supports. */
+  goalId?: ID;
   createdAt: DateStr;
 }
 
@@ -197,6 +203,8 @@ export interface Achievement {
   skillIds: ID[];
   projectId?: ID;
   notes: string;
+  /** Optional goal this achievement supports. */
+  goalId?: ID;
   createdAt: DateStr;
 }
 
@@ -251,6 +259,8 @@ export interface LearningItem {
   whatILearned: string;
   startDate?: DateStr;
   completionDate?: DateStr;
+  /** Optional goal this learning supports. */
+  goalId?: ID;
   createdAt: DateStr;
 }
 
@@ -380,6 +390,9 @@ export interface Transaction {
   recurrence?: Recurrence;
   /** ISO timestamp of the last generated occurrence (dedupe marker). */
   lastGenerated?: string;
+  /** When true the recurrence schedule is paused: no new occurrences are
+   *  generated and it stops appearing under Upcoming until resumed. */
+  recurrencePaused?: boolean;
   createdAt: string;
   /** ISO timestamp of the last edit. */
   updatedAt?: string;

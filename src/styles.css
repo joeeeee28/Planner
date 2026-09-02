@@ -2752,3 +2752,79 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── V4 Slice 3: goals detail + health, money overview, search groups ── */
+
+.grid-5 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 1240px) {
+  .grid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .grid-5 { grid-template-columns: 1fr; }
+}
+
+/* goal card title → detail page */
+.goal-title-btn {
+  display: inline-block;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.goal-title-btn:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* removable chip inside badges */
+.badge-x {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1;
+  padding: 1px 0 0 2px;
+  cursor: pointer;
+}
+.badge-x:hover { color: var(--neg); }
+
+/* goal activity timeline */
+.timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  border-bottom: 1px dashed var(--line);
+}
+.timeline-row:last-child { border-bottom: 0; }
+.timeline-ic { width: 22px; text-align: center; color: var(--ink-2); font-size: 13px; }
+
+/* grouped search results */
+.search-group + .search-group {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.search-group-label {
+  padding: 6px 11px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.search-result-item.is-active { background: var(--surface-3); }
+
+/* plan calendar money / savings indicators */
+.cal-dot.money { background: var(--pos); }
+.cal-dot.savings { background: var(--accent-strong); }

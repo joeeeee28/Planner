@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
-import { searchAll, type SearchResult } from '../lib/search';
+import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
 import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
 import { QuickAddModal } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
@@ -78,6 +78,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [q, setQ] = useState('');
   const [focused, setFocused] = useState(false);
   const [quickAdd, setQuickAdd] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
 
   const section = route[0] ?? 'home';
@@ -87,6 +88,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setOpen(false);
     setQ('');
   }, [route.join('/')]);
+
+  // Command menu: Ctrl/Cmd+K opens the Quick Add palette from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setQuickAdd((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -100,6 +113,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     () => (q.trim().length >= 1 ? searchAll(data, q) : []),
     [data, q],
   );
+  const resultGroups = useMemo(() => {
+    const order: SearchGroup[] = ['goals', 'tasks', 'money', 'growth', 'journal'];
+    return order
+      .map((gid) => ({ gid, items: results.filter((r) => searchGroupOf(r.kind) === gid) }))
+      .filter((g) => g.items.length > 0);
+  }, [results]);
 
   const active = (path: string) => (section === path ? 'active' : '');
 
@@ -180,28 +199,60 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </span>
               <input
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setActiveIdx(-1);
+                }}
                 onFocus={() => setFocused(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setActiveIdx((i) => Math.min(results.length - 1, i + 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setActiveIdx((i) => Math.max(0, i - 1));
+                  } else if (e.key === 'Enter' && activeIdx >= 0 && results[activeIdx]) {
+                    e.preventDefault();
+                    const r = results[activeIdx];
+                    navigate(r.route.replace(/^#\//, ''));
+                    setFocused(false);
+                    setQ('');
+                  }
+                }}
                 placeholder="Search…"
                 aria-label="Search your data"
+                aria-controls="search-results"
+                aria-activedescendant={activeIdx >= 0 ? `sr-${results[activeIdx]?.kind}-${results[activeIdx]?.id}` : undefined}
               />
               {focused && q.trim().length >= 1 && (
-                <div className="search-results">
+                <div className="search-results" id="search-results">
                   {results.length === 0 && (
                     <div className="empty-state" style={{ padding: '20px' }}>
                       <p style={{ margin: 0 }}>No matches for “{q}”.</p>
                     </div>
                   )}
-                  {results.map((r) => (
-                    <a
-                      key={`${r.kind}-${r.id}`}
-                      className="search-result-item"
-                      href={r.route}
-                      onClick={() => setFocused(false)}
-                    >
-                      <div className="search-result-title">{r.title}</div>
-                      <div className="search-result-snippet">{r.snippet}</div>
-                    </a>
+                  {resultGroups.map((grp) => (
+                    <div className="search-group" key={grp.gid} role="group" aria-label={SEARCH_GROUP_LABEL[grp.gid]}>
+                      <div className="search-group-label">{SEARCH_GROUP_LABEL[grp.gid]}</div>
+                      {grp.items.map((r) => {
+                        const flatIdx = results.indexOf(r);
+                        return (
+                          <a
+                            key={`${r.kind}-${r.id}`}
+                            id={`sr-${r.kind}-${r.id}`}
+                            className={`search-result-item ${flatIdx === activeIdx ? 'is-active' : ''}`}
+                            href={r.route}
+                            onClick={() => {
+                              setFocused(false);
+                              setQ('');
+                            }}
+                          >
+                            <div className="search-result-title">{r.title}</div>
+                            <div className="search-result-snippet">{r.snippet}</div>
+                          </a>
+                        );
+                      })}
+                    </div>
                   ))}
                 </div>
               )}

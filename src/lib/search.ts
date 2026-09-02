@@ -10,6 +10,7 @@ import { formatDateMed, monthLabel } from './dates';
 export type SearchKind =
   | 'journal'
   | 'goal'
+  | 'task'
   | 'habit'
   | 'learning'
   | 'project'
@@ -28,6 +29,38 @@ export interface SearchResult {
   date?: string;
   route: string;
   score: number;
+}
+
+/** Result groups shown in the search popover (order matters). */
+export type SearchGroup = 'goals' | 'tasks' | 'money' | 'growth' | 'journal';
+
+export const SEARCH_GROUP_LABEL: Record<SearchGroup, string> = {
+  goals: 'Goals',
+  tasks: 'Tasks',
+  money: 'Money',
+  growth: 'Growth',
+  journal: 'Journal',
+};
+
+export function searchGroupOf(kind: SearchKind): SearchGroup {
+  switch (kind) {
+    case 'goal':
+      return 'goals';
+    case 'task':
+      return 'tasks';
+    case 'transaction':
+    case 'savings':
+    case 'budget':
+      return 'money';
+    case 'habit':
+    case 'learning':
+    case 'project':
+    case 'achievement':
+    case 'skill':
+      return 'growth';
+    default:
+      return 'journal';
+  }
 }
 
 const norm = (s: string) => s.toLowerCase();
@@ -97,8 +130,27 @@ export function searchAll(data: AppData, query: string): SearchResult[] {
         id: g.id,
         title: `Goal: ${g.title}`,
         snippet: snippet(inTitle ? g.description || g.notes || g.title : pool, q),
-        route: '#/goals',
+        route: `#/goals/${g.id}`,
         score: (inTitle ? 30 : 12) + n,
+      });
+    }
+  }
+
+  // Planned tasks (scheduled + inbox) — V4
+  for (const task of data.tasks ?? []) {
+    if (task.done) continue;
+    const n = hits(task.text, q);
+    if (n > 0) {
+      push({
+        kind: 'task',
+        id: task.id,
+        title: `Task: ${task.text}`,
+        snippet: task.goalId
+          ? `${data.goals.find((g) => g.id === task.goalId)?.title ?? 'Linked goal'} · ${task.date ? `planned ${formatDateMed(task.date)}` : 'in Inbox'}`
+          : task.date ? `Planned ${formatDateMed(task.date)}` : 'In Inbox',
+        date: task.date,
+        route: task.date ? `#/plan/day/${task.date}` : '#/inbox',
+        score: (task.date ? 22 : 18) + n,
       });
     }
   }

@@ -13,6 +13,7 @@ import {
 } from '../lib/dates';
 import { dayProgress, dayStreak, goalEffectiveProgress, goalDeadlineInfo } from '../lib/analytics';
 import { navigate } from '../lib/router';
+import { attentionItems as computeAttention } from '../lib/attention';
 import { formatMoney, monthTotals, goalPct, savingsRate, monthlyMoneySeries } from '../lib/finance';
 import { ProgressBar, Stars } from '../components/ui';
 import { IconArrowRight } from '../components/icons';
@@ -53,54 +54,8 @@ export function DashboardPage() {
   const streak = dayStreak(data);
   const mk = monthKeyOf(t);
 
-  // ── attention (evidence-based, max 4, calm) ──
-  type Attention = { key: string; text: string; sub: string; route: string; tone: 'warn' | 'neg' | 'pos' };
-  const attentionItems: Attention[] = (() => {
-    const out: Attention[] = [];
-    const todayMs = new Date(t + 'T00:00:00').getTime();
-    for (const g of data.goals) {
-      if (g.status === 'completed' || g.status === 'abandoned' || !g.targetDate) continue;
-      const due = new Date(g.targetDate + 'T00:00:00').getTime();
-      const days = Math.round((due - todayMs) / 86400000);
-      if (days < 0 && goalEffectiveProgress(g) < 100) {
-        out.push({ key: 'goal-' + g.id, text: `“${g.title}” is ${Math.abs(days) === 1 ? '1 day' : `${Math.abs(days)} days`} past its deadline`, sub: 'Goal needs attention', route: 'goals', tone: 'neg' });
-      } else if (days >= 0 && days <= 7 && goalEffectiveProgress(g) < 100) {
-        out.push({ key: 'goal-' + g.id, text: `“${g.title}” is due ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`, sub: `${goalEffectiveProgress(g)}% complete`, route: 'goals', tone: 'warn' });
-      }
-    }
-    const spentByCat = new Map<string, number>();
-    for (const tx of data.transactions) {
-      if (tx.type === 'expense' && tx.date.startsWith(mk)) {
-        const cat = tx.category || 'Other';
-        spentByCat.set(cat, (spentByCat.get(cat) ?? 0) + tx.amount);
-      }
-    }
-    for (const b of data.budgets ?? []) {
-      if (b.limit <= 0) continue;
-      if (b.month && b.month !== mk) continue;
-      const spent = spentByCat.get(b.category) ?? 0;
-      const pct = spent / b.limit;
-      if (pct >= 0.9) {
-        out.push({
-          key: 'budget-' + b.id + '-' + mk,
-          text: pct >= 1 ? `“${b.category}” budget is over by ${formatMoney(spent - b.limit, currency)}` : `“${b.category}” budget is at ${Math.round(pct * 100)}%`,
-          sub: `${formatMoney(spent, currency)} of ${formatMoney(b.limit, currency)}`,
-          route: 'money/budgets',
-          tone: pct >= 1 ? 'neg' : 'warn',
-        });
-      }
-    }
-    for (const g of data.savingsGoals) {
-      if (!g.targetDate || g.targetAmount <= 0) continue;
-      if (g.currentAmount >= g.targetAmount) continue;
-      const due = new Date(g.targetDate + 'T00:00:00').getTime();
-      const days = Math.round((due - todayMs) / 86400000);
-      if (days >= 0 && days <= 30) {
-        out.push({ key: 'sav-' + g.id, text: `Savings goal “${g.name}” target is ${days === 0 ? 'today' : `in ${days} days`}`, sub: `${formatMoney(g.currentAmount, currency)} of ${formatMoney(g.targetAmount, currency)}`, route: 'money/goals', tone: 'warn' });
-      }
-    }
-    return out.slice(0, 4);
-  })();
+  // ── attention (evidence-based, calm, capped) ──
+  const attentionItems = computeAttention(data);
 
   // ── today summary line ──
   const priorities = entry?.priorities ?? [];
@@ -342,7 +297,7 @@ export function DashboardPage() {
           <div className="grid grid-4 topgoals">
             {topGs.map(({ goal: g, pct, deadline, next }) => (
               <div key={g.id} className="panel-flat topgoal" style={{ textAlign: 'left' }}>
-                <button className="topgoal-main" onClick={() => navigate('goals')}>
+                <button className="topgoal-main" onClick={() => navigate(`goals/${g.id}`)}>
                   <div className="flex" style={{ justifyContent: 'space-between', gap: 8 }}>
                     <span className="small bold grow">{g.title}</span>
                     <span className="small t-num" style={{ color: 'var(--ink-2)' }}>{pct}%</span>
@@ -382,7 +337,7 @@ export function DashboardPage() {
                   >
                     Do now
                   </button>
-                  <button className="btn btn-sm" onClick={() => navigate('goals')}>
+                  <button className="btn btn-sm" onClick={() => navigate(`goals/${g.id}`)}>
                     Open
                   </button>
                 </div>

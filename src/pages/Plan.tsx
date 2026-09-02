@@ -220,7 +220,9 @@ function MonthGrid({
           const habit = dayHabitInfo(data, d);
           const j = data.daily[d]?.journal;
           const hasJournal = !!(j && (j.wentWell || j.learned || j.accomplished || j.freeform || j.grateful));
-          const recurring = data.transactions.some((tx) => tx.recurrence && occursOnDate(tx, d));
+          const recurring = data.transactions.some((tx) => tx.recurrence && !tx.recurrencePaused && occursOnDate(tx, d));
+          const moneyDay = data.transactions.some((tx) => tx.date === d) || recurring;
+          const savingsDay = data.savingsGoals.some((g) => (g.contributions ?? []).some((c) => c.date === d));
           const plannedTasks = (data.tasks ?? []).filter((x) => !x.done && x.date === d).length;
           return (
             <button
@@ -243,7 +245,8 @@ function MonthGrid({
                 {plannedTasks > 0 && <span className="cal-dot task" />}
                 {habit.scheduled > 0 && <span className="cal-dot habit" />}
                 {hasJournal && <span className="cal-dot journal" />}
-                {recurring && <span className="cal-dot recurring" />}
+                {moneyDay && <span className="cal-dot money" />}
+                {savingsDay && <span className="cal-dot savings" />}
               </span>
             </button>
           );
@@ -257,7 +260,8 @@ function MonthGrid({
         <Legend color="task" label="Planned task" />
         <Legend color="muted" label="Habit day" />
         <Legend color="warn" label="Journal entry" />
-        <Legend color="pos" label="Recurring income/expense" />
+        <Legend color="pos" label="Money — income, expense or recurring date" />
+        <Legend color="savings" label="Savings contribution" />
       </div>
     </div>
   );
@@ -271,6 +275,8 @@ function Legend({ color, label }: { color: string; label: string }) {
     ink: 'var(--ink-3)',
     muted: 'var(--ink-2)',
     task: 'var(--accent-strong)',
+    money: 'var(--pos)',
+    savings: 'var(--accent-strong)',
   };
   return (
     <span className="flex tiny muted" style={{ gap: 6 }}>

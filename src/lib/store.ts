@@ -80,6 +80,7 @@ function normalizeTransactions(list: unknown): Transaction[] {
       notes: typeof t.notes === 'string' ? t.notes : undefined,
       recurrence: (t.recurrence === 'weekly' || t.recurrence === 'monthly' || t.recurrence === 'quarterly' || t.recurrence === 'yearly') ? t.recurrence : undefined,
       lastGenerated: typeof t.lastGenerated === 'string' ? t.lastGenerated : undefined,
+      recurrencePaused: t.recurrencePaused === true ? true : undefined,
       createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date().toISOString(),
       updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : undefined,
     });

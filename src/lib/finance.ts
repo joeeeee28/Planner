@@ -40,7 +40,8 @@ export function nextOccurrence(from: DateStr, recurrence: Recurrence): DateStr {
  * Generate the next due occurrence for recurring transactions.
  * Safe by design: only generates a transaction when `lastGenerated` (or the
  * transaction's own date) is before the due date, so nothing is ever
- * duplicated on app open or repeated calls.
+ * duplicated on app open or repeated calls. Paused schedules
+ * (`recurrencePaused`) stay frozen and are never advanced.
  */
 export function materializeRecurring(
   txs: Transaction[],
@@ -48,7 +49,7 @@ export function materializeRecurring(
 ): { txs: Transaction[]; generated: number } {
   let generated = 0;
   const out = txs.map((t) => {
-    if (!t.recurrence) return t;
+    if (!t.recurrence || t.recurrencePaused) return t;
     const last = t.lastGenerated ?? t.date;
     if (last >= now) return t; // next occurrence not yet due
     const due = nextOccurrence(last, t.recurrence);
@@ -405,6 +406,33 @@ export function removeContribution(goals: AppData['savingsGoals'], goalId: strin
       currentAmount: Math.max(0, (g.currentAmount || 0) - removed.amount),
     };
   });
+}
+
+/** Sum of savings-goal contributions recorded inside a calendar month. */
+export function sumContributionsInMonth(contributions: readonly { date: DateStr; amount: number }[], mk: string): number {
+  return contributions.filter((c) => c.date.startsWith(mk)).reduce((a, c) => a + (Number.isFinite(c.amount) ? c.amount : 0), 0);
+}
+
+/**
+ * Actual average monthly contribution: total contributed across the elapsed
+ * calendar months between the first and the latest contribution (inclusive).
+ * Returns null when there is no contribution history yet.
+ */
+export function averageMonthlyContribution(contributions: readonly { date: DateStr; amount: number }[]): number | null {
+  if (contributions.length === 0) return null;
+  const months = new Map<string, number>();
+  for (const c of contributions) {
+    const mk = c.date.slice(0, 7);
+    months.set(mk, (months.get(mk) ?? 0) + (Number.isFinite(c.amount) ? c.amount : 0));
+  }
+  const keys = [...months.keys()].sort();
+  if (keys.length === 0) return null;
+  const first = keys[0];
+  const last = keys[keys.length - 1];
+  const [ay, am] = first.split('-').map(Number);
+  const [by, bm] = last.split('-').map(Number);
+  const span = Math.max(1, (by - ay) * 12 + (bm - am) + 1);
+  return Math.round(keys.reduce((a, k) => a + (months.get(k) ?? 0), 0) / span);
 }
 
 // ── Goal financial pace (YNAB-style "required monthly saving") ───────────────

@@ -41,6 +41,8 @@ interface Draft {
   whatILearned: string;
   startDate: string;
   completionDate: string;
+  /** Optional goal this learning supports. */
+  goalId: string;
 }
 
 const emptyDraft = (): Draft => ({
@@ -53,6 +55,7 @@ const emptyDraft = (): Draft => ({
   whatILearned: '',
   startDate: todayStr(),
   completionDate: '',
+  goalId: '',
 });
 
 export function LearningTab() {
@@ -78,6 +81,7 @@ export function LearningTab() {
       whatILearned: item.whatILearned,
       startDate: item.startDate ?? '',
       completionDate: item.completionDate ?? '',
+      goalId: item.goalId ?? '',
     });
     setModal({ item });
   };
@@ -96,6 +100,7 @@ export function LearningTab() {
         whatILearned: draft.whatILearned,
         startDate: draft.startDate || undefined,
         completionDate: completed ? draft.completionDate || todayStr() : draft.completionDate || undefined,
+        goalId: draft.goalId || undefined,
       };
       if (modal?.item) {
         d.learning = d.learning.map((l) => (l.id === modal.item!.id ? { ...l, ...base } : l));
@@ -228,6 +233,11 @@ export function LearningTab() {
                           {area.icon} {area.name}
                         </span>
                       )}
+                      {l.goalId && data.goals.find((g) => g.id === l.goalId) && (
+                        <span className="badge tiny badge-accent" title="Supports this goal">
+                          ◎ {data.goals.find((g) => g.id === l.goalId)!.title}
+                        </span>
+                      )}
                     </div>
                     <div className="flex mt-8" style={{ gap: 8 }}>
                       <ProgressBar pct={l.progress} color={l.status === 'completed' ? 'green' : 'blue'} />
@@ -290,6 +300,17 @@ export function LearningTab() {
                 {data.growthAreas.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.icon} {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="form-label">Supports goal (optional)</label>
+              <select value={draft.goalId} onChange={(e) => setDraft({ ...draft, goalId: e.target.value })}>
+                <option value="">— None —</option>
+                {data.goals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    ◎ {g.title}
                   </option>
                 ))}
               </select>

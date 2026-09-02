@@ -9,10 +9,8 @@ import {
   goalPct,
   savingsRate,
   categoryBreakdown,
-  largestCategory,
   avgMonthlyIncome,
   highestIncomeMonth,
-  consecutiveIncomeGrowthMonths,
   monthlyMoneySeries,
   txsInMonth,
   contributeToGoal,
@@ -29,22 +27,25 @@ import {
   totalBudgeted,
   totalBudgetSpent,
   requiredMonthlySaving,
+  averageMonthlyContribution,
+  sumContributionsInMonth,
   type BudgetStatus,
 } from '../lib/finance';
 import type { Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
 import { Modal, ProgressBar, EmptyState } from '../components/ui';
-import { IconPlus, IconTrash, IconEdit, IconCopy } from '../components/icons';
+import { IconPlus, IconTrash, IconEdit, IconCopy, IconArrowRight, IconChart } from '../components/icons';
 import { uid } from '../lib/uid';
 import { PAYMENT_METHODS } from '../lib/providers';
 import {
   Bar,
-  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
   Legend,
+  ComposedChart,
+  Line,
 } from 'recharts';
 
 type Tab = 'overview' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budgets' | 'recurring' | 'history';
@@ -316,28 +317,31 @@ function OverviewTab() {
   const currency = data.settings.finance.currency;
   const mm = monthTotals(data.transactions, mk);
   const rate = savingsRate(mm.income, mm.expense);
-  const saved = totalSaved(data);
-  const topCat = largestCategory(data.transactions, mk);
-  const series = monthlyMoneySeries(data, 12);
-  const topGoal = [...data.savingsGoals].sort((a, b) => b.targetAmount - a.targetAmount)[0];
+  const savedTotal = totalSaved(data);
   const [period, setPeriod] = useState<CashFlowPeriod>('month');
   const cmp = comparePeriods(data.transactions, period, t);
-  const incomeBySource = categoryBreakdown(data.transactions, 'income', mk);
-  const largestSource = incomeBySource[0] ?? null;
-  const growthStreak = consecutiveIncomeGrowthMonths(data, 12);
-  const recurringCommitments = data.transactions.filter((x) => x.recurrence);
-  const recurringMonthly = recurringCommitments.filter((x) => x.recurrence === 'monthly').reduce((a, x) => a + x.amount, 0);
-
+  const savedThisMonth = data.savingsGoals.reduce((a, g) => a + sumContributionsInMonth(g.contributions ?? [], mk), 0);
   const flowLabel = cmp.current.saved > 0 ? 'Positive' : cmp.current.saved < 0 ? 'Negative' : 'Neutral';
+
+  // spending categories this month (top 5, calm bars)
+  const spendCats = categoryBreakdown(data.transactions, 'expense', mk);
+  const topCat = spendCats[0] ?? null;
+
+  // savings goals — compact multi-goal list
+  const goals = [...data.savingsGoals].sort((a, b) => (b.targetAmount || 0) - (a.targetAmount || 0));
+  const goalsDueSoon = goals.filter((g) => g.targetAmount > 0 && (g.currentAmount || 0) < g.targetAmount && g.targetDate && g.targetDate <= addDays(t, 60)).length;
+
+  // recurring commitments
+  const recurring = data.transactions.filter((x) => x.recurrence && !x.recurrencePaused);
+  const recurringNext30 = recurring
+    .map((x) => ({ x, next: nextOccurrence(x.lastGenerated ?? x.date, x.recurrence!) }))
+    .filter((r) => r.next <= addDays(t, 30))
+    .sort((a, b) => a.next.localeCompare(b.next));
 
   return (
     <div>
-      <div className="grid grid-4 mb-24">
-        <div className="panel-flat">
-          <div className="stat-label">Balance (net this month)</div>
-          <div className="stat-value money-pos">{formatMoney(mm.saved, currency)}</div>
-          <div className="stat-hint">{flowLabel} cash flow</div>
-        </div>
+      {/* THIS MONTH — five calm numbers: income, expenses, saved, net, rate */}
+      <div className="grid grid-5 mb-24">
         <div className="panel-flat">
           <div className="stat-label">Income</div>
           <div className="stat-value money-pos">{formatMoney(mm.income, currency)}</div>
@@ -349,13 +353,23 @@ function OverviewTab() {
           <div className="stat-hint">this month</div>
         </div>
         <div className="panel-flat">
+          <div className="stat-label">Saved</div>
+          <div className="stat-value money-pos">{formatMoney(savedThisMonth, currency)}</div>
+          <div className="stat-hint">contributed to savings goals</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Net</div>
+          <div className="stat-value" style={{ color: mm.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{formatMoney(mm.saved, currency)}</div>
+          <div className="stat-hint">{flowLabel} cash flow</div>
+        </div>
+        <div className="panel-flat">
           <div className="stat-label">Savings rate</div>
           <div className="stat-value">{rate}%</div>
-          <div className="stat-hint">Total saved: {formatMoney(saved, currency, true)}</div>
+          <div className="stat-hint">Total saved: {formatMoney(savedTotal, currency, true)}</div>
         </div>
       </div>
 
-      {/* Cash flow comparison */}
+      {/* Cash flow comparison — month / quarter / year vs the previous period */}
       <div className="panel section-gap">
         <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8 }}>
           <h2 className="panel-title">Cash flow</h2>
@@ -367,21 +381,17 @@ function OverviewTab() {
             ))}
           </div>
         </div>
-        <p className="panel-sub">{periodRange(period, t).label} vs previous {period}</p>
+        <p className="panel-sub">{periodRange(period, t).label} vs previous {period} — with change</p>
         <div className="grid grid-3 mt-8">
           <div className="panel-flat">
             <div className="stat-label">Income</div>
             <div className="stat-value money-pos" style={{ fontSize: 20 }}>{formatMoney(cmp.current.income, currency)}</div>
-            <div className={`stat-hint ${(cmp.incomePct ?? 0) >= 0 ? 'pos-text' : 'neg-text'}`}>
-              {cmp.incomePct === null ? 'no previous data' : `${cmp.incomePct >= 0 ? '+' : ''}${cmp.incomePct}% vs previous`}
-            </div>
+            <div className="stat-hint">{cmp.incomePct === null ? 'no previous data' : `${cmp.change.income >= 0 ? '+' : ''}${formatMoney(cmp.change.income, currency)} (${cmp.incomePct >= 0 ? '+' : ''}${cmp.incomePct}%)`}</div>
           </div>
           <div className="panel-flat">
             <div className="stat-label">Expenses</div>
             <div className="stat-value" style={{ fontSize: 20 }}>{formatMoney(cmp.current.expense, currency)}</div>
-            <div className={`stat-hint ${(cmp.expensePct ?? 0) <= 0 ? 'pos-text' : 'neg-text'}`}>
-              {cmp.expensePct === null ? 'no previous data' : `${cmp.expensePct >= 0 ? '+' : ''}${cmp.expensePct}% vs previous`}
-            </div>
+            <div className="stat-hint">{cmp.expensePct === null ? 'no previous data' : `${cmp.change.expense >= 0 ? '+' : ''}${formatMoney(cmp.change.expense, currency)} (${cmp.expensePct >= 0 ? '+' : ''}${cmp.expensePct}%)`}</div>
           </div>
           <div className="panel-flat">
             <div className="stat-label">Net</div>
@@ -395,89 +405,115 @@ function OverviewTab() {
         </div>
       </div>
 
-      <div className="grid grid-2 section-gap" style={{ alignItems: 'start' }}>
-        <div className="panel">
-          <h2 className="panel-title">Savings goal</h2>
-          {topGoal && topGoal.targetAmount > 0 ? (
-            <>
-              <div className="flex mt-16" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span className="bold" style={{ fontSize: 15 }}>{topGoal.name}</span>
-                <span className="small muted t-num">
-                  {formatMoney(topGoal.currentAmount, currency)} / {formatMoney(topGoal.targetAmount, currency)}
-                </span>
-              </div>
-              <div className="mt-8">
-                <ProgressBar pct={goalPct(topGoal)} color="pos" height={7} />
-              </div>
-              <div className="flex mt-8" style={{ justifyContent: 'space-between' }}>
-                <span className="small bold t-num">{goalPct(topGoal)}% complete</span>
-                <button className="btn btn-sm" onClick={() => navigate('money/savings')}>All goals</button>
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              icon="◒"
-              title="No savings goals yet"
-              text="Create your first goal and start tracking your progress."
-              action={<button className="btn btn-primary btn-sm" onClick={() => navigate('money/savings')}>Create goal</button>}
-            />
-          )}
+      {/* Spending categories */}
+      <div className="panel section-gap">
+        <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+          <h2 className="panel-title">Spending categories</h2>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('money/expenses')}>Open expenses <IconArrowRight size={13} /></button>
         </div>
+        <p className="panel-sub">Where this month's money went.</p>
+        {topCat && topCat.amount > 0 ? (
+          <div className="mt-8">
+            {spendCats.slice(0, 5).map((c) => (
+              <div className="flex mb-8" key={c.category} style={{ gap: 8, alignItems: 'center' }}>
+                <span className="small grow">{c.category}</span>
+                <span className="tiny muted t-num" style={{ width: 44, textAlign: 'right' }}>{c.pct}%</span>
+                <span className="small t-num" style={{ minWidth: 92, textAlign: 'right' }}>{formatMoney(c.amount, currency)}</span>
+                <ProgressBar pct={c.pct} height={4} color="neg" />
+              </div>
+            ))}
+            <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>Largest: {topCat.category} · {formatMoney(topCat.amount, currency)}</p>
+          </div>
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>No expenses recorded this month yet.</p>
+        )}
+      </div>
 
-        <div className="panel">
-          <h2 className="panel-title">Income by source</h2>
-          {largestSource ? (
-            <>
-              <div className="stat-row"><span className="k">Largest source</span><span className="v">{largestSource.category}</span></div>
-              {incomeBySource.slice(0, 5).map((c) => (
-                <div className="flex mb-8" key={c.category} style={{ gap: 8 }}>
-                  <span className="small grow">{c.category}</span>
-                  <span className="tiny muted t-num">{c.pct}%</span>
-                  <ProgressBar pct={c.pct} height={4} color="pos" />
+      {/* Savings goals */}
+      <div className="panel section-gap">
+        <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          <div>
+            <h2 className="panel-title" style={{ marginBottom: 2 }}>Savings goals</h2>
+            {goals.length > 0 && (
+              <p className="panel-sub" style={{ marginBottom: 0 }}>
+                {goals.length} {goals.length === 1 ? 'goal' : 'goals'} · {formatMoney(savedTotal, currency)} saved
+                {goalsDueSoon > 0 ? ` · ${goalsDueSoon} within 60 days of their target` : ''}
+              </p>
+            )}
+          </div>
+          <button className="btn btn-sm" onClick={() => navigate('money/savings')}>Manage <IconArrowRight size={13} /></button>
+        </div>
+        {goals.length === 0 ? (
+          <EmptyState
+            icon="◒"
+            title="No savings goals yet"
+            text="Create your first goal and start tracking your progress — contributions stay savings, never expenses."
+            action={<button className="btn btn-primary btn-sm" onClick={() => navigate('money/savings')}>Create goal</button>}
+          />
+        ) : (
+          <div className="grid grid-2 mt-8" style={{ gap: 14 }}>
+            {goals.slice(0, 4).map((g) => {
+              const pct = goalPct(g);
+              const remaining = Math.max(0, (g.targetAmount || 0) - (g.currentAmount || 0));
+              const required = g.targetDate ? requiredMonthlySaving(g.targetAmount || 0, g.currentAmount || 0, g.targetDate) : null;
+              const actual = averageMonthlyContribution(g.contributions ?? []);
+              return (
+                <div className="panel-flat" key={g.id} style={{ padding: 12 }}>
+                  <div className="flex" style={{ justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                    <span className="small bold">{g.name}</span>
+                    <span className="tiny muted t-num">{formatMoney(g.currentAmount || 0, currency)} / {formatMoney(g.targetAmount || 0, currency)}</span>
+                  </div>
+                  <div className="mt-8"><ProgressBar pct={pct} color="pos" height={5} /></div>
+                  <div className="flex flex-wrap tiny muted mt-8" style={{ gap: 8 }}>
+                    <span>Remaining {formatMoney(remaining, currency)}</span>
+                    {g.targetDate && <span>by {formatDateMed(g.targetDate)}</span>}
+                    {required !== null && required > 0 && <span>Required {formatMoney(required, currency)}/mo</span>}
+                    {actual !== null && <span>Actual {formatMoney(actual, currency)}/mo</span>}
+                  </div>
                 </div>
-              ))}
-            </>
-          ) : (
-            <p className="small muted mt-16">No income recorded this month yet.</p>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
+      {/* Recurring commitments */}
       <div className="panel section-gap">
-        <h2 className="panel-title">Income vs expenses</h2>
-        <p className="panel-sub">Last 12 months</p>
-        <div style={{ height: 220 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={series} margin={{ top: 5, right: 5, left: -14, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--ink-3)' }} />
-              <YAxis tick={{ fontSize: 10, fill: 'var(--ink-3)' }} tickFormatter={(v) => formatMoney(Number(v), currency, true)} width={52} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v) => [formatMoney(Number(v), currency), '']} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="income" name="Income" fill="var(--pos)" radius={[4, 4, 0, 0]} opacity={0.85} />
-              <Bar dataKey="expense" name="Expenses" fill="var(--neg)" radius={[4, 4, 0, 0]} opacity={0.85} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+          <h2 className="panel-title">Recurring commitments</h2>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('money/recurring')}>Open recurring <IconArrowRight size={13} /></button>
         </div>
+        {recurring.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            Nothing recurring yet. Mark a transaction as recurring and its next dates appear here — never duplicated.
+          </p>
+        ) : (
+          <div className="mt-8">
+            {recurringNext30.length === 0 ? (
+              <p className="small muted" style={{ margin: 0 }}>
+                {recurring.length} active recurring {recurring.length === 1 ? 'schedule' : 'schedules'} · none due in the next 30 days.
+              </p>
+            ) : (
+              recurringNext30.slice(0, 5).map(({ x, next }) => (
+                <div className="tx-row" key={x.id}>
+                  <span className={`tx-dot ${x.type}`}>↻</span>
+                  <div className="grow">
+                    <div className="small bold">{x.description || x.category}</div>
+                    <div className="tiny muted">next {formatDateMed(next)}</div>
+                  </div>
+                  <span className={`tx-amount ${x.type === 'income' ? 'money-pos' : ''}`}>
+                    {x.type === 'income' ? '+' : '−'}{formatMoney(x.amount, currency)}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Financial health snapshot — factual, neutral */}
-      <div className="panel section-gap">
-        <h2 className="panel-title">Financial snapshot</h2>
-        <div className="stat-row"><span className="k">Income trend</span><span className="v">{growthStreak >= 2 ? `Up ${growthStreak} months in a row` : growthStreak === 1 ? 'Slightly up this month' : 'No upward streak yet'}</span></div>
-        <div className="stat-row"><span className="k">Savings rate</span><span className="v t-num">{rate}%</span></div>
-        <div className="stat-row"><span className="k">Largest expense category</span><span className="v">{topCat ? topCat.category : '—'}</span></div>
-        <div className="stat-row"><span className="k">Largest income source</span><span className="v">{largestSource ? largestSource.category : '—'}</span></div>
-        <div className="stat-row"><span className="k">Recurring commitments</span><span className="v">{recurringCommitments.length} active{recurringMonthly > 0 ? ` · ${formatMoney(recurringMonthly, currency)}/mo` : ''}</span></div>
-      </div>
-
-      <div className="panel">
-        <h2 className="panel-title">Privacy</h2>
-        <p className="panel-sub" style={{ marginBottom: 0 }}>
-          🔒 Financial data is stored only in your browser's local storage — it never leaves your device unless you export a
-          backup. Data source: manual entry (local-first). No bank connectivity is used.
-        </p>
-      </div>
+      <p className="tiny muted section-gap" style={{ maxWidth: 560 }}>
+        🔒 Financial data is stored only in this account's private space — manual entry, local-first, no bank connectivity.
+      </p>
     </div>
   );
 }
@@ -867,6 +903,7 @@ function SavingsTab() {
             const done = pct >= 100;
             const remaining = (g.targetAmount || 0) - (g.currentAmount || 0);
             const pace = g.targetDate ? requiredMonthlySaving(g.targetAmount || 0, g.currentAmount || 0, g.targetDate) : null;
+            const actual = averageMonthlyContribution(g.contributions ?? []);
             return (
               <div className="panel" key={g.id}>
                 <div className="flex" style={{ justifyContent: 'space-between' }}>
@@ -875,7 +912,7 @@ function SavingsTab() {
                     {done && <span className="badge badge-pos mt-8">✓ Reached</span>}
                   </div>
                   <div className="flex" style={{ gap: 4 }}>
-                    <button className="btn btn-icon btn-sm" onClick={() => setDetailGoal(g)} aria-label="History"><IconEdit size={13} /></button>
+                    <button className="btn btn-icon btn-sm" onClick={() => setDetailGoal(g)} aria-label="View contributions"><IconChart size={13} /></button>
                     <button className="btn btn-icon btn-sm" onClick={() => openEdit(g)} aria-label="Edit"><IconEdit size={13} /></button>
                     <button className="btn btn-icon btn-sm" onClick={() => remove(g.id)} aria-label="Delete"><IconTrash size={13} /></button>
                   </div>
@@ -889,11 +926,18 @@ function SavingsTab() {
                   <span className="small bold t-num">{pct}%</span>
                   {g.targetDate && <span className="tiny muted">by {formatDateMed(g.targetDate)}</span>}
                 </div>
-                <div className="tiny muted mt-8">
-                  Remaining: {formatMoney(Math.max(0, remaining), currency)}
-                  {pace !== null && pace > 0 ? ` · need ${formatMoney(pace, currency)}/month` : ''}
+                <div className="flex flex-wrap tiny muted mt-8" style={{ gap: 8 }}>
+                  <span><b>Remaining</b> {formatMoney(Math.max(0, remaining), currency)}</span>
+                  {g.targetDate && <span><b>Deadline</b> {formatDateMed(g.targetDate)}</span>}
+                  {pace !== null && pace > 0 && <span><b>Required</b> {formatMoney(pace, currency)}/mo</span>}
+                  {actual !== null && <span><b>Actual</b> {formatMoney(actual, currency)}/mo</span>}
+                  {g.monthlyContributionTarget ? <span>Target {formatMoney(g.monthlyContributionTarget, currency)}/mo</span> : null}
                 </div>
-                {g.monthlyContributionTarget ? <div className="tiny muted mt-8">Monthly target: {formatMoney(g.monthlyContributionTarget, currency)}</div> : null}
+                {pace !== null && actual !== null && actual < pace && (
+                  <div className="tiny muted mt-8" style={{ marginBottom: 0 }}>
+                    Actual is {formatMoney(pace - actual, currency)}/mo behind the pace the deadline needs.
+                  </div>
+                )}
                 {!done && (
                   <div className="flex mt-16" style={{ gap: 6 }}>
                     {[1000, 5000, 10000].map((amt) => (
@@ -1142,68 +1186,89 @@ function BudgetsTab() {
 
 function RecurringTab() {
   const crud = useTxCrud();
-  const { data } = crud;
+  const { data, update } = crud;
   const currency = data.settings.finance.currency;
+  const t = todayStr();
   const recurring = data.transactions.filter((x) => x.recurrence);
-  const next30 = recurring.filter((x) => {
-    const last = x.lastGenerated ?? x.date;
-    const nxt = nextOccurrence(last, x.recurrence!);
-    return nxt <= addDays(todayStr(), 30);
-  });
+
+  const withNext = recurring.map((x) => ({
+    x,
+    next: nextOccurrence(x.lastGenerated ?? x.date, x.recurrence!),
+  }));
+  const paused = withNext.filter((r) => r.x.recurrencePaused);
+  const live = withNext.filter((r) => !r.x.recurrencePaused);
+  const upcoming = live.filter((r) => r.next <= addDays(t, 30)).sort((a, b) => a.next.localeCompare(b.next));
+  const active = live.filter((r) => r.next > addDays(t, 30)).sort((a, b) => a.next.localeCompare(b.next));
+
+  const setPaused = (id: string, pausedFlag: boolean) =>
+    update((d) => {
+      d.transactions = d.transactions.map((x) => (x.id === id ? { ...x, recurrencePaused: pausedFlag, updatedAt: new Date().toISOString() } : x));
+      return { ...d };
+    });
+
+  const Section = ({
+    title,
+    sub,
+    rows,
+    empty,
+  }: {
+    title: string;
+    sub: string;
+    rows: { x: Transaction; next: string }[];
+    empty: string;
+  }) => (
+    <div className="panel mb-16">
+      <h2 className="panel-title">{title}</h2>
+      <p className="panel-sub">{sub}</p>
+      {rows.length === 0 ? (
+        <p className="small muted" style={{ margin: 0 }}>{empty}</p>
+      ) : (
+        rows.map(({ x, next }) => (
+          <div className="tx-row" key={x.id}>
+            <span className={`tx-dot ${x.type}`}>↻</span>
+            <div className="grow">
+              <div className="small bold">{x.description || x.category}</div>
+              <div className="tiny muted">
+                {RECURRENCES.find((r) => r.id === x.recurrence)?.label}
+                {x.recurrencePaused ? ' · paused' : ` · next ${formatDateMed(next)}`}
+              </div>
+            </div>
+            <span className={`tx-amount ${x.type === 'income' ? 'money-pos' : ''}`}>
+              {x.type === 'income' ? '+' : '−'}{formatMoney(x.amount, currency)}
+            </span>
+            <button className="btn btn-icon btn-sm" onClick={() => crud.openEdit(x)} aria-label="Edit"><IconEdit size={13} /></button>
+            {x.recurrencePaused ? (
+              <button className="btn btn-sm" onClick={() => setPaused(x.id, false)}>Resume</button>
+            ) : (
+              <button className="btn btn-sm" onClick={() => setPaused(x.id, true)}>Pause</button>
+            )}
+            <button className="btn btn-icon btn-sm" onClick={() => crud.remove(x.id, 'recurring ' + x.type)} aria-label="Delete"><IconTrash size={13} /></button>
+          </div>
+        ))
+      )}
+    </div>
+  );
 
   return (
     <div>
-      <div className="panel mb-16">
-        <h2 className="panel-title">Recurring income</h2>
-        <p className="panel-sub">Salary, freelance retainers, rent received — generated once per period, never duplicated.</p>
-        {recurring.filter((x) => x.type === 'income').length === 0 ? (
-          <p className="small muted">No recurring income yet. Mark an income as recurring in its form.</p>
-        ) : (
-          recurring.filter((x) => x.type === 'income').map((tx) => (
-            <div className="tx-row" key={tx.id}>
-              <span className="tx-dot income">↻</span>
-              <div className="grow">
-                <div className="small bold">{tx.description || tx.category}</div>
-                <div className="tiny muted">
-                  {RECURRENCES.find((r) => r.id === tx.recurrence)?.label} · next {formatDateMed(nextOccurrence(tx.lastGenerated ?? tx.date, tx.recurrence!))}
-                </div>
-              </div>
-              <span className="tx-amount money-pos">+{formatMoney(tx.amount, currency)}</span>
-              <button className="btn btn-icon btn-sm" onClick={() => crud.openEdit(tx)} aria-label="Edit"><IconEdit size={13} /></button>
-              <button className="btn btn-icon btn-sm" onClick={() => crud.remove(tx.id, 'recurring income')} aria-label="Delete"><IconTrash size={13} /></button>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="panel mb-16">
-        <h2 className="panel-title">Recurring expenses</h2>
-        <p className="panel-sub">Rent, subscriptions, insurance, loan payments.</p>
-        {recurring.filter((x) => x.type === 'expense').length === 0 ? (
-          <p className="small muted">No recurring expenses yet. Mark an expense as recurring in its form.</p>
-        ) : (
-          recurring.filter((x) => x.type === 'expense').map((tx) => (
-            <div className="tx-row" key={tx.id}>
-              <span className="tx-dot expense">↻</span>
-              <div className="grow">
-                <div className="small bold">{tx.description || tx.category}</div>
-                <div className="tiny muted">
-                  {RECURRENCES.find((r) => r.id === tx.recurrence)?.label} · next {formatDateMed(nextOccurrence(tx.lastGenerated ?? tx.date, tx.recurrence!))}
-                </div>
-              </div>
-              <span className="tx-amount">−{formatMoney(tx.amount, currency)}</span>
-              <button className="btn btn-icon btn-sm" onClick={() => crud.openEdit(tx)} aria-label="Edit"><IconEdit size={13} /></button>
-              <button className="btn btn-icon btn-sm" onClick={() => crud.remove(tx.id, 'recurring expense')} aria-label="Delete"><IconTrash size={13} /></button>
-            </div>
-          ))
-        )}
-      </div>
-
-      {next30.length > 0 && (
-        <div className="panel-flat">
-          <span className="tiny muted">Due in the next 30 days: {next30.map((x) => x.description || x.category).join(', ')}</span>
-        </div>
-      )}
+      <Section
+        title="Upcoming"
+        sub="Recurring entries due within the next 30 days — each occurrence is generated once, never duplicated."
+        rows={upcoming}
+        empty="No recurring entries due in the next 30 days."
+      />
+      <Section
+        title="Active"
+        sub="Ongoing schedules — the next occurrence is more than 30 days away."
+        rows={active}
+        empty="No other active schedules. Everything due soon is listed under Upcoming."
+      />
+      <Section
+        title="Paused"
+        sub="Paused schedules stay frozen — no new occurrences are generated until you resume them."
+        rows={paused}
+        empty="Nothing paused right now."
+      />
 
       {crud.modal && (
         <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats(crud.modal.type)} currency={currency} />
@@ -1282,6 +1347,8 @@ function HistoryTab() {
         )}
       </div>
 
+      <TrendSection />
+
       {period === 'quarter' && (
         <div className="panel">
           <h2 className="panel-title">Quarters — {year}</h2>
@@ -1309,6 +1376,51 @@ function HistoryTab() {
           <div className="stat-row"><span className="k">Savings rate</span><span className="v t-num">{savingsRate(yearTot.income, yearTot.expense)}%</span></div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Trend — 6 / 12 month income, expenses, net and savings ────────────────
+function TrendSection() {
+  const { data } = useApp();
+  const currency = data.settings.finance.currency;
+  const [months, setMonths] = useState<6 | 12>(12);
+  const series = monthlyMoneySeries(data, months).map((p) => {
+    const savings = data.savingsGoals.reduce((a, g) => a + sumContributionsInMonth(g.contributions ?? [], p.month), 0);
+    return { label: p.label, income: p.income, expense: p.expense, net: p.saved, savings };
+  });
+  const hasData = series.some((p) => p.income > 0 || p.expense > 0 || p.savings > 0);
+  if (!hasData) return null;
+  return (
+    <div className="panel section-gap">
+      <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8 }}>
+        <h2 className="panel-title">Income · Expenses · Net · Saved trend</h2>
+        <div className="flex" style={{ gap: 6 }}>
+          {([6, 12] as (6 | 12)[]).map((m) => (
+            <button key={m} className={`btn btn-sm ${months === m ? 'btn-accent' : ''}`} onClick={() => setMonths(m)}>
+              {m} months
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="panel-sub">
+        Where data allows — bars are income and expenses; lines are net (income − expenses) and savings contributions.
+      </p>
+      <div style={{ height: 240 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={series} margin={{ top: 5, right: 5, left: -14, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--ink-3)' }} />
+            <YAxis tick={{ fontSize: 10, fill: 'var(--ink-3)' }} tickFormatter={(v) => formatMoney(Number(v), currency, true)} width={52} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v) => [formatMoney(Number(v), currency), '']} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="income" name="Income" fill="var(--pos)" radius={[3, 3, 0, 0]} opacity={0.8} />
+            <Bar dataKey="expense" name="Expenses" fill="var(--neg)" radius={[3, 3, 0, 0]} opacity={0.8} />
+            <Line type="monotone" dataKey="net" name="Net" stroke="var(--accent)" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="savings" name="Saved (contributions)" stroke="var(--pos)" strokeWidth={2} strokeDasharray="4 3" dot={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

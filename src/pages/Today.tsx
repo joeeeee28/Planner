@@ -122,8 +122,9 @@ export function TodayPage() {
     .filter((tx) => tx.date === date)
     .sort((a, b) => (a.date === b.date ? (a.createdAt < b.createdAt ? 1 : -1) : 0))
     .slice(0, 8);
-  const recurringToday = data.transactions.filter((tx) => tx.recurrence && occursOnDate(tx, date));
-  const hasMoney = todaysTx.length > 0 || recurringToday.length > 0;
+  const recurringToday = data.transactions.filter((tx) => tx.recurrence && !tx.recurrencePaused && occursOnDate(tx, date));
+  const recurringTomorrow = data.transactions.filter((tx) => tx.recurrence && !tx.recurrencePaused && occursOnDate(tx, addDays(date, 1)));
+  const hasMoney = todaysTx.length > 0 || recurringToday.length > 0 || (recurringTomorrow.length > 0 && date >= t);
 
   // habits + learning
   const habitsToday = data.habits.filter((h) => h.active && habitScheduledOn(h, date));
@@ -326,7 +327,7 @@ export function TodayPage() {
             {goalRows.map(({ goal: g, pct, taskNext, milestoneNext, nextActionText }) => (
               <div className="today-goal" key={g.id}>
                 <div className="flex" style={{ justifyContent: 'space-between', gap: 10 }}>
-                  <button className="grow" style={{ textAlign: 'left' }} onClick={() => navigate('goals')}>
+                  <button className="grow" style={{ textAlign: 'left' }} onClick={() => navigate(`goals/${g.id}`)}>
                     <span className="small" style={{ fontWeight: 600 }}>
                       {g.title}
                     </span>
@@ -465,7 +466,9 @@ export function TodayPage() {
           <p className="panel-sub">
             {todaySpending(data.transactions) > 0 || todayIncome(data.transactions) > 0
               ? `Income today ${formatMoney(todayIncome(data.transactions), currency)} · spent ${formatMoney(todaySpending(data.transactions), currency)}`
-              : 'Nothing entered today yet.'}
+              : recurringTomorrow.length > 0 && date >= t
+                ? `Nothing today — ${recurringTomorrow.length} recurring ${recurringTomorrow.length === 1 ? 'item' : 'items'} tomorrow.`
+                : 'Nothing entered today yet.'}
           </p>
           <div className="mt-8 flex flex-col" style={{ gap: 4 }}>
             {todaysTx.map((tx) => (
@@ -486,6 +489,16 @@ export function TodayPage() {
                 </span>
               </div>
             ))}
+            {date >= t &&
+              recurringTomorrow.map((tx) => (
+                <div className="tx-line muted" key={`${tx.id}-tmr`}>
+                  <span className="grow small">{tx.category} <span className="tiny muted">· recurring · tomorrow</span></span>
+                  <span className={`small t-num ${tx.type === 'income' ? 'money-pos' : ''}`}>
+                    {tx.type === 'income' ? '+' : '−'}
+                    {formatMoney(tx.amount, currency)}
+                  </span>
+                </div>
+              ))}
           </div>
         </section>
       )}

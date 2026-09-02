@@ -6,8 +6,10 @@ import { GOAL_LEVELS, GOAL_LEVEL_LABELS, type Goal, type GoalLevel, type GoalSta
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { QuickAddModal } from '../components/QuickAdd';
-import { navigate } from '../lib/router';
+import { GoalDetailPage } from './GoalDetail';
+import { navigate, useRoute } from '../lib/router';
 import { tasksOf, nextTaskForGoal } from '../lib/plan';
+import { healthForGoal } from '../lib/goalIntel';
 import { uid } from '../lib/uid';
 
 const STATUS_LABELS: Record<GoalStatus, string> = {
@@ -43,6 +45,14 @@ const DEADLINE_CLASS: Record<string, string> = {
   'on-track': 'badge-accent',
 };
 
+const HEALTH_CLASS: Record<string, string> = {
+  completed: 'badge-success',
+  'on-track': 'badge-accent',
+  'needs-attention': 'badge-warning',
+  'at-risk': 'badge-warning',
+  overdue: 'badge-danger',
+};
+
 function targetSummary(g: Goal): string {
   const t = g.targetType;
   if (!t || t === 'none') return '';
@@ -65,6 +75,8 @@ interface GoalDraft {
   milestones: { id: string; title: string; done: boolean; date: string }[];
   notes: string;
   relatedHabitIds: string[];
+  /** Optional link to an existing SavingsGoal (financial component). */
+  savingsGoalId: string;
   targetType: GoalTargetType;
   targetValue: string;
   currentValue: string;
@@ -84,6 +96,7 @@ const emptyDraft = (): GoalDraft => ({
   milestones: [],
   notes: '',
   relatedHabitIds: [],
+  savingsGoalId: '',
   targetType: 'none',
   targetValue: '',
   currentValue: '',
@@ -91,6 +104,12 @@ const emptyDraft = (): GoalDraft => ({
 });
 
 export function GoalsPage() {
+  const route = useRoute();
+  if (route[1]) return <GoalDetailPage goalId={route[1]} />;
+  return <GoalsList />;
+}
+
+function GoalsList() {
   const { data, update } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
@@ -122,6 +141,7 @@ export function GoalsPage() {
       milestones: g.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done, date: m.date ?? '' })),
       notes: g.notes,
       relatedHabitIds: g.relatedHabitIds,
+      savingsGoalId: g.savingsGoalId ?? '',
       targetType: g.targetType ?? 'none',
       targetValue: g.targetValue != null ? String(g.targetValue) : '',
       currentValue: g.currentValue != null ? String(g.currentValue) : '',
@@ -150,6 +170,7 @@ export function GoalsPage() {
       milestones: draft.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done, date: m.date || undefined })),
       notes: draft.notes,
       relatedHabitIds: draft.relatedHabitIds,
+      savingsGoalId: draft.savingsGoalId || undefined,
       targetType: draft.targetType,
       targetValue: draft.targetValue.trim() === '' ? undefined : Number(draft.targetValue),
       currentValue: draft.currentValue.trim() === '' ? undefined : Number(draft.currentValue),
@@ -300,6 +321,7 @@ export function GoalsPage() {
         <div className="grid grid-2">
           {filtered.map((g) => {
             const prog = goalEffectiveProgress(g);
+            const health = healthForGoal(g, data);
             const tn = taskNextFor(g.id);
             const deadline = goalDeadlineInfo(g);
             const parent = goalById(g.parentId);
@@ -309,9 +331,9 @@ export function GoalsPage() {
               <div className="goal-card" key={g.id}>
                 <div className="goal-title-row">
                   <div>
-                    <div className="bold" style={{ fontSize: 15 }}>
+                    <button className="goal-title-btn" onClick={() => navigate(`goals/${g.id}`)}>
                       {g.title}
-                    </div>
+                    </button>
                     <div className="flex mt-8" style={{ gap: 6, flexWrap: 'wrap' }}>
                       <span className={`badge ${STATUS_CLASS[g.status]}`}>{STATUS_LABELS[g.status]}</span>
                       <span className="badge">{GOAL_LEVEL_LABELS[g.level]}</span>
@@ -323,6 +345,10 @@ export function GoalsPage() {
                       {g.targetType && g.targetType !== 'none' && (
                         <span className="badge">{TARGET_LABELS[g.targetType]}</span>
                       )}
+                      {g.priority ? <span className="badge tiny">{g.priority === 2 ? 'Top priority' : 'High priority'}</span> : null}
+                      <span className={`badge tiny ${HEALTH_CLASS[health.state]}`} title={health.reason}>
+                        {health.label}
+                      </span>
                       {deadline.status !== 'no-deadline' && (
                         <span className={`badge tiny ${DEADLINE_CLASS[deadline.status]}`}>{deadline.label}</span>
                       )}
@@ -661,6 +687,23 @@ function GoalModal({
         >
           + Milestone
         </button>
+      </div>
+
+      <div className="form-row">
+        <label className="form-label">Financial component (optional)</label>
+        <select value={draft.savingsGoalId} onChange={(e) => set({ savingsGoalId: e.target.value })}>
+          <option value="">— None —</option>
+          {data.savingsGoals.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name} · {g.currentAmount} / {g.targetAmount}
+            </option>
+          ))}
+        </select>
+        <div className="form-hint">
+          {data.savingsGoals.length === 0
+            ? 'Create a savings goal in Money first, then link it here.'
+            : 'Links an existing savings goal — never creates a duplicate.'}
+        </div>
       </div>
 
       <div className="form-row">

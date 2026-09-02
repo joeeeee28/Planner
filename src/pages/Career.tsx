@@ -51,14 +51,14 @@ export function CareerTab() {
 function SkillsTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState<null | { skill?: Skill }>(null);
-  const [draft, setDraft] = useState({ name: '', currentLevel: 20, targetLevel: 80, notes: '', categoryId: 'area-career' });
+  const [draft, setDraft] = useState({ name: '', currentLevel: 20, targetLevel: 80, notes: '', categoryId: 'area-career', goalId: '' });
 
   const openNew = () => {
-    setDraft({ name: '', currentLevel: 20, targetLevel: 80, notes: '', categoryId: 'area-career' });
+    setDraft({ name: '', currentLevel: 20, targetLevel: 80, notes: '', categoryId: 'area-career', goalId: '' });
     setModal({});
   };
   const openEdit = (s: Skill) => {
-    setDraft({ name: s.name, currentLevel: s.currentLevel, targetLevel: s.targetLevel, notes: s.notes, categoryId: s.categoryId ?? 'area-career' });
+    setDraft({ name: s.name, currentLevel: s.currentLevel, targetLevel: s.targetLevel, notes: s.notes, categoryId: s.categoryId ?? 'area-career', goalId: s.goalId ?? '' });
     setModal({ skill: s });
   };
   const save = () => {
@@ -117,6 +117,9 @@ function SkillsTab() {
                   <div style={{ minWidth: 180 }}>
                     <div className="bold">{s.name}</div>
                     {s.notes && <div className="tiny muted">{s.notes}</div>}
+                    {s.goalId && data.goals.find((g) => g.id === s.goalId) && (
+                      <div className="mt-8"><span className="badge tiny badge-accent">◎ {data.goals.find((g) => g.id === s.goalId)!.title}</span></div>
+                    )}
                   </div>
                   <div className="grow flex" style={{ gap: 10 }}>
                     <ProgressBar pct={pct} color="purple" />
@@ -160,6 +163,15 @@ function SkillsTab() {
             <label className="form-label">Notes</label>
             <textarea rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Evidence, resources, next steps…" />
           </div>
+          <div className="form-row">
+            <label className="form-label">Supports goal (optional)</label>
+            <select value={draft.goalId} onChange={(e) => setDraft({ ...draft, goalId: e.target.value })}>
+              <option value="">— None —</option>
+              {data.goals.map((g) => (
+                <option key={g.id} value={g.id}>◎ {g.title}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex" style={{ justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn" onClick={() => setModal(null)}>
               Cancel
@@ -190,6 +202,7 @@ function ProjectsTab() {
     outcomes: '',
     achievements: '',
     url: '',
+    goalId: '',
   };
   const [draft, setDraft] = useState(empty);
 
@@ -209,6 +222,7 @@ function ProjectsTab() {
       outcomes: p.outcomes,
       achievements: p.achievements,
       url: p.url ?? '',
+      goalId: p.goalId ?? '',
     });
     setModal({ project: p });
   };
@@ -280,6 +294,9 @@ function ProjectsTab() {
                 </div>
               </div>
               {p.role && <div className="tiny muted">Role: {p.role}</div>}
+              {p.goalId && data.goals.find((g) => g.id === p.goalId) && (
+                <span className="badge tiny badge-accent mt-8">◎ Supports {data.goals.find((g) => g.id === p.goalId)!.title}</span>
+              )}
               {p.description && <p className="small muted" style={{ margin: '6px 0 0' }}>{p.description}</p>}
               <div className="tiny muted flex flex-wrap" style={{ gap: 10 }}>
                 {p.startDate && <span>Start {formatDateMed(p.startDate)}</span>}
@@ -328,6 +345,15 @@ function ProjectsTab() {
                   <option key={s} value={s}>
                     {PROJECT_STATUS[s]}
                   </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Supports goal (optional)</label>
+              <select value={draft.goalId} onChange={(e) => setDraft({ ...draft, goalId: e.target.value })}>
+                <option value="">— None —</option>
+                {data.goals.map((g) => (
+                  <option key={g.id} value={g.id}>◎ {g.title}</option>
                 ))}
               </select>
             </div>
@@ -386,7 +412,7 @@ function ProjectsTab() {
 function AchievementsTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState<null | { a?: Achievement }>(null);
-  const empty = { date: todayStr(), description: '', impact: '', skillIds: [] as string[], projectId: '', notes: '' };
+  const empty = { date: todayStr(), description: '', impact: '', skillIds: [] as string[], projectId: '', notes: '', goalId: '' };
   const [draft, setDraft] = useState(empty);
 
   const openNew = () => {
@@ -394,13 +420,13 @@ function AchievementsTab() {
     setModal({});
   };
   const openEdit = (a: Achievement) => {
-    setDraft({ date: a.date, description: a.description, impact: a.impact, skillIds: a.skillIds, projectId: a.projectId ?? '', notes: a.notes });
+    setDraft({ date: a.date, description: a.description, impact: a.impact, skillIds: a.skillIds, projectId: a.projectId ?? '', notes: a.notes, goalId: a.goalId ?? '' });
     setModal({ a });
   };
   const save = () => {
     if (!draft.description.trim()) return;
     update((d) => {
-      const base = { date: draft.date, description: draft.description.trim(), impact: draft.impact, skillIds: draft.skillIds, projectId: draft.projectId || undefined, notes: draft.notes };
+      const base = { date: draft.date, description: draft.description.trim(), impact: draft.impact, skillIds: draft.skillIds, projectId: draft.projectId || undefined, notes: draft.notes, goalId: draft.goalId || undefined };
       if (modal?.a) {
         d.achievements = d.achievements.map((a) => (a.id === modal.a!.id ? { ...a, ...base } : a));
       } else {
@@ -461,6 +487,9 @@ function AchievementsTab() {
                     {a.notes && <div className="tiny muted mt-8">{a.notes}</div>}
                     <div className="flex flex-wrap mt-8" style={{ gap: 5 }}>
                       {proj && <span className="badge tiny">🛠️ {proj.name}</span>}
+                      {a.goalId && data.goals.find((g) => g.id === a.goalId) && (
+                        <span className="badge tiny badge-accent">◎ {data.goals.find((g) => g.id === a.goalId)!.title}</span>
+                      )}
                       {a.skillIds.map((sid) => {
                         const sk = skillById(sid);
                         return sk ? (
@@ -528,6 +557,15 @@ function AchievementsTab() {
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Supports goal (optional)</label>
+            <select value={draft.goalId} onChange={(e) => setDraft({ ...draft, goalId: e.target.value })}>
+              <option value="">— None —</option>
+              {data.goals.map((g) => (
+                <option key={g.id} value={g.id}>◎ {g.title}</option>
               ))}
             </select>
           </div>

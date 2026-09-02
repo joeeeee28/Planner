@@ -9,7 +9,8 @@ import {
   goalEffectiveProgress,
   monthlyTrend,
 } from '../lib/analytics';
-import { monthTotals, savingsRate, largestCategory, formatMoney, monthlyMoneySeries, avgMonthlySavings, consecutiveIncomeGrowthMonths, comparePeriods } from '../lib/finance';
+import { monthTotals, savingsRate, largestCategory, formatMoney, monthlyMoneySeries, avgMonthlySavings, consecutiveIncomeGrowthMonths, comparePeriods, budgetStatuses, requiredMonthlySaving, averageMonthlyContribution } from '../lib/finance';
+import { healthForGoal } from '../lib/goalIntel';
 import { navigate } from '../lib/router';
 
 interface Insight {
@@ -72,6 +73,18 @@ export function InsightsPage() {
     if (goals.length > 0) out.push({ icon: '◎', text: `Average goal progress is ${avgGoal}% across ${goals.length} goal${goals.length > 1 ? 's' : ''}.`, kind: avgGoal >= 50 ? 'pos' : 'info', route: 'goals' });
     const dueSoon = goals.filter((g) => g.targetDate && g.targetDate >= t && g.targetDate <= addDays(t, 14) && g.status !== 'completed');
     if (dueSoon.length > 0) out.push({ icon: '⏱', text: `${dueSoon.length} goal${dueSoon.length > 1 ? 's' : ''} due within two weeks: ${dueSoon.map((g) => g.title).join(', ')}.`, kind: 'warn', route: 'goals' });
+    // Goal health — only goals whose state explains itself (real records, no advice)
+    let healthPushed = 0;
+    for (const g of goals) {
+      if (healthPushed >= 2) break;
+      if (g.status === 'completed' || g.status === 'abandoned' || g.status === 'paused') continue;
+      if (g.targetDate && g.targetDate <= addDays(t, 14)) continue; // already surfaced by the due-soon row
+      const h = healthForGoal(g, data);
+      if (h.state === 'overdue' || h.state === 'at-risk') {
+        out.push({ icon: '◎', text: `“${g.title}” — ${h.reason}`, kind: h.state === 'overdue' ? 'neg' : 'warn', route: `goals/${g.id}` });
+        healthPushed++;
+      }
+    }
 
     // ── Learning ──
     const learningIn = data.learning.filter((l) => l.status === 'in-progress');
@@ -119,6 +132,31 @@ export function InsightsPage() {
     }
     const avgSave = avgMonthlySavings(data, 6);
     if (avgSave > 0) out.push({ icon: '◒', text: `Average monthly savings over the last 6 months: ${formatMoney(avgSave, currency)}.`, kind: 'info', route: 'money' });
+    // Budget states — same thresholds as Money/Budgets, calm phrasing
+    for (const bs of budgetStatuses(data.budgets, data.transactions, mk)) {
+      if (bs.state === 'over' || bs.state === 'near-limit') {
+        out.push({
+          icon: '▤',
+          text: `“${bs.budget.category}” budget has used ${bs.pct}% of its ${formatMoney(bs.budget.limit, currency)} limit.`,
+          kind: bs.state === 'over' ? 'warn' : 'info',
+          route: 'money/budgets',
+        });
+      }
+    }
+    // Savings pace vs what the target date needs — projection-style comparison, not a guarantee
+    for (const sg of data.savingsGoals) {
+      if (!sg.targetDate || sg.targetAmount <= 0 || (sg.currentAmount || 0) >= sg.targetAmount) continue;
+      const req = requiredMonthlySaving(sg.targetAmount, sg.currentAmount || 0, sg.targetDate, t);
+      const act = averageMonthlyContribution(sg.contributions ?? []);
+      if (req > 0 && act !== null && act < req * 0.85) {
+        out.push({
+          icon: '◒',
+          text: `Savings “${sg.name}”: the current pace (${formatMoney(act, currency)}/month) is below the ${formatMoney(req, currency)}/month its target date needs.`,
+          kind: 'warn',
+          route: 'money/goals',
+        });
+      }
+    }
     const series = monthlyMoneySeries(data, 12);
     const savedUp = series.length >= 2 && series[series.length - 1].saved > series[series.length - 2].saved;
     if (savedUp) out.push({ icon: '↗', text: 'Savings trend is moving up month over month.', kind: 'pos' });
