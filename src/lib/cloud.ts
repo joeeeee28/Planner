@@ -54,7 +54,7 @@ export interface SupabaseLike {
   auth: {
     getSession: () => Promise<{ data: { session: SessionLike | null } }>;
     onAuthStateChange: (cb: (event: string, session: SessionLike | null) => void) => { data: { subscription: { unsubscribe: () => void } } };
-    signUp: (opts: { email: string; password: string; options?: { data?: Record<string, unknown> } }) => Promise<{ data: { session: SessionLike | null; user: UserLike | null }; error: unknown | null }>;
+    signUp: (opts: { email: string; password: string; options?: { data?: Record<string, unknown>; emailRedirectTo?: string } }) => Promise<{ data: { session: SessionLike | null; user: UserLike | null }; error: unknown | null }>;
     signInWithPassword: (opts: { email: string; password: string }) => Promise<{ data: { session: SessionLike | null; user: UserLike | null }; error: unknown | null }>;
     signOut: () => Promise<{ error: unknown | null }>;
     resetPasswordForEmail: (email: string, opts?: { redirectTo?: string }) => Promise<{ error: unknown | null }>;
@@ -221,6 +221,40 @@ function toSessionUser(s: SessionLike | null): AuthUser | null {
   return s?.user ? toAuthUser(s.user) : null;
 }
 
+/**
+ * Environment-aware app origin used for Supabase auth redirects.
+ *
+ *   * The URL is DERIVED from the actual runtime origin — never hard-coded:
+ *       - production (GitHub Pages) → https://joeeeee28.github.io/Planner
+ *       - local development      → http://localhost:<port>
+ *   * Because it mirrors the origin the user is actually on, production can
+ *     NEVER receive a localhost redirect (localhost only ever appears when
+ *     the app itself is served from localhost during development).
+ *   * Non-browser runtimes (node tests) return undefined so Supabase falls
+ *     back to its own defaults instead of receiving a bogus URL.
+ */
+function appOrigin(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const { origin, pathname } = window.location;
+    if (!origin || !origin.startsWith('http')) return null;
+    return `${origin}${pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Supabase lands the user back on this URL after email confirmation /
+ * password recovery, appending its session tokens as a URL fragment
+ * (`#access_token=…`). The base must therefore be fragment-FREE so token
+ * parsing stays clean — the app then routes by auth state (signed-in home,
+ * forced password gate on PASSWORD_RECOVERY).
+ */
+function authRedirect(): string | undefined {
+  return appOrigin() ?? undefined;
+}
+
 // ── Auth operations (all through Supabase; passwords never touch our code) ──
 
 export type SignUpOutcome = { user: AuthUser; needsVerification: boolean };
@@ -230,7 +264,13 @@ export async function signUp(name: string, email: string, password: string): Pro
     const res = await getClient().auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: {
+        data: { full_name: name },
+        // After email confirmation the user MUST land back on the app at the
+        // origin they signed up from (production GitHub Pages URL, not the
+        // Supabase dashboard Site URL which may still point at localhost).
+        emailRedirectTo: authRedirect(),
+      },
     });
     if (res.error) return { ok: false, error: fail(res.error) };
     // No session ⇒ email confirmation required (typical default).
@@ -270,10 +310,10 @@ export async function signOut(): Promise<AuthFailure | null> {
 /** Send a password-reset email. Returns friendly result. */
 export async function requestPasswordReset(email: string): Promise<{ ok: true } | { ok: false; error: AuthFailure }> {
   try {
-    const redirectTo =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}${window.location.pathname}#/auth/recovery`
-        : undefined;
+    // Always send the user back to THIS app on the origin they are using —
+    // never the dashboard Site URL, never localhost in production. The
+    // recovery session (PASSWORD_RECOVERY) then forces the new-password gate.
+    const redirectTo = authRedirect();
     const res = await getClient().auth.resetPasswordForEmail(email, { redirectTo });
     if (res.error) return { ok: false, error: fail(res.error) };
     return { ok: true };
