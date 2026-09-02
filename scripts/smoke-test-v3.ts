@@ -359,7 +359,13 @@ async function main() {
     });
     const ok = await scenario('G6 offline restore → cache-first + sync pending', [
       ['no blank screen: cached doc renders', () => waitFor(() => /, Dee\./.test(s.body()), 12000)],
-      ['sync pending chip shown (never claims synced)', () => waitFor(() => s.body().includes('Saved locally — sync pending'), 12000)],
+      ['topbar sync chip shows “Saved locally” (pending, not synced)', () => waitFor(() => s.body().includes('Saved locally'), 12000)],
+      ['account menu confirms “sync pending”', () => {
+        const trigger = [...(globalThis.document as unknown as Document).querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') ?? '').startsWith('Account menu for'));
+        if (!trigger) return false;
+        (trigger as HTMLElement).click();
+        return waitFor(() => (globalThis.document as unknown as Document).body.textContent?.includes('Saved locally — sync pending') ?? false, 6000);
+      }],
       ['hero has NO “Synced just now” claim', () => !s.body().includes('Synced just now')],
       ['zero runtime errors', () => s.errors.length === 0],
     ], () => s.errors);
