@@ -1,24 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
-import { currentCycle } from '../lib/dates';
 import { searchAll, type SearchResult } from '../lib/search';
 import { IconHome, IconToday, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
 import { QuickAddModal } from './QuickAdd';
+import { AccountMenu } from './AccountMenu';
 
-const NAV_MAIN = [
-  { path: 'home', label: 'Home', icon: IconHome },
-  { path: 'today', label: 'Today', icon: IconToday },
-  { path: 'plan', label: 'Plan', icon: IconPlan },
-  { path: 'goals', label: 'Goals', icon: IconGoal },
-  { path: 'growth', label: 'Growth', icon: IconGrowth },
-  { path: 'money', label: 'Money', icon: IconMoney },
-  { path: 'journal', label: 'Journal', icon: IconJournal },
-  { path: 'insights', label: 'Insights', icon: IconInsights },
-  { path: 'settings', label: 'Settings', icon: IconSettings },
+interface NavItem {
+  path: string;
+  label: string;
+  icon: (p: { size?: number }) => React.ReactElement;
+  group: 'do' | 'grow' | 'system';
+}
+
+const NAV_MAIN: NavItem[] = [
+  { path: 'home', label: 'Home', icon: IconHome, group: 'do' },
+  { path: 'today', label: 'Today', icon: IconToday, group: 'do' },
+  { path: 'plan', label: 'Plan', icon: IconPlan, group: 'do' },
+  { path: 'goals', label: 'Goals', icon: IconGoal, group: 'grow' },
+  { path: 'growth', label: 'Growth', icon: IconGrowth, group: 'grow' },
+  { path: 'money', label: 'Money', icon: IconMoney, group: 'grow' },
+  { path: 'journal', label: 'Journal', icon: IconJournal, group: 'grow' },
+  { path: 'insights', label: 'Insights', icon: IconInsights, group: 'grow' },
+  { path: 'settings', label: 'Settings', icon: IconSettings, group: 'system' },
 ];
 
-const MOBILE_MAIN = ['home', 'today', 'plan', 'money', 'journal'];
+const GROUP_LABEL: Record<string, string> = { do: 'Plan & do', grow: 'Grow', system: 'System' };
+
+const MOBILE_TABS = ['home', 'today', 'plan', 'money'];
 
 /** Cloud sync indicator (hidden in local mode). */
 function SyncChip() {
@@ -28,7 +37,7 @@ function SyncChip() {
     idle: null,
     syncing: { dot: 'sync', text: 'Syncing…' },
     synced: { dot: 'ok', text: 'Synced' },
-    pending: { dot: 'warn', text: 'Saved locally — sync pending' },
+    pending: { dot: 'warn', text: 'Saved locally' },
     error: { dot: 'warn', text: 'Sync needs attention' },
   } as const;
   const c = map[sync.status];
@@ -44,6 +53,23 @@ function SyncChip() {
   );
 }
 
+function pageTitle(section: string, sub: string | undefined): string {
+  if (section === 'growth' && sub) {
+    const map: Record<string, string> = { habits: 'Habits', learning: 'Learning', career: 'Career', cycles: 'Growth cycles' };
+    return map[sub] ?? 'Growth';
+  }
+  if (section === 'money' && sub) {
+    const map: Record<string, string> = { transactions: 'Transactions', income: 'Income', expenses: 'Expenses', goals: 'Savings', budgets: 'Budgets', recurring: 'Recurring', history: 'History', overview: 'Overview' };
+    return map[sub] ?? 'Money';
+  }
+  if (section === 'plan' && sub) {
+    const map: Record<string, string> = { week: 'Week', month: 'Month', quarter: 'Quarter', year: 'Year', calendar: 'Calendar' };
+    return map[sub] ?? 'Plan';
+  }
+  const hit = NAV_MAIN.find((n) => n.path === section);
+  return hit?.label ?? (section ? 'Growth OS' : 'Home');
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const route = useRoute();
   const { data } = useApp();
@@ -54,6 +80,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const searchRef = useRef<HTMLDivElement>(null);
 
   const section = route[0] ?? 'home';
+  const sub = route[1];
 
   useEffect(() => {
     setOpen(false);
@@ -73,44 +100,58 @@ export function Shell({ children }: { children: React.ReactNode }) {
     [data, q],
   );
 
-  const cycle = currentCycle(data.cycles);
   const active = (path: string) => (section === path ? 'active' : '');
 
+  const groups = ['do', 'grow'] as const;
+  const systemItems = NAV_MAIN.filter((n) => n.group === 'system');
+
   const sidebar = (
-    <aside className={`sidebar ${open ? 'open' : ''}`}>
+    <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Primary">
       <div className="sidebar-brand">
         <span className="brand-mark">◍</span>
         <span className="brand-name">Growth OS</span>
       </div>
       <nav className="sidebar-nav">
-        {NAV_MAIN.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.path}
-              className={`nav-item ${active(item.path)}`}
-              onClick={() => navigate(item.path)}
-            >
-              <span className="nav-icon">
-                <Icon size={16} />
-              </span>
-              {item.label}
-            </button>
-          );
-        })}
+        {groups.map((g) => (
+          <div className="nav-group" key={g}>
+            <div className="nav-group-label">{GROUP_LABEL[g]}</div>
+            {NAV_MAIN.filter((n) => n.group === g).map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.path}
+                  className={`nav-item ${active(item.path)}`}
+                  onClick={() => navigate(item.path)}
+                >
+                  <span className="nav-icon">
+                    <Icon size={16} />
+                  </span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+        <div className="nav-group" style={{ marginTop: 'auto', paddingTop: 10 }}>
+          {systemItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.path}
+                className={`nav-item ${active(item.path)}`}
+                onClick={() => navigate(item.path)}
+              >
+                <span className="nav-icon">
+                  <Icon size={16} />
+                </span>
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
       </nav>
       <div className="sidebar-footer">
-        {cycle ? (
-          <div className="cycle-pill" title={cycle.name}>
-            <span className="dot" />
-            {cycle.name}
-          </div>
-        ) : (
-          <div className="cycle-pill">
-            <span className="dot" />
-            No cycle yet
-          </div>
-        )}
+        <AccountMenu />
       </div>
     </aside>
   );
@@ -127,6 +168,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             {open ? <IconClose /> : <IconMenu />}
           </button>
+          <div className="topbar-heading">
+            <span className="topbar-title">{pageTitle(section, sub)}</span>
+          </div>
           <div className="topbar-right">
             <SyncChip />
             <div className="search-box" ref={searchRef}>
@@ -138,6 +182,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 onChange={(e) => setQ(e.target.value)}
                 onFocus={() => setFocused(true)}
                 placeholder="Search…"
+                aria-label="Search your data"
               />
               {focused && q.trim().length >= 1 && (
                 <div className="search-results">
@@ -160,22 +205,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             </div>
-            <button className="btn btn-ghost btn-icon" title="Share this page" onClick={() => {
-              navigator.clipboard.writeText(window.location.href)
-                .then(() => { const b = document.getElementById('share-btn') as HTMLButtonElement | null; if (b) b.textContent = '✓'; setTimeout(() => { if (b) b.textContent = '↗'; }, 1500); })
-                .catch(() => alert('Copy failed — select the address bar instead.'));
-            }} id="share-btn">↗</button>
             <button className="btn btn-primary quick-add-btn" onClick={() => setQuickAdd(true)}>
               <IconPlus size={14} /> <span className="qa-label">Quick add</span>
             </button>
+            <AccountMenu />
           </div>
         </div>
         {children}
       </main>
 
-      {/* mobile bottom nav */}
-      <nav className="mobile-nav">
-        {NAV_MAIN.filter((n) => MOBILE_MAIN.includes(n.path)).map((item) => {
+      {/* mobile: floating quick-capture action */}
+      <button
+        className="fab"
+        aria-label="Quick add"
+        onClick={() => setQuickAdd(true)}
+      >
+        <IconPlus size={22} />
+      </button>
+
+      {/* mobile bottom navigation: 5 core destinations; everything else lives
+          in the “More” drawer (the sidebar above) incl. Settings + account. */}
+      <nav className="mobile-nav" aria-label="Primary mobile">
+        {NAV_MAIN.filter((n) => MOBILE_TABS.includes(n.path)).map((item) => {
           const Icon = item.icon;
           return (
             <button
@@ -190,13 +241,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </button>
           );
         })}
-        <button className="mn-item" onClick={() => setQuickAdd(true)}>
-          <span className="ic" style={{ color: 'var(--accent)' }}>
-            <IconPlus size={20} />
-          </span>
-          Add
-        </button>
-        <button className={`mn-item ${!MOBILE_MAIN.includes(section) ? 'active' : ''}`} onClick={() => setOpen(!open)}>
+        <button className={`mn-item ${!MOBILE_TABS.includes(section) ? 'active' : ''}`} onClick={() => setOpen(!open)} aria-label="More">
           <span className="ic">
             <IconMenu size={18} />
           </span>

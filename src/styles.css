@@ -1800,3 +1800,426 @@ textarea {
 @media (max-width: 640px) {
   .sync-chip { display: none; } /* declutter mobile topbar */
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROWTH OS V4 — shell, account menu, home command-center layer
+   (additive; refines the V3 design system with the same tokens)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Sidebar: grouped navigation ── */
+.sidebar-nav .nav-group + .nav-group {
+  margin-top: 14px;
+}
+
+.nav-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 6px 12px 4px;
+}
+
+/* ── Topbar: quiet page context + account ── */
+/* On desktop the sidebar + page heading already give context; the topbar
+   title is for tablet/mobile where the drawer hides the nav. */
+.topbar-heading {
+  min-width: 0;
+}
+
+@media (min-width: 1021px) {
+  .topbar-heading {
+    display: none;
+  }
+}
+
+.topbar-heading .topbar-title {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34vw;
+}
+
+/* ── Account menu (avatar + dropdown) ── */
+.account-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.account-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px 4px 5px;
+  cursor: pointer;
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.account-trigger:hover,
+.account-trigger[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.account-name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 110px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.account-caret {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+
+.account-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 244px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  z-index: 80;
+  animation: menuIn 0.14s ease;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.account-pop-head {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+.account-pop-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.account-pop-email {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 1px;
+  overflow-wrap: anywhere;
+}
+
+.account-pop-sync {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-top: 7px;
+}
+
+.account-pop-sync .sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.account-pop-sync.ok .sync-dot {
+  background: var(--pos);
+}
+
+.account-pop-sync.warn .sync-dot {
+  background: var(--warn);
+}
+
+.account-pop-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.account-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.account-pop-item:hover,
+.account-pop-item:focus-visible {
+  background: var(--surface-2);
+}
+
+.account-pop-item.danger {
+  color: var(--neg);
+}
+
+.account-pop-item.danger:hover {
+  background: var(--neg-soft);
+}
+
+.account-pop-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Sidebar-footer (mobile drawer) pop opens upward */
+.sidebar-footer .account-pop {
+  top: auto;
+  bottom: calc(100% + 6px);
+  right: 12px;
+  left: 12px;
+  min-width: 0;
+}
+
+/* ── Home: summary line ── */
+.hero-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.hero-summary b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.hero-summary .sep {
+  color: var(--line-strong);
+}
+
+/* ── Home: attention center ── */
+.attention {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+}
+
+.attention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.attention-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.attention-item:hover {
+  background: var(--surface-2);
+}
+
+.attention-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.attention-item.warn .dot {
+  background: var(--warn);
+}
+
+.attention-item.neg .dot {
+  background: var(--neg);
+}
+
+.attention-text {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.attention-sub {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+/* ── Home: quick capture row ── */
+.capture-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.capture-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink);
+  font-family: inherit;
+  transition: border-color 0.14s, background 0.14s, transform 0.06s;
+}
+
+.capture-btn:hover {
+  border-color: var(--accent-line);
+  background: var(--surface);
+}
+
+.capture-btn:active {
+  transform: translateY(1px);
+}
+
+.capture-btn .ic {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--ink-2);
+}
+
+.capture-btn b {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.capture-btn i {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+.capture-btn svg {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+/* ── Mobile: floating quick-capture + 5-tab nav ── */
+.fab {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .account-name,
+  .account-caret {
+    display: none;
+  }
+
+  .account-trigger {
+    padding: 4px;
+  }
+
+  .account-pop {
+    right: -4px;
+  }
+
+  .fab {
+    display: grid;
+    place-items: center;
+    position: fixed;
+    right: 16px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    background: var(--ink);
+    color: var(--bg);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+    z-index: 45;
+    transition: transform 0.1s ease, background 0.15s;
+  }
+
+  .fab:active {
+    transform: scale(0.94);
+  }
+
+  .mobile-nav .mn-item {
+    padding: 6px 6px;
+    min-width: 46px;
+  }
+}
+
+@media (max-width: 480px) {
+  .capture-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar-heading .topbar-title {
+    max-width: 22vw;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-pop {
+    animation: none;
+  }
+
+  .fab,
+  .account-trigger,
+  .nav-item,
+  .capture-btn {
+    transition: none;
+  }
+}

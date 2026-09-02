@@ -232,3 +232,30 @@ export const IconTarget = ({ size = 15 }: IconProps) => (
     <circle cx="12" cy="12" r="1.2" fill="currentColor" />
   </svg>
 );
+
+export const IconUser = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 20c1.6-3.4 4.6-5 8-5s6.4 1.6 8 5" />
+  </svg>
+);
+
+export const IconLogOut = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <path d="M16 17l5-5-5-5" />
+    <path d="M21 12H9" />
+  </svg>
+);
+
+export const IconChevronDown = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
+export const IconCapture = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);

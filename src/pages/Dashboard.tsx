@@ -18,6 +18,8 @@ import { goalDeadlineInfo } from '../lib/analytics';
 import { ProgressBar, Stars } from '../components/ui';
 import { IconArrowRight } from '../components/icons';
 import { uid } from '../lib/uid';
+import { QuickAddModal, type QuickAddKind } from '../components/QuickAdd';
+import { useState } from 'react';
 
 function greeting(name: string): string {
   const h = new Date().getHours();
@@ -39,6 +41,7 @@ function timeAgo(iso: string): string {
 
 export function DashboardPage() {
   const { data, update, sync, mode } = useApp();
+  const [captureKind, setCaptureKind] = useState<QuickAddKind | null>(null);
   const t = todayStr();
   const cycle = currentCycle(data.cycles);
   const entry = data.daily[t];
@@ -99,6 +102,57 @@ export function DashboardPage() {
     .filter((x) => x.pct !== null)
     .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
 
+  // ── V4: What needs attention (evidence-based, max 4, no noise) ──
+  type Attention = { key: string; text: string; sub: string; route: string; tone: 'warn' | 'neg' | 'pos' };
+  const attentionItems: Attention[] = (() => {
+    const out: Attention[] = [];
+    const todayMs = new Date(t + 'T00:00:00').getTime();
+    // a) goal deadlines — overdue or within 7 days
+    for (const g of data.goals) {
+      if (g.status === 'completed' || g.status === 'abandoned' || !g.targetDate) continue;
+      const due = new Date(g.targetDate + 'T00:00:00').getTime();
+      const days = Math.round((due - todayMs) / 86400000);
+      if (days < 0 && goalEffectiveProgress(g) < 100) {
+        out.push({ key: 'goal-' + g.id, text: `“${g.title}” is ${Math.abs(days) === 1 ? '1 day' : `${Math.abs(days)} days`} past its deadline`, sub: 'Goal needs attention', route: 'goals', tone: 'neg' });
+      } else if (days >= 0 && days <= 7 && goalEffectiveProgress(g) < 100) {
+        out.push({ key: 'goal-' + g.id, text: `“${g.title}” is due ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`, sub: `${goalEffectiveProgress(g)}% complete`, route: 'goals', tone: 'warn' });
+      }
+    }
+    // b) budgets near or over limit (current month)
+    const spentByCat = new Map<string, number>();
+    for (const tx of data.transactions) {
+      if (tx.type === 'expense' && tx.date.startsWith(mk)) {
+        const cat = tx.category || 'Other';
+        spentByCat.set(cat, (spentByCat.get(cat) ?? 0) + tx.amount);
+      }
+    }
+    for (const b of data.budgets ?? []) {
+      if (b.limit <= 0) continue;
+      if (b.month && b.month !== mk) continue;
+      const spent = spentByCat.get(b.category) ?? 0;
+      const pct = spent / b.limit;
+      if (pct >= 0.9) {
+        out.push({
+          key: 'budget-' + b.id + '-' + mk,
+          text: pct >= 1 ? `“${b.category}” budget is over by ${formatMoney(spent - b.limit, data.settings.finance.currency)}` : `“${b.category}” budget is at ${Math.round(pct * 100)}%`,
+          sub: `${formatMoney(spent, data.settings.finance.currency)} of ${formatMoney(b.limit, data.settings.finance.currency)}`,
+          route: 'money/budgets', tone: pct >= 1 ? 'neg' : 'warn',
+        });
+      }
+    }
+    // c) savings goal target date within 30 days and not met
+    for (const g of data.savingsGoals) {
+      if (!g.targetDate || g.targetAmount <= 0) continue;
+      if (g.currentAmount >= g.targetAmount) continue;
+      const due = new Date(g.targetDate + 'T00:00:00').getTime();
+      const days = Math.round((due - todayMs) / 86400000);
+      if (days >= 0 && days <= 30) {
+        out.push({ key: 'sav-' + g.id, text: `Savings goal “${g.name}” target is ${days === 0 ? 'today' : `in ${days} days`}`, sub: `${formatMoney(g.currentAmount, data.settings.finance.currency)} of ${formatMoney(g.targetAmount, data.settings.finance.currency)}`, route: 'money/goals', tone: 'warn' });
+      }
+    }
+    return out.slice(0, 4);
+  })();
+
   // reflect prompt
   const reflect = data.settings.reviewQuestions?.weekly?.[0] ?? 'What went well today?';
 
@@ -139,6 +193,43 @@ export function DashboardPage() {
           </div>
         )}
       </section>
+
+      {/* V4 — one-line orientation: what matters now */}
+      {(priorities.length > 0 || dayP.pct > 0 || attentionItems.length > 0) && (
+        <p className="hero-summary" aria-label="Summary">
+          {priorities.length > 0 && <span><b>{priorities.length}</b> {priorities.length === 1 ? 'priority' : 'priorities'} today</span>}
+          <span className="sep">·</span>
+          <span><b>{dayP.pct}%</b> of today done</span>
+          {attentionItems.length > 0 && (
+            <>
+              <span className="sep">·</span>
+              <span><b>{attentionItems.length}</b> {attentionItems.length === 1 ? 'thing needs' : 'things need'} attention</span>
+            </>
+          )}
+        </p>
+      )}
+
+      {/* V4 — attention center (real evidence only) */}
+      {attentionItems.length > 0 && (
+        <section className="attention section-gap" aria-label="What needs attention">
+          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="panel-title">What needs attention</h2>
+            <span className="tiny muted">Only what matters</span>
+          </div>
+          <div className="attention-list">
+            {attentionItems.map((a) => (
+              <button key={a.key} className={`attention-item ${a.tone}`} onClick={() => navigate(a.route)}>
+                <span className="dot" aria-hidden="true" />
+                <span className="grow">
+                  <span className="attention-text">{a.text}</span>
+                  <span className="attention-sub">{a.sub}</span>
+                </span>
+                <IconArrowRight size={13} />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-2 section-gap" style={{ alignItems: 'start' }}>
         {/* ── 1. What matters today ── */}
@@ -303,6 +394,25 @@ export function DashboardPage() {
           </div>
         )}
       </section>
+
+      {/* ── V4: quick capture — one action, zero navigation ── */}
+      <section className="section-gap">
+        <div className="flex mb-8" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h2 className="t-section" style={{ margin: 0 }}>Quick capture</h2>
+          <span className="tiny muted">Capture now · decide later</span>
+        </div>
+        <div className="capture-row">
+          <button className="capture-btn" onClick={() => setCaptureKind('task')}><span className="ic">☑</span><span className="grow"><b>Task</b><i>on today's list</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('goal')}><span className="ic">◎</span><span className="grow"><b>Goal</b><i>start a goal</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('habit')}><span className="ic">◔</span><span className="grow"><b>Habit</b><i>build a rhythm</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('income')}><span className="ic money-pos">+</span><span className="grow"><b>Income</b><i>money in</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('expense')}><span className="ic">−</span><span className="grow"><b>Expense</b><i>money out</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('saving')}><span className="ic">◒</span><span className="grow"><b>Saving</b><i>toward a goal</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('journal')}><span className="ic">✎</span><span className="grow"><b>Journal</b><i>one line today</i></span><IconArrowRight size={12} /></button>
+          <button className="capture-btn" onClick={() => setCaptureKind('learning')}><span className="ic">◈</span><span className="grow"><b>Learning</b><i>start something</i></span><IconArrowRight size={12} /></button>
+        </div>
+      </section>
+      {captureKind && <QuickAddModal initialKind={captureKind} onClose={() => setCaptureKind(null)} />}
 
       {/* ── GOALS snapshot ── */}
       <section className="section-gap">

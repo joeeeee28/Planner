@@ -10,7 +10,8 @@ import { Modal } from './ui';
 import { uid } from '../lib/uid';
 import type { Goal, Habit, LearningItem, Transaction, SavingsGoal } from '../lib/types';
 
-type Kind = 'task' | 'goal' | 'habit' | 'expense' | 'income' | 'saving' | 'learning' | 'journal';
+export type QuickAddKind = 'task' | 'goal' | 'habit' | 'expense' | 'income' | 'saving' | 'learning' | 'journal';
+type Kind = QuickAddKind;
 
 const KINDS: { id: Kind; label: string; icon: string }[] = [
   { id: 'task', label: 'Task', icon: '☑' },
@@ -23,9 +24,9 @@ const KINDS: { id: Kind; label: string; icon: string }[] = [
   { id: 'journal', label: 'Journal', icon: '✎' },
 ];
 
-export function QuickAddModal({ onClose }: { onClose: () => void }) {
+export function QuickAddModal({ onClose, initialKind = 'task' }: { onClose: () => void; initialKind?: Kind }) {
   const { data, update } = useApp();
-  const [kind, setKind] = useState<Kind>('task');
+  const [kind, setKind] = useState<Kind>(initialKind);
   const t = todayStr();
   const currency = data.settings.finance.currency;
 
