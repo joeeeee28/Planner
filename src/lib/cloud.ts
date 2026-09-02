@@ -80,11 +80,16 @@ export interface UserLike {
 let envConfig: CloudConfig | null = null;
 
 function readEnvConfig(): CloudConfig | null {
-  const anyImportMeta = import.meta as unknown as Record<string, Record<string, unknown> | undefined>;
-  const env = anyImportMeta.env ?? {};
-  const url = typeof env.VITE_SUPABASE_URL === 'string' ? (env.VITE_SUPABASE_URL as string).trim() : '';
-  const anonKey = typeof env.VITE_SUPABASE_ANON_KEY === 'string' ? (env.VITE_SUPABASE_ANON_KEY as string).trim() : '';
-  if (url && anonKey && url.startsWith('http')) return { url, anonKey };
+  try {
+    // Literal member access is required so Vite's static env replacement
+    // (dev + build) substitutes the real values at compile time. In non-Vite
+    // runtimes (node tests) `import.meta.env` is undefined → safe LOCAL mode.
+    const url = String(import.meta.env.VITE_SUPABASE_URL ?? '').trim();
+    const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+    if (url && anonKey && url.startsWith('http')) return { url, anonKey };
+  } catch {
+    /* non-Vite runtime (tests) → local mode */
+  }
   return null;
 }
 
