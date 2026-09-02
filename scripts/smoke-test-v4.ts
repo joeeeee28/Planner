@@ -282,7 +282,7 @@ async function main() {
         ['close the modal', async () => {
           const closeBtn = s.win.document.querySelector('.modal-close, [aria-label="Close"]') as HTMLElement | null;
           if (closeBtn) { closeBtn.click(); } else { s.clickByText('✕'); }
-          return waitFor(() => !s.body().includes('Add a task for today'));
+          return waitFor(() => !s.win.document.querySelector('.modal'));
         }],
         ['zero runtime errors', () => s.errors.length === 0],
       ],

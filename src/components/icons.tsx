@@ -259,3 +259,17 @@ export const IconCapture = ({ size = 18 }: IconProps) => (
     <path d="M12 5v14M5 12h14" />
   </svg>
 );
+
+export const IconInbox = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+    <path d="M5 5h14l2 8v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6l2-8z" />
+  </svg>
+);
+
+export const IconCalendarToday = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4M12 13v4M10 15h4" />
+  </svg>
+);

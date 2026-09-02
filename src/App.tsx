@@ -10,6 +10,7 @@ import { MigrateGate } from './pages/MigrateGate';
 // Pages are lazy-loaded so the initial bundle stays small.
 const DashboardPage = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.DashboardPage })));
 const TodayPage = lazy(() => import('./pages/Today').then((m) => ({ default: m.TodayPage })));
+const InboxPage = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.InboxPage })));
 const PlanPage = lazy(() => import('./pages/Plan').then((m) => ({ default: m.PlanPage })));
 const GoalsPage = lazy(() => import('./pages/Goals').then((m) => ({ default: m.GoalsPage })));
 const GrowthPage = lazy(() => import('./pages/Growth').then((m) => ({ default: m.GrowthPage })));
@@ -92,6 +93,10 @@ function AppRouter() {
   switch (section) {
     case 'today':
       page = <TodayPage />;
+      break;
+    case 'inbox':
+      page = <InboxPage />;
+      break;
       break;
     case 'plan':
       page = <PlanPage />;

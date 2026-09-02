@@ -5,6 +5,9 @@ import { goalDeadlineInfo, goalEffectiveProgress } from '../lib/analytics';
 import { GOAL_LEVELS, GOAL_LEVEL_LABELS, type Goal, type GoalLevel, type GoalStatus, type GoalTargetType } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
+import { QuickAddModal } from '../components/QuickAdd';
+import { navigate } from '../lib/router';
+import { tasksOf, nextTaskForGoal } from '../lib/plan';
 import { uid } from '../lib/uid';
 
 const STATUS_LABELS: Record<GoalStatus, string> = {
@@ -225,6 +228,11 @@ export function GoalsPage() {
     [data.goals, filterLevel, filterStatus],
   );
 
+  // V4: one clearly visible next action per active goal (linked task first)
+  const [quickGoal, setQuickGoal] = useState<string | null>(null);
+  const gTasks = tasksOf(data);
+  const taskNextFor = (goalId: string) => nextTaskForGoal(goalId, gTasks);
+
   const goalById = (id?: string) => data.goals.find((g) => g.id === id);
   const habitsById = (ids: string[]) => data.habits.filter((h) => ids.includes(h.id));
 
@@ -292,6 +300,7 @@ export function GoalsPage() {
         <div className="grid grid-2">
           {filtered.map((g) => {
             const prog = goalEffectiveProgress(g);
+            const tn = taskNextFor(g.id);
             const deadline = goalDeadlineInfo(g);
             const parent = goalById(g.parentId);
             const related = habitsById(g.relatedHabitIds);
@@ -342,7 +351,30 @@ export function GoalsPage() {
                 )}
                 <div className="goal-next">
                   <span>Next:</span>
-                  <b>{g.milestones.find((m) => !m.done)?.title ?? (g.status === 'completed' ? 'Completed ✓' : 'Define a milestone')}</b>
+                  <b>{tn ? tn.text : g.milestones.find((m) => !m.done)?.title ?? (g.status === 'completed' ? 'Completed ✓' : 'Define a milestone')}</b>
+                  {tn && tn.date && <span className="tiny muted">· {formatDateMed(tn.date)}</span>}
+                  {g.status !== 'completed' && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        if (tn) {
+                          update((d) => {
+                            d.tasks = (d.tasks ?? []).map((x) =>
+                              x.id === tn.id
+                                ? { ...x, date: todayStr(), rescheduledAt: [...(x.rescheduledAt ?? []), new Date().toISOString()], updatedAt: new Date().toISOString() }
+                                : x,
+                            );
+                            return { ...d };
+                          });
+                          navigate('today');
+                        } else {
+                          setQuickGoal(g.id);
+                        }
+                      }}
+                    >
+                      Do now
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex" style={{ gap: 8 }}>
@@ -413,6 +445,7 @@ export function GoalsPage() {
           data={data}
         />
       )}
+      {quickGoal && <QuickAddModal initialKind="task" initialGoalId={quickGoal} onClose={() => setQuickGoal(null)} />}
     </div>
   );
 }

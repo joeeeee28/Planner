@@ -192,6 +192,64 @@ function normalizeReminders(list: unknown): AppData['reminders'] {
   return out;
 }
 
+/** Normalize planned tasks (additive V4 domain): shapes, unique ids. */
+function normalizePlannedTasks(list: unknown): AppData['tasks'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: AppData['tasks'] = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Partial<NonNullable<AppData['tasks']>[number]>;
+    if (typeof r.text !== 'string' || !r.text.trim()) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `task-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const date = typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : undefined;
+    const start = typeof r.start === 'string' && /^\d{1,2}:\d{2}$/.test(r.start) ? r.start : undefined;
+    out.push({
+      id,
+      text: r.text,
+      done: r.done === true,
+      date,
+      start,
+      minutes: typeof r.minutes === 'number' && r.minutes > 0 ? Math.round(r.minutes) : undefined,
+      priority: typeof r.priority === 'number' && r.priority >= 1 && r.priority <= 3 ? r.priority : undefined,
+      goalId: typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined,
+      notes: typeof r.notes === 'string' && r.notes ? r.notes : undefined,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+      doneAt: typeof r.doneAt === 'string' ? r.doneAt : undefined,
+      rescheduledAt: Array.isArray(r.rescheduledAt) ? r.rescheduledAt.filter((x): x is string => typeof x === 'string').slice(-8) : [],
+    });
+  }
+  return out;
+}
+
+/** Normalize universal-Inbox items (additive V4 domain). */
+function normalizeInbox(list: unknown): AppData['inbox'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: AppData['inbox'] = [];
+  const KINDS = new Set(['note', 'idea', 'future']);
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Partial<NonNullable<AppData['inbox']>[number]>;
+    if (typeof r.text !== 'string' || !r.text.trim()) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `in-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      kind: KINDS.has(r.kind ?? '') ? (r.kind as NonNullable<AppData['inbox']>[number]['kind']) : 'note',
+      text: r.text,
+      goalId: typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      archived: r.archived === true,
+    });
+  }
+  return out;
+}
+
 /**
  * Backward-compatible migrations — run after every load/import so old or
  * partial data is repaired in place. Never wipes user data.
@@ -201,6 +259,8 @@ export function normalizeData(cached: AppData): AppData {
   if (cached.savingsGoals) cached.savingsGoals = normalizeSavingsGoals(cached.savingsGoals);
   if (cached.budgets) cached.budgets = normalizeBudgets(cached.budgets);
   if (cached.reminders) cached.reminders = normalizeReminders(cached.reminders);
+  cached.tasks = normalizePlannedTasks(cached.tasks);
+  cached.inbox = normalizeInbox(cached.inbox);
   if (!cached.periodReviews || typeof cached.periodReviews !== 'object') cached.periodReviews = {};
   cached.periodReviews = normalizePeriodReviews(cached.periodReviews);
   if (!cached.settings.finance.provider) cached.settings.finance.provider = 'manual';

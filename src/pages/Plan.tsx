@@ -4,6 +4,7 @@ import { useRoute, navigate } from '../lib/router';
 import {
   addDays,
   daysInMonth,
+  formatDateLong,
   formatDateMed,
   isToday,
   monthLabel,
@@ -25,9 +26,10 @@ import {
 import { formatMoney, monthTotals, totalSaved, nextOccurrence } from '../lib/finance';
 import type { Transaction } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
-import { MonthReviewPage, WeekReviewPage } from './Reviews';
+import { MonthReviewPage } from './Reviews';
+import { DayWorkspace, WeekWorkspace } from './PlanWorkspace';
 import { currentCycle } from '../lib/dates';
-type View = 'calendar' | 'year' | 'quarter' | 'month' | 'week';
+type View = 'calendar' | 'year' | 'quarter' | 'month' | 'week' | 'day';
 
 function quarterOf(date: string): string {
   return `${date.slice(0, 4)}-Q${Math.floor((Number(date.slice(5, 7)) - 1) / 3) + 1}`;
@@ -62,9 +64,13 @@ export function PlanPage() {
   const today = todayStr();
   const [view, setView] = useState<View>(() => {
     const v = route[1] as View;
-    return ['calendar', 'year', 'quarter', 'month', 'week'].includes(v) ? v : 'calendar';
+    return ['calendar', 'year', 'quarter', 'month', 'week', 'day'].includes(v) ? v : 'day';
   });
-  const [cursor, setCursor] = useState(() => route[2] ?? monthKeyOf(todayStr()));
+  const [cursor, setCursor] = useState(() => {
+    const r2 = route[2];
+    if (r2) return r2;
+    return view === 'day' || view === 'week' ? todayStr() : monthKeyOf(todayStr());
+  });
 
   const weekStartsOn = data.settings.weekStartsOn;
   const [curYear, curMonth] = (isMonthKey(cursor) ? cursor : `${cursor.slice(0, 4)}-01`).split('-').map(Number);
@@ -85,7 +91,11 @@ export function PlanPage() {
   const switchView = (v: View) => {
     setView(v);
     const dayCursor = isMonthKey(cursor) ? `${cursor}-01` : cursor;
-    if (v === 'calendar') {
+    if (v === 'day') {
+      const base = isMonthKey(cursor) ? todayStr() : cursor;
+      setCursor(base);
+      navigate(`plan/day/${base}`);
+    } else if (v === 'calendar') {
       const m = isMonthKey(cursor) ? cursor : monthKeyOf(dayCursor);
       setCursor(m);
       navigate(`plan/calendar/${m}`);
@@ -106,6 +116,7 @@ export function PlanPage() {
   };
 
   const label = (() => {
+    if (view === 'day') return formatDateLong(curDate);
     if (view === 'calendar') return monthLabel(cursor);
     if (view === 'year') return String(curYear);
     if (view === 'quarter') return `Quarter ${cursor.replace('-Q', ' Q')}`;
@@ -123,7 +134,7 @@ export function PlanPage() {
         <div>
           <h1 className="t-title">Plan</h1>
           <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-            Any day, week, month or year — past, present or future.
+            One planning workspace — tasks, goals, habits and money across Day, Week, Month, Quarter or Year.
           </div>
         </div>
         <div className="spacer" />
@@ -144,9 +155,17 @@ export function PlanPage() {
       </div>
 
       <div className="tabs">
-        {(['calendar', 'year', 'quarter', 'month', 'week'] as View[]).map((v) => (
-          <button key={v} className={`tab ${view === v ? 'active' : ''}`} onClick={() => switchView(v)}>
-            {v === 'calendar' ? 'Calendar' : v === 'year' ? 'Year' : v === 'quarter' ? 'Quarter' : v === 'month' ? 'Month' : 'Week'}
+        {(
+          [
+            { id: 'day', label: 'Day' },
+            { id: 'week', label: 'Week' },
+            { id: 'calendar', label: 'Month' },
+            { id: 'quarter', label: 'Quarter' },
+            { id: 'year', label: 'Year' },
+          ] as { id: View; label: string }[]
+        ).map((v) => (
+          <button key={v.id} className={`tab ${view === v.id ? 'active' : ''}`} onClick={() => switchView(v.id)}>
+            {v.label}
           </button>
         ))}
       </div>
@@ -155,13 +174,14 @@ export function PlanPage() {
         <span className="bold" style={{ fontSize: 15 }}>{label}</span>
       </div>
 
+      {view === 'day' && <DayWorkspace date={curDate} />}
       {view === 'calendar' && (
         <MonthGrid year={curYear} month={curMonth} weekStartsOn={weekStartsOn} deadlines={deadlines} milestones={milestones} />
       )}
+      {view === 'week' && <WeekWorkspace weekStart={curDate} weekStartsOn={weekStartsOn} />}
       {view === 'year' && <YearAtGlance year={curYear} />}
       {view === 'quarter' && <QuarterView qk={cursor.includes('-Q') ? cursor : quarterOf(`${cursor}-01`)} />}
       {view === 'month' && <MonthReviewPage mk={isMonthKey(cursor) ? cursor : monthKeyOf(cursor)} />}
-      {view === 'week' && <WeekReviewPage weekStart={curDate} />}
     </div>
   );
 }
@@ -201,6 +221,7 @@ function MonthGrid({
           const j = data.daily[d]?.journal;
           const hasJournal = !!(j && (j.wentWell || j.learned || j.accomplished || j.freeform || j.grateful));
           const recurring = data.transactions.some((tx) => tx.recurrence && occursOnDate(tx, d));
+          const plannedTasks = (data.tasks ?? []).filter((x) => !x.done && x.date === d).length;
           return (
             <button
               className={[
@@ -219,6 +240,7 @@ function MonthGrid({
                 {status === 'partial' && <span className="cal-dot partial" />}
                 {(deadlines.get(d) ?? 0) > 0 && <span className="cal-dot deadline" />}
                 {milestones.has(d) && <span className="cal-dot milestone" />}
+                {plannedTasks > 0 && <span className="cal-dot task" />}
                 {habit.scheduled > 0 && <span className="cal-dot habit" />}
                 {hasJournal && <span className="cal-dot journal" />}
                 {recurring && <span className="cal-dot recurring" />}
@@ -232,6 +254,7 @@ function MonthGrid({
         <Legend color="warn" label="Partially completed" />
         <Legend color="neg" label="Goal deadline" />
         <Legend color="ink" label="Milestone" />
+        <Legend color="task" label="Planned task" />
         <Legend color="muted" label="Habit day" />
         <Legend color="warn" label="Journal entry" />
         <Legend color="pos" label="Recurring income/expense" />
@@ -247,6 +270,7 @@ function Legend({ color, label }: { color: string; label: string }) {
     neg: 'var(--neg)',
     ink: 'var(--ink-3)',
     muted: 'var(--ink-2)',
+    task: 'var(--accent-strong)',
   };
   return (
     <span className="flex tiny muted" style={{ gap: 6 }}>

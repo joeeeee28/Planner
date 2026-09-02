@@ -429,6 +429,50 @@ export interface Reminder {
   createdAt: string;
 }
 
+
+// ── Planned tasks (cross-day, optional scheduling) ───────────────────────────
+
+/**
+ * A task that may be scheduled (date + optional start/minutes) or left
+ * unscheduled in the Inbox. `date` is the *planned* day; it is separate from
+ * any user-chosen due date and never silently changes.
+ */
+export interface PlannedTask {
+  id: ID;
+  text: string;
+  done: boolean;
+  /** Planned day (undefined while the task sits in the Inbox). */
+  date?: DateStr;
+  /** Optional start time `HH:MM`. */
+  start?: string;
+  /** Optional estimated duration in minutes. */
+  minutes?: number;
+  /** 1 = highest. Optional — most tasks simply have none. */
+  priority?: number;
+  /** Linked goal this task supports. */
+  goalId?: ID;
+  notes?: string;
+  createdAt: string;
+  /** ISO timestamps of reschedules (bounded; used to notice repeated postponing). */
+  rescheduledAt?: string[];
+  updatedAt?: string;
+  doneAt?: string;
+}
+
+// ── Universal Inbox ──────────────────────────────────────────────────────────
+
+export type InboxKind = 'note' | 'idea' | 'future';
+
+/** Capture-first items: ideas, notes, future actions — no decision forced yet. */
+export interface InboxItem {
+  id: ID;
+  kind: InboxKind;
+  text: string;
+  goalId?: ID;
+  createdAt: string;
+  /** Archived items are kept (never deleted automatically) but hidden by default. */
+  archived?: boolean;
+}
 // ── Root store ───────────────────────────────────────────────────────────────
 
 export interface AppData {
@@ -452,6 +496,10 @@ export interface AppData {
   savingsGoals: SavingsGoal[];
   budgets: Budget[];
   reminders: Reminder[];
+  /** Optional planned tasks (V4) — additive; absent in older documents. */
+  tasks?: PlannedTask[];
+  /** Optional universal Inbox (V4) — additive; absent in older documents. */
+  inbox?: InboxItem[];
   /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
   periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;

@@ -2223,3 +2223,532 @@ textarea {
     transition: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V4 · SLICE 2 — unified planning surfaces (Today · Inbox · Plan day/week)
+   Typography, spacing, radii and heights follow the tokens above; nothing
+   introduces a second visual language.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Consistent control rhythm ──────────────────────────────────────────── */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.seg-btn {
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+.seg-btn:hover {
+  color: var(--ink);
+}
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.form-row .seg + input[type='date'],
+.form-row .seg + .mt-8 {
+  margin-top: 8px;
+}
+
+/* ── Planned task rows (Today / Inbox / Plan) ───────────────────────────── */
+.ptask {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  border-radius: var(--r-sm);
+}
+.ptask:hover {
+  background: var(--surface-2);
+}
+.ptask.is-done .ptask-text {
+  color: var(--ink-3);
+}
+.ptask-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  color: var(--surface);
+  transition: all 0.12s ease;
+}
+.ptask-check:hover {
+  border-color: var(--accent);
+}
+.ptask.is-done .ptask-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ptask-pri {
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: transparent;
+}
+.ptask-pri.pri-1 {
+  background: var(--neg);
+}
+.ptask-pri.pri-2 {
+  background: var(--warn);
+}
+.ptask-pri.pri-3 {
+  background: var(--ink-3);
+}
+.ptask-text {
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: text;
+  padding: 2px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ptask-text s {
+  color: var(--ink-3);
+}
+.ptask-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+.ptask-edit input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ptask-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.ptask-dur {
+  flex: none;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.ptask-goal {
+  flex: none;
+  border: none;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ptask-goal:hover {
+  background: var(--accent-line);
+}
+.ptask-acts {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.ptask:hover .ptask-acts,
+.ptask:focus-within .ptask-acts,
+.ptask-quick .ptask-acts {
+  opacity: 1;
+}
+.ptask-act {
+  border: 1px solid transparent;
+  background: none;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 3px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ptask-act:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.ptask-act.primary {
+  color: var(--accent-ink);
+}
+.ptask-act.danger:hover {
+  color: var(--neg);
+  background: var(--neg-soft);
+}
+@media (hover: none) {
+  .ptask-acts {
+    opacity: 1;
+  }
+}
+.ptask-quick {
+  padding: 0 4px 8px;
+}
+
+/* Inbox schedule & note rows */
+.ptask-sched,
+.inbox-note {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.inbox-note .inbox-ic {
+  font-size: 15px;
+  line-height: 1.4;
+}
+.inbox-note.is-archived {
+  opacity: 0.75;
+}
+.inbox-text {
+  font-size: 14px;
+  color: var(--ink);
+}
+.inbox-acts {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.inbox-goal {
+  border: none;
+  background: var(--surface);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  border-radius: 8px;
+  padding: 3px 6px;
+  max-width: 150px;
+  cursor: pointer;
+}
+.goal-chip {
+  border: none;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.goal-chip:hover {
+  background: var(--accent-line);
+}
+
+/* Today page: goals & load */
+.today-goal {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.load-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.load-chip.light {
+  color: var(--pos);
+  background: var(--pos-soft);
+}
+.load-chip.full {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+.load-chip.overloaded {
+  color: var(--neg);
+  background: var(--neg-soft);
+}
+.tx-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.tx-line:last-child {
+  border-bottom: none;
+}
+
+/* Home: top goals, recent activity */
+.topgoals.grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+}
+.topgoal .topgoal-main {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 9px 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.recent-row:hover {
+  opacity: 0.85;
+}
+.recent-ic {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+
+/* Plan: week board */
+.week-board {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.week-col {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.week-col.today {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 1px var(--accent-line);
+}
+.week-col-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.week-dow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.week-date {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-2);
+  line-height: 1;
+}
+.week-date.is-today {
+  color: var(--surface);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.week-col-body {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.week-mini {
+  display: block;
+  border: none;
+  border-radius: 8px;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.week-mini:hover {
+  filter: brightness(0.97);
+}
+.week-mini.task {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+}
+.week-mini.milestone {
+  border-left: 3px solid var(--ink-3);
+  background: var(--surface-2);
+}
+.week-mini.habit {
+  border-left: 3px solid var(--ink-2);
+  background: var(--surface-2);
+}
+.week-mini.fin {
+  border-left: 3px solid var(--pos);
+  background: var(--pos-soft);
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  cursor: default;
+}
+.week-mini.prio {
+  border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+  cursor: pointer;
+}
+.week-mini.empty {
+  border: 1px dashed var(--line-strong);
+  background: none;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.wm-time {
+  font-weight: 700;
+  color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+.wm-goal {
+  color: var(--accent-ink);
+  margin-left: 4px;
+}
+.wm-min {
+  color: var(--ink-3);
+  font-size: 10px;
+  margin-left: 4px;
+}
+.cal-dot.task {
+  background: var(--accent-strong);
+}
+
+/* Calendar dots legend & cell affordance */
+.cal-cell {
+  cursor: pointer;
+}
+
+/* Quick add: 9 kinds wrap gracefully */
+.qa-grid {
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+}
+.qa-item:focus-visible,
+.seg-btn:focus-visible,
+.ptask-act:focus-visible,
+.ptask-check:focus-visible,
+.ptask-goal:focus-visible,
+.capture-btn:focus-visible,
+.recent-row:focus-visible,
+.week-mini:focus-visible,
+.week-col-head:focus-visible,
+.topgoal-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Keyboard + reduced motion */
+.ptask,
+.seg-btn,
+.qa-item,
+.inbox-note,
+.recent-row,
+.week-mini {
+  transition: background 0.12s ease, opacity 0.12s ease, border-color 0.12s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ptask,
+  .seg-btn,
+  .qa-item,
+  .inbox-note,
+  .recent-row,
+  .week-mini {
+    transition: none;
+  }
+}
+
+/* ── Responsive (tablet / phone) ───────────────────────────────────────── */
+@media (max-width: 1020px) {
+  .week-board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .week-col:nth-child(n + 5) {
+    margin-top: 0;
+  }
+}
+@media (max-width: 760px) {
+  .week-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ptask-acts {
+    opacity: 1;
+  }
+  .qa-grid {
+    grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  }
+  .inbox-acts {
+    gap: 2px;
+  }
+}
+@media (max-width: 480px) {
+  .week-board {
+    grid-template-columns: 1fr;
+  }
+  .topgoals.grid-4 {
+    grid-template-columns: 1fr;
+  }
+}

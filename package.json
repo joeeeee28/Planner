@@ -11,7 +11,7 @@
     "test": "tsx scripts/test-logic.ts && tsx scripts/test-income.ts && tsx scripts/test-money-v2.ts && tsx scripts/test-goals-v2.ts && tsx scripts/test-growth-v2.ts && tsx scripts/smoke-test.ts",
     "test:v3": "tsx scripts/test-v3-engine.ts && tsx scripts/smoke-test-v3.ts",
     "test:all": "npm test && npm run test:v3",
-    "test:v4": "tsx scripts/smoke-test-v4.ts"
+    "test:v4": "tsx scripts/smoke-test-v4.ts && tsx scripts/smoke-test-v4-slice2.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

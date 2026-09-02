@@ -207,6 +207,8 @@ export function createInitialData(): AppData {
     savingsGoals: [],
     budgets: [],
     reminders: [],
+    tasks: [],
+    inbox: [],
     periodReviews: {},
     cycleReviews: {},
     createdAt: today,

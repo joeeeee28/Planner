@@ -42,6 +42,7 @@ import { createSyncQueue, type SyncSnapshot } from '../lib/sync';
 import { cacheKeyFor, writeUserCache, readMeta, writeMeta } from '../lib/cloudData';
 import { hasMeaningfulData, migrateLocalToCloud, markMigrationSkipped, type MigrationOutcome } from '../lib/migrate';
 import { createInitialData } from '../lib/defaults';
+import { mergeDeep } from '../lib/merge';
 
 const LOCAL_KEY = 'growth-os.v1';
 
@@ -164,9 +165,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const remoteRes = await fetchRemote(client, uid);
       if (seq !== hydrateSeq.current) return;
       if (remoteRes.ok && remoteRes.data) {
-        dataRef.current = remoteRes.data;
-        setData(remoteRes.data);
-        writeUserCache(uid, remoteRes.data);
+        // Merge over fresh defaults so additive domains (tasks, inbox, …) are
+        // always present even when the cloud doc predates them, then repair
+        // shapes. Existing records are never dropped by the merge.
+        const doc = normalizeData(mergeDeep(createInitialData(), remoteRes.data) as AppData);
+        dataRef.current = doc;
+        setData(doc);
+        writeUserCache(uid, doc);
         setSync({ status: 'synced', lastSyncAt: new Date().toISOString(), pending: false, failures: 0 });
       } else if (remoteRes.ok && !remoteRes.data) {
         // remote empty → maybe offer migration of the legacy local doc

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, type SearchResult } from '../lib/search';
-import { IconHome, IconToday, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
+import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
 import { QuickAddModal } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
 
@@ -16,6 +16,7 @@ interface NavItem {
 const NAV_MAIN: NavItem[] = [
   { path: 'home', label: 'Home', icon: IconHome, group: 'do' },
   { path: 'today', label: 'Today', icon: IconToday, group: 'do' },
+  { path: 'inbox', label: 'Inbox', icon: IconInbox, group: 'do' },
   { path: 'plan', label: 'Plan', icon: IconPlan, group: 'do' },
   { path: 'goals', label: 'Goals', icon: IconGoal, group: 'grow' },
   { path: 'growth', label: 'Growth', icon: IconGrowth, group: 'grow' },
