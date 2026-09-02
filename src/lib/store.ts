@@ -13,6 +13,47 @@ let cached: AppData | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners = new Set<() => void>();
 
+/**
+ * Active persistence key. Local (anonymous) mode writes the V2 key
+ * `growth-os.v1`; signed-in cloud mode switches to a per-user cache key so
+ * every existing store function keeps working unchanged on the user's own
+ * document. `growth-os.v1` is never deleted — it is the migration source
+ * and rollback copy.
+ */
+let activeKey: string = STORAGE_KEY;
+
+export function setActiveStorageKey(key: string) {
+  if (key !== activeKey) {
+    activeKey = key;
+    cached = null; // force reload from the newly active document
+  }
+}
+
+export function getActiveStorageKey(): string {
+  return activeKey;
+}
+
+export function readRawDoc(): string | null {
+  try {
+    return localStorage.getItem(activeKey);
+  } catch {
+    return null;
+  }
+}
+
+export function writeRawDoc(json: string) {
+  localStorage.setItem(activeKey, json);
+}
+
+export function removeRawDoc() {
+  try {
+    localStorage.removeItem(activeKey);
+  } catch {
+    /* noop */
+  }
+  cached = null;
+}
+
 /** Normalize stored transactions: coerce amounts to valid numbers, ensure a type. */
 function normalizeTransactions(list: unknown): Transaction[] {
   if (!Array.isArray(list)) return [];
@@ -170,7 +211,7 @@ export function normalizeData(cached: AppData): AppData {
 export function loadData(): AppData {
   if (cached) return cached;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readRawDoc();
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<AppData>;
       const base = createInitialData();
@@ -189,7 +230,7 @@ export function saveData(data: AppData) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, updatedAt: new Date().toISOString() }));
+      writeRawDoc(JSON.stringify({ ...data, updatedAt: new Date().toISOString() }));
     } catch (err) {
       console.error('Growth OS: failed to persist data', err);
     }
@@ -204,7 +245,7 @@ export function flushData(data: AppData) {
     saveTimer = null;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, updatedAt: new Date().toISOString() }));
+    writeRawDoc(JSON.stringify({ ...data, updatedAt: new Date().toISOString() }));
   } catch (err) {
     console.error('Growth OS: failed to persist data', err);
   }
@@ -219,12 +260,118 @@ export function notifyStore() {
   listeners.forEach((fn) => fn());
 }
 
+export const EXPORT_SCHEMA_VERSION = '3.0';
+
+export interface ExportEnvelope {
+  schemaVersion: string;
+  exportedAt: string;
+  app: 'growth-os';
+  /** Non-secret profile info only (name). Never tokens or passwords. */
+  user?: { name?: string; email?: string };
+  /** The full Growth OS document (all V2 domains + settings). */
+  data: AppData;
+}
+
+/** V3 versioned export format (documented in DEPLOYMENT.md / README). */
 export function exportData(data: AppData): string {
-  return JSON.stringify(
-    { ...data, exportedAt: new Date().toISOString(), app: 'growth-os' },
-    null,
-    2,
-  );
+  const envelope: ExportEnvelope = {
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    app: 'growth-os',
+    user: data.settings?.name ? { name: data.settings.name } : undefined,
+    data,
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+
+export interface ImportReport {
+  data: AppData;
+  mode: 'merge' | 'replace';
+  source: 'v3' | 'legacy';
+  /** Counts from validation, useful for an import preview/confirmation UI. */
+  records: { collections: number; totalRecords: number };
+}
+
+/** Import a backup. Accepts V3 envelopes AND legacy flat exports (V1/V2). */
+export function importData(json: string, mode: 'merge' | 'replace'): AppData {
+  const report = validateImport(json);
+  const { doc } = report;
+  const current = loadData();
+  const next = mode === 'replace' ? createInitialData() : current;
+  const merged = normalizeData(mergeDeep(next, doc) as AppData);
+  merged.onboarded = true;
+  flushData(merged);
+  notifyStore();
+  return merged;
+}
+
+/**
+ * Parse + validate a backup file against the schema. Throws a friendly
+ * Error describing exactly what is wrong. Malformed files are rejected
+ * before anything is touched.
+ */
+export function validateImport(json: string): { doc: Partial<AppData>; source: 'v3' | 'legacy'; counts: Record<string, number> } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('This file is not valid JSON.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('This file does not look like a Growth OS backup.');
+  }
+  const p = parsed as Record<string, unknown>;
+
+  // V3 envelope: { schemaVersion, data, … }
+  let doc: Partial<AppData>;
+  let source: 'v3' | 'legacy' = 'legacy';
+  if (p.schemaVersion !== undefined) {
+    source = 'v3';
+    if (p.schemaVersion !== EXPORT_SCHEMA_VERSION) {
+      throw new Error(`Unsupported backup schema version "${String(p.schemaVersion)}" (expected ${EXPORT_SCHEMA_VERSION}).`);
+    }
+    if (!p.data || typeof p.data !== 'object' || Array.isArray(p.data)) {
+      throw new Error('This backup is missing its data section.');
+    }
+    doc = p.data as Partial<AppData>;
+  } else {
+    doc = p as Partial<AppData>;
+  }
+
+  const hasSettings = doc.settings && typeof doc.settings === 'object';
+  const hasAnyData =
+    Array.isArray(doc.transactions) ||
+    Array.isArray(doc.goals) ||
+    Array.isArray(doc.habits) ||
+    Array.isArray(doc.daily) ||
+    (typeof doc.daily === 'object' && doc.daily !== null) ||
+    Array.isArray(doc.learning) ||
+    Array.isArray(doc.projects);
+  if (!hasSettings || !hasAnyData) {
+    throw new Error('This file does not look like a Growth OS backup (no settings or data found).');
+  }
+
+  // Structural validation of known collections — malformed members would be
+  // dropped by normalizers anyway, but report them as skipped records.
+  const counts: Record<string, number> = {};
+  const expectArray = (key: string) => {
+    const arr = doc[key as keyof AppData];
+    counts[key] = Array.isArray(arr) ? (arr as unknown[]).length : 0;
+  };
+  expectArray('transactions');
+  expectArray('savingsGoals');
+  expectArray('budgets');
+  expectArray('goals');
+  expectArray('habits');
+  expectArray('learning');
+  expectArray('projects');
+  expectArray('achievements');
+  expectArray('skills');
+  counts.dailyDays = doc.daily && typeof doc.daily === 'object' ? Object.keys(doc.daily as object).length : 0;
+  counts.monthly = doc.monthly && typeof doc.monthly === 'object' ? Object.keys(doc.monthly as object).length : 0;
+  counts.weekly = doc.weekly && typeof doc.weekly === 'object' ? Object.keys(doc.weekly as object).length : 0;
+  counts.periodReviews = doc.periodReviews && typeof doc.periodReviews === 'object' ? Object.keys(doc.periodReviews as object).length : 0;
+  return { doc, source, counts };
 }
 
 export function downloadData(data: AppData) {
@@ -236,33 +383,6 @@ export function downloadData(data: AppData) {
   a.download = `growth-os-backup-${stamp}.json`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/** Import a backup. `mode: 'merge'` keeps existing data; `replace` overwrites. */
-export function importData(json: string, mode: 'merge' | 'replace'): AppData {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    throw new Error('This file is not valid JSON.');
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('This file does not look like a Growth OS backup.');
-  }
-  const p = parsed as Partial<AppData>;
-  const hasSettings = p.settings && typeof p.settings === 'object';
-  const hasAnyData =
-    Array.isArray(p.transactions) || Array.isArray(p.goals) || Array.isArray(p.habits) || Array.isArray(p.daily) || p.daily !== undefined;
-  if (!hasSettings || !hasAnyData) {
-    throw new Error('This file does not look like a Growth OS backup.');
-  }
-  const current = loadData();
-  const next = mode === 'replace' ? createInitialData() : current;
-  const merged = normalizeData(mergeDeep(next, parsed) as AppData);
-  merged.onboarded = true;
-  flushData(merged);
-  notifyStore();
-  return merged;
 }
 
 export function resetAll(): AppData {

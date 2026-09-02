@@ -20,6 +20,30 @@ const NAV_MAIN = [
 
 const MOBILE_MAIN = ['home', 'today', 'plan', 'money', 'journal'];
 
+/** Cloud sync indicator (hidden in local mode). */
+function SyncChip() {
+  const { mode, sync } = useApp();
+  if (mode !== 'cloud') return null;
+  const map = {
+    idle: null,
+    syncing: { dot: 'sync', text: 'Syncing…' },
+    synced: { dot: 'ok', text: 'Synced' },
+    pending: { dot: 'warn', text: 'Saved locally — sync pending' },
+    error: { dot: 'warn', text: 'Sync needs attention' },
+  } as const;
+  const c = map[sync.status];
+  if (!c) return null;
+  const title = sync.lastSyncAt
+    ? `Last synced ${new Date(sync.lastSyncAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}`
+    : 'Changes are saved on this device and sync to your account.';
+  return (
+    <span className={`sync-chip ${c.dot}`} role="status" aria-live="polite" title={title}>
+      <span className="sync-dot" />
+      {c.text}
+    </span>
+  );
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const route = useRoute();
   const { data } = useApp();
@@ -104,6 +128,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {open ? <IconClose /> : <IconMenu />}
           </button>
           <div className="topbar-right">
+            <SyncChip />
             <div className="search-box" ref={searchRef}>
               <span className="search-icon">
                 <IconSearch />

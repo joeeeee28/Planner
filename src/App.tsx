@@ -1,8 +1,11 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { useRoute, navigate } from './lib/router';
 import { Shell } from './components/Shell';
 import { Onboarding } from './pages/Onboarding';
+import { AuthPage } from './pages/AuthPage';
+import { MigrateGate } from './pages/MigrateGate';
 
 // Pages are lazy-loaded so the initial bundle stays small.
 const DashboardPage = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.DashboardPage })));
@@ -60,7 +63,7 @@ function redirectLegacy(route: string[]): string[] | null {
   }
 }
 
-function Router() {
+function AppRouter() {
   const { data } = useApp();
   const route = useRoute();
   let section = route[0] ?? 'home';
@@ -125,10 +128,122 @@ function Router() {
   );
 }
 
+/** Branded loading state — never a blank screen while a session resolves. */
+function RestoreScreen() {
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card" style={{ alignItems: 'center', textAlign: 'center' }}>
+        <div className="auth-mark" style={{ fontSize: 34 }}>🌱</div>
+        <h1 className="auth-title">Growth OS</h1>
+        <p className="auth-sub">Restoring your session…</p>
+        <div className="spinner" aria-label="Loading" role="status" />
+      </div>
+    </div>
+  );
+}
+
+/** After a password-recovery link, force a new password before use. */
+function ResetPasswordGate() {
+  const auth = useAuth();
+  const [pw, setPw] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (pw.length < 8) {
+      setError('Password is too weak — use at least 8 characters.');
+      return;
+    }
+    if (pw !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    const err = await auth.changePassword(pw);
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setDone(true);
+    auth.markPasswordResetDone();
+  };
+
+  if (done) return <AppRouter />;
+
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card" role="main">
+        <div className="auth-brand">
+          <span className="auth-mark">🌱</span>
+          <span>
+            <span className="auth-brand-name">Growth OS</span>
+            <span className="auth-brand-sub">password recovery</span>
+          </span>
+        </div>
+        <h1 className="auth-title">Set a new password</h1>
+        <p className="auth-sub">Your recovery link was accepted. Choose a new password to continue.</p>
+        {error && (
+          <div role="alert" className="auth-notice error" aria-live="polite">
+            {error}
+          </div>
+        )}
+        <form
+          className="auth-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <div className="form-row">
+            <label className="form-label" htmlFor="rp-pw">New password</label>
+            <input id="rp-pw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus />
+          </div>
+          <div className="form-row">
+            <label className="form-label" htmlFor="rp-pw2">Confirm password</label>
+            <input id="rp-pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+          </div>
+          <button className="btn btn-primary btn-lg auth-submit" disabled={busy}>
+            {busy ? 'Updating…' : 'Set new password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function RootGate() {
+  const auth = useAuth();
+  const { mode, migration, cloudHydrated } = useApp();
+
+  // Session still resolving → branded loading state (never blank).
+  if (auth.status === 'restoring') return <RestoreScreen />;
+
+  // Cloud configured but signed out → dedicated Login / Sign Up screens.
+  if (auth.status === 'guest') return <AuthPage />;
+
+  // Local mode → exact V2 behavior (no auth, no network).
+  if (auth.status === 'local') return <AppRouter />;
+
+  // Signed in: if a recovery flow is pending, force a new password first.
+  if (auth.passwordResetRequired) return <ResetPasswordGate />;
+
+  // First sign-in with meaningful local data and an empty cloud account →
+  // offer migration before the app (local data is never deleted).
+  if (mode === 'cloud' && cloudHydrated && migration.show) return <MigrateGate />;
+
+  return <AppRouter />;
+}
+
 export default function App() {
   return (
-    <AppProvider>
-      <Router />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <RootGate />
+      </AppProvider>
+    </AuthProvider>
   );
 }

@@ -19,17 +19,26 @@ import { ProgressBar, Stars } from '../components/ui';
 import { IconArrowRight } from '../components/icons';
 import { uid } from '../lib/uid';
 
-function greeting(): string {
+function greeting(name: string): string {
   const h = new Date().getHours();
-  if (h < 5) return 'Up late.';
-  if (h < 12) return 'Good morning.';
-  if (h < 17) return 'Good afternoon.';
-  if (h < 21) return 'Good evening.';
-  return 'Winding down.';
+  const base = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Winding down';
+  const first = name.trim().split(/\s+/)[0];
+  return first ? `${base}, ${first}.` : `${base}.`;
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.round(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  return `${d} day${d > 1 ? 's' : ''} ago`;
 }
 
 export function DashboardPage() {
-  const { data, update } = useApp();
+  const { data, update, sync, mode } = useApp();
   const t = todayStr();
   const cycle = currentCycle(data.cycles);
   const entry = data.daily[t];
@@ -112,9 +121,16 @@ export function DashboardPage() {
     <div className="page">
       {/* ── HERO ── */}
       <section className="hero section-gap">
-        <h1 className="t-display">{greeting()}</h1>
+        <h1 className="t-display">{greeting(data.settings.name)}</h1>
         <p style={{ margin: '4px 0 0', fontSize: 16, color: 'var(--ink-2)' }}>Let's make today count.</p>
-        <div className="hero-date">{formatDateLong(t)}</div>
+        <div className="hero-date">
+          {formatDateLong(t)}
+          {mode === 'cloud' && sync.lastSyncAt && (
+            <span className="sync-chip ok" style={{ marginLeft: 10, verticalAlign: 'middle' }} title="Cloud sync status">
+              <span className="sync-dot" /> Synced {timeAgo(sync.lastSyncAt)}
+            </span>
+          )}
+        </div>
         {cycle && (
           <div className="hero-cycle">
             <span className="day-num">Day {cycleDayNumber(cycle, t)}</span>

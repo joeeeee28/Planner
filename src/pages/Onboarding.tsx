@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { navigate } from '../lib/router';
 import { defaultCycleEnd, cycleNameFromStart, DEFAULT_CYCLE_START, EXAMPLE_HABITS } from '../lib/defaults';
 import { todayStr } from '../lib/dates';
@@ -12,6 +13,13 @@ const TOTAL_STEPS = STEPS.length;
 
 export function Onboarding() {
   const { data, update } = useApp();
+  const auth = useAuth();
+  const skip = () =>
+    update((d) => {
+      if (!d.settings.name && auth.user?.name) d.settings.name = auth.user.name;
+      d.onboarded = true;
+      return { ...d };
+    });
   const [step, setStep] = useState(0);
   const [selectedAreas, setSelectedAreas] = useState<Set<string>>(() => new Set(data.growthAreas.map((a) => a.id)));
   const [goal1, setGoal1] = useState('');
@@ -296,8 +304,16 @@ export function Onboarding() {
           )}
         </div>
 
+        <div className="flex mt-16" style={{ justifyContent: 'center' }}>
+          <button className="btn btn-ghost btn-sm" onClick={skip}>
+            Skip for now — go straight to Home
+          </button>
+        </div>
+
         <p className="tiny muted mt-16" style={{ textAlign: 'center' }}>
-          Everything is saved locally in your browser — no account needed, refresh-safe. You can export backups in Settings.
+          {auth.status === 'authed'
+            ? 'Your account keeps this data safe in the cloud — accessible from any device.'
+            : 'Everything is saved locally in your browser — no account needed, refresh-safe. You can export backups in Settings.'}
         </p>
       </main>
     </div>

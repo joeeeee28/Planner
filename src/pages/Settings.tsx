@@ -1,11 +1,43 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { navigate } from '../lib/router';
 import { formatDateMed } from '../lib/dates';
 import { Modal } from '../components/ui';
 import { IconDownload, IconUpload, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
+import { validateImport } from '../lib/store';
+import { readMeta } from '../lib/cloudData';
+import { hasMeaningfulData } from '../lib/migrate';
 import type { GrowthArea } from '../lib/types';
+
+function totalRecords(counts: Record<string, number>): number {
+  return (
+    (counts.transactions ?? 0) +
+    (counts.savingsGoals ?? 0) +
+    (counts.budgets ?? 0) +
+    (counts.goals ?? 0) +
+    (counts.habits ?? 0) +
+    (counts.learning ?? 0) +
+    (counts.projects ?? 0) +
+    (counts.achievements ?? 0) +
+    (counts.skills ?? 0) +
+    (counts.dailyDays ?? 0) +
+    (counts.monthly ?? 0) +
+    (counts.weekly ?? 0) +
+    (counts.periodReviews ?? 0)
+  );
+}
+
+function loadLocalPreview(): import('../lib/types').AppData | null {
+  try {
+    const raw = localStorage.getItem('growth-os.v1');
+    if (!raw) return null;
+    return JSON.parse(raw) as import('../lib/types').AppData;
+  } catch {
+    return null;
+  }
+}
 
 const AREA_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#22c55e', '#8b5cf6', '#f59e0b', '#ec4899', '#f43f5e', '#14b8a6', '#a78bfa'];
 const AREA_ICONS = ['💼', '🧠', '🏃', '🌱', '🧘', '👥', '🎨', '📚', '💻', '🎯', '💰', '🏠', '✈️', '🎸'];
@@ -17,6 +49,26 @@ export function SettingsPage() {
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const auth = useAuth();
+  const cloud = auth.status === 'authed';
+  const { mode: appMode, migration } = useApp();
+  const meta = readMeta();
+
+  // Import preview state
+  const [preview, setPreview] = useState<null | {
+    json: string;
+    mode: 'merge' | 'replace';
+    source: 'v3' | 'legacy';
+    counts: Record<string, number>;
+    confirmWord: string;
+  }>(null);
+  const [pwModal, setPwModal] = useState(false);
+  const [pw1, setPw1] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteWord, setDeleteWord] = useState('');
 
   const setSettings = (patch: Partial<typeof data.settings>) =>
     update((d) => {
@@ -54,20 +106,78 @@ export function SettingsPage() {
   };
 
   const onImportFile = (file: File) => {
-    // Replacement confirmation: replacing wipes current data.
-    if (importMode === 'replace' && !confirm('Replace all current data with this backup? This cannot be undone.')) {
-      return;
-    }
     const reader = new FileReader();
     reader.onload = () => {
+      const json = String(reader.result);
       try {
-        importBackup(String(reader.result), importMode);
-        alert('Backup imported successfully.');
+        // Validate first — malformed files are rejected before anything happens.
+        const { source, counts } = validateImport(json);
+        setPreview({ json, mode: importMode, source, counts, confirmWord: '' });
       } catch (err) {
         alert(`Import failed: ${(err as Error).message}`);
       }
     };
     reader.readAsText(file);
+  };
+
+  const applyImport = () => {
+    if (!preview) return;
+    if (preview.mode === 'replace' && preview.confirmWord !== 'REPLACE') return;
+    try {
+      const next = importBackup(preview.json, preview.mode);
+      setPreview(null);
+      alert(`Backup imported (${preview.mode}). ${next.transactions?.length ?? 0} transactions, ${next.goals?.length ?? 0} goals loaded.`);
+    } catch (err) {
+      alert(`Import failed: ${(err as Error).message}`);
+    }
+  };
+
+  const changePw = async () => {
+    setPwError(null);
+    if (pw1.length < 8) {
+      setPwError('Password is too weak — use at least 8 characters.');
+      return;
+    }
+    if (pw1 !== pw2) {
+      setPwError('Passwords do not match.');
+      return;
+    }
+    setPwBusy(true);
+    const err = await auth.changePassword(pw1);
+    setPwBusy(false);
+    if (err) {
+      setPwError(err.message);
+      return;
+    }
+    setPwModal(false);
+    setPw1('');
+    setPw2('');
+    alert('Password updated.');
+  };
+
+  const signOutAll = async () => {
+    await auth.signOut();
+    navigate('home');
+  };
+
+  const deleteAccountFlow = async () => {
+    if (deleteWord !== 'DELETE') return;
+    const err = await auth.deleteAccount();
+    if (err) {
+      alert(err.message);
+      setDeleteOpen(false);
+      setDeleteWord('');
+      return;
+    }
+    setDeleteOpen(false);
+    setDeleteWord('');
+    await auth.signOut();
+    navigate('auth');
+  };
+
+  const runMigrationFromSettings = async () => {
+    const outcome = await migration.run();
+    alert(outcome.message);
   };
 
   return (
@@ -90,6 +200,31 @@ export function SettingsPage() {
               placeholder="How should the app greet you?"
             />
           </div>
+        </div>
+
+        <div className="card">
+          <h2 className="card-title">🔐 Account</h2>
+          {cloud ? (
+            <>
+              <div className="stat-row"><span className="k">Status</span><span className="v"><span className="badge badge-success">Signed in</span></span></div>
+              <div className="stat-row"><span className="k">Email</span><span className="v acct-email">{auth.user?.email ?? ''}</span></div>
+              <div className="stat-row"><span className="k">Data</span><span className="v">Synced to cloud</span></div>
+              <div className="flex flex-wrap mt-8" style={{ gap: 8 }}>
+                <button className="btn btn-sm" onClick={() => setPwModal(true)}>Change password</button>
+                <button className="btn btn-sm" onClick={() => void signOutAll()}>Sign out</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="card-sub" style={{ marginTop: 0 }}>
+                This device runs in <b>local mode</b> — data stays in this browser only, with no account needed (as before).
+              </p>
+              <p className="small muted">
+                To sync across devices, create an account from the sign-in screen. Any existing local data is offered for
+                migration when you first sign in.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="card">
@@ -162,6 +297,31 @@ export function SettingsPage() {
               e.target.value = '';
             }}
           />
+          <div className="divider" />
+          {cloud && (
+            <div className="mb-16" style={{ fontSize: 13, lineHeight: 1.6 }}>
+              <div className="form-label">Migration status</div>
+              {meta.migration?.completedAt ? (
+                <p className="small muted" style={{ margin: '2px 0' }}>
+                  ✓ Local data migrated on {formatDateMed(meta.migration.completedAt.slice(0, 10))} from{' '}
+                  {meta.migration.sourceStorageVersion ?? 'growth-os.v1'}. This device's local copy is kept as a rollback source.
+                </p>
+              ) : meta.migration?.skippedAt ? (
+                <p className="small muted" style={{ margin: '2px 0' }}>
+                  Migration was skipped earlier — this device's local data is untouched.
+                </p>
+              ) : appMode === 'cloud' ? (
+                <p className="small muted" style={{ margin: '2px 0' }}>
+                  {hasMeaningfulData(loadLocalPreview()) ? 'Local data found — you can move it to this account.' : 'No local data to migrate on this device.'}{' '}
+                  {hasMeaningfulData(loadLocalPreview()) && (
+                    <button className="btn btn-sm" onClick={() => void runMigrationFromSettings()}>
+                      Migrate local data now
+                    </button>
+                  )}
+                </p>
+              ) : null}
+            </div>
+          )}
           <div className="divider" />
           <button
             className="btn btn-danger btn-sm"
@@ -341,6 +501,113 @@ export function SettingsPage() {
           </p>
         </div>
       </div>
+
+      <div className="card" style={{ gridColumn: '1 / -1' }}>
+        <h2 className="card-title" style={{ color: 'var(--danger, #dc2626)' }}>⚠️ Danger zone</h2>
+        <div className="flex flex-wrap" style={{ gap: 8 }}>
+          {cloud && (
+            <button className="btn btn-danger btn-sm" onClick={() => setDeleteOpen(true)}>
+              <IconTrash size={14} /> Delete account
+            </button>
+          )}
+          <span className="tiny muted" style={{ alignSelf: 'center' }}>
+            {cloud
+              ? 'Deleting your account permanently removes your cloud data (local copies on this device are kept).'
+              : 'Local mode keeps everything on this device — use “Erase all data” above to clear it.'}
+          </span>
+        </div>
+      </div>
+
+      {preview && (
+        <Modal title="Import preview" onClose={() => setPreview(null)} wide>
+          <p className="card-sub" style={{ marginTop: 0 }}>
+            {preview.source === 'v3' ? 'Growth OS V3 backup' : 'Legacy backup'} · {preview.mode === 'merge' ? 'Merge mode' : 'Replace-all mode'}
+          </p>
+          <div className="grid grid-2 small">
+            <div>Transactions: <b>{preview.counts.transactions ?? 0}</b></div>
+            <div>Savings goals: <b>{preview.counts.savingsGoals ?? 0}</b></div>
+            <div>Budgets: <b>{preview.counts.budgets ?? 0}</b></div>
+            <div>Goals: <b>{preview.counts.goals ?? 0}</b></div>
+            <div>Habits: <b>{preview.counts.habits ?? 0}</b></div>
+            <div>Learning items: <b>{preview.counts.learning ?? 0}</b></div>
+            <div>Projects: <b>{preview.counts.projects ?? 0}</b></div>
+            <div>Achievements: <b>{preview.counts.achievements ?? 0}</b></div>
+            <div>Skills: <b>{preview.counts.skills ?? 0}</b></div>
+            <div>Journal days: <b>{preview.counts.dailyDays ?? 0}</b></div>
+            <div>Monthly plans: <b>{preview.counts.monthly ?? 0}</b></div>
+            <div>Weekly reviews: <b>{preview.counts.weekly ?? 0}</b></div>
+          </div>
+          <p className="small muted mt-8">
+            {preview.mode === 'merge'
+              ? 'Merge keeps your current data and adds/replaces matching records (matched by stable IDs).'
+              : 'Replace-all overwrites the current document with this backup. Type REPLACE to confirm.'}
+          </p>
+          {preview.mode === 'replace' && (
+            <input
+              aria-label="Type REPLACE to confirm replacing all data"
+              value={preview.confirmWord}
+              onChange={(e) => setPreview({ ...preview, confirmWord: e.target.value })}
+              placeholder="type: REPLACE"
+            />
+          )}
+          <div className="flex mt-16" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn" onClick={() => setPreview(null)}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={preview.mode === 'replace' && preview.confirmWord !== 'REPLACE'}
+              onClick={applyImport}
+            >
+              Import ({totalRecords(preview.counts)} records)
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {pwModal && (
+        <Modal title="Change password" onClose={() => setPwModal(false)}>
+          {pwError && (
+            <div role="alert" className="auth-notice error" style={{ marginTop: 0 }}>
+              {pwError}
+            </div>
+          )}
+          <div className="form-row">
+            <label className="form-label">New password</label>
+            <input type="password" autoComplete="new-password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="At least 8 characters" />
+          </div>
+          <div className="form-row">
+            <label className="form-label">Confirm new password</label>
+            <input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+          </div>
+          <div className="flex" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn" onClick={() => setPwModal(false)}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" disabled={pwBusy} onClick={() => void changePw()}>
+              {pwBusy ? 'Updating…' : 'Update password'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {deleteOpen && (
+        <Modal title="Delete account" onClose={() => { setDeleteOpen(false); setDeleteWord(''); }}>
+          <p className="small" style={{ marginTop: 0 }}>
+            This permanently deletes your account and its cloud data. Records cannot be recovered. Local copies on this device are
+            kept. To confirm, type <b>DELETE</b>.
+          </p>
+          <input aria-label="Type DELETE to confirm account deletion" value={deleteWord} onChange={(e) => setDeleteWord(e.target.value)} placeholder="type: DELETE" />
+          <div className="flex mt-16" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn" onClick={() => { setDeleteOpen(false); setDeleteWord(''); }}>
+              Cancel
+            </button>
+            <button className="btn btn-danger" disabled={deleteWord !== 'DELETE'} onClick={() => void deleteAccountFlow()}>
+              Delete my account
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {areaModal && (
         <Modal title={areaModal.area ? 'Edit growth area' : 'New growth area'} onClose={() => setAreaModal(null)}>
