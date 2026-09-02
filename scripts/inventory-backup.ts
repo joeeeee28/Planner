@@ -53,43 +53,51 @@ function money(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function main() {
-  const path = process.argv[2];
-  if (!path) {
-    console.error('usage: npx tsx scripts/inventory-backup.ts <path-to-backup.json>');
-    process.exit(2);
-  }
+export interface BackupInventory {
+  source: string;
+  isV3: boolean;
+  exportedAt: string | null;
+  user: Record<string, unknown> | null;
+  lines: string[];
+  counts: Record<string, number>;
+  totalRecords: number;
+  duplicateIds: string[];
+  finance: { income: number; expense: number; recurring: number; savingsCurrent: number; savingsTarget: number; budgetLimits: number; txDateMin: string | null; txDateMax: string | null };
+  unknownKeys: string[];
+}
+
+/** Load + parse a backup file without modifying it. */
+export function loadBackupFile(path: string): Record<string, unknown> {
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
   } catch {
-    console.error(`❌ FILE NOT FOUND: ${path}`);
-    process.exit(3);
+    throw new Error(`FILE NOT FOUND: ${path}`);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (e) {
-    console.error(`❌ INVALID JSON: ${String(e).split('\n')[0]}`);
-    process.exit(4);
+    throw new Error(`INVALID JSON: ${String(e).split('\n')[0]}`);
   }
-  if (!parsed || typeof parsed !== 'object') {
-    console.error('❌ NOT AN OBJECT — not a Growth OS backup');
-    process.exit(4);
-  }
-  const p = parsed as Record<string, unknown>;
+  if (!parsed || typeof parsed !== 'object') throw new Error('NOT AN OBJECT — not a Growth OS backup');
+  return parsed as Record<string, unknown>;
+}
 
+/** Build the full inventory report for a parsed backup or app document. */
+export function buildInventory(parsed: Record<string, unknown>, source = '(in-memory)'): BackupInventory {
   // unwrap v3 envelope vs raw legacy doc
-  const isV3 = p.schemaVersion !== undefined;
-  const data = (isV3 ? (p.data as Record<string, unknown> | undefined) : p) ?? p;
-  const exportedAt = typeof p.exportedAt === 'string' ? p.exportedAt : (data.exportedAt as string | undefined) ?? null;
-  const user = (p.user as Record<string, unknown> | undefined) ?? null;
+  const isV3 = parsed.schemaVersion !== undefined;
+  const data = (isV3 ? (parsed.data as Record<string, unknown> | undefined) : parsed) ?? parsed;
+  const exportedAt = typeof parsed.exportedAt === 'string' ? parsed.exportedAt : (data.exportedAt as string | undefined) ?? null;
+  const user = (parsed.user as Record<string, unknown> | undefined) ?? null;
 
-  console.log('══ GROWTH OS BACKUP INVENTORY ══');
-  console.log(`file: ${path}`);
-  console.log(`envelope: ${isV3 ? `v3 (schemaVersion=${JSON.stringify(p.schemaVersion)}, app=${JSON.stringify(p.app)})` : 'legacy raw doc'}`);
-  console.log(`exportedAt: ${exportedAt ?? '(none)'}`);
-  if (user) console.log(`user metadata: ${Object.entries(user).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ')}`);
+  const lines: string[] = [];
+  lines.push('══ GROWTH OS BACKUP INVENTORY ══');
+  lines.push(`source: ${source}`);
+  lines.push(`envelope: ${isV3 ? `v3 (schemaVersion=${JSON.stringify(parsed.schemaVersion)}, app=${JSON.stringify(parsed.app)})` : 'legacy raw doc'}`);
+  lines.push(`exportedAt: ${exportedAt ?? '(none)'}`);
+  if (user) lines.push(`user metadata: ${Object.entries(user).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ')}`);
 
   const domains = [
     'goals', 'habits', 'habitCompletions', 'learning', 'projects', 'achievements', 'skills',
@@ -118,13 +126,17 @@ function main() {
   const sgs = data.savingsGoals as Array<Record<string, unknown>> | undefined;
   if (sgs) for (const sg of sgs) contributions += Array.isArray(sg.contributions) ? sg.contributions.length : 0;
 
-  console.log('\n── RECORD COUNTS ──');
+  lines.push('\n── RECORD COUNTS ──');
   for (const r of reps) {
-    console.log(`${r.domain}: ${r.count}${r.ids && r.ids[0][0] !== r.ids[0][1] ? `  (id range ${r.ids[0][0]} … ${r.ids[0][1]})` : r.ids ? `  (key ${r.ids[0][0]})` : ''}`);
+    lines.push(`${r.domain}: ${r.count}${r.ids && r.ids[0][0] !== r.ids[0][1] ? `  (id range ${r.ids[0][0]} … ${r.ids[0][1]})` : r.ids ? `  (key ${r.ids[0][0]})` : ''}`);
   }
-  if (tasks > 0) console.log(`tasks (priorities + area tasks inside daily): ${tasks}`);
-  if (contributions > 0) console.log(`savings contributions (nested): ${contributions}`);
-  console.log(`TOTAL records (top-level per domain): ${total}`);
+  if (tasks > 0) lines.push(`tasks (priorities + area tasks inside daily): ${tasks}`);
+  if (contributions > 0) lines.push(`savings contributions (nested): ${contributions}`);
+  lines.push(`TOTAL records (top-level per domain): ${total}`);
+  const counts: Record<string, number> = { totalRecords: total };
+  for (const r of reps) counts[r.domain] = r.count;
+  if (tasks > 0) counts.tasks = tasks;
+  if (contributions > 0) counts.savingsContributions = contributions;
 
   // financial verification
   const txs = (data.transactions as Array<Record<string, unknown>> | undefined) ?? [];
@@ -141,35 +153,66 @@ function main() {
   const savingsTarget = sgs ? sgs.reduce((a, g) => a + money(g.targetAmount), 0) : 0;
   const budgetLimits = (data.budgets as Array<Record<string, unknown>> | undefined)?.reduce((a, b) => a + money(b.limit), 0) ?? 0;
   txnDates.sort();
-  console.log('\n── FINANCIAL SUMMARY (from backup) ──');
-  console.log(`transactions: ${txs.length}  (income records: ${txs.filter((t) => t.type === 'income').length}, expense records: ${txs.filter((t) => t.type === 'expense').length})`);
-  console.log(`income total: ₹${income.toLocaleString('en-IN')}`);
-  console.log(`expense total: ₹${expense.toLocaleString('en-IN')}`);
-  console.log(`recurring items: ${recurring}`);
-  console.log(`savings goals: ${sgs?.length ?? 0} (current ₹${savingsTotal.toLocaleString('en-IN')} / target ₹${savingsTarget.toLocaleString('en-IN')})`);
-  console.log(`budget limits total: ₹${budgetLimits.toLocaleString('en-IN')}`);
-  console.log(`tx date range: ${txnDates[0] ?? '—'} … ${txnDates[txnDates.length - 1] ?? '—'}`);
+  lines.push('\n── FINANCIAL SUMMARY ──');
+  lines.push(`transactions: ${txs.length}  (income records: ${txs.filter((t) => t.type === 'income').length}, expense records: ${txs.filter((t) => t.type === 'expense').length})`);
+  lines.push(`income total: ₹${income.toLocaleString('en-IN')}`);
+  lines.push(`expense total: ₹${expense.toLocaleString('en-IN')}`);
+  lines.push(`recurring items: ${recurring}`);
+  lines.push(`savings goals: ${sgs?.length ?? 0} (current ₹${savingsTotal.toLocaleString('en-IN')} / target ₹${savingsTarget.toLocaleString('en-IN')})`);
+  lines.push(`budget limits total: ₹${budgetLimits.toLocaleString('en-IN')}`);
+  lines.push(`tx date range: ${txnDates[0] ?? '—'} … ${txnDates[txnDates.length - 1] ?? '—'}`);
 
   // settings / profile
   const settings = data.settings as Record<string, unknown> | undefined;
   if (settings) {
-    console.log('\n── SETTINGS / PROFILE ──');
-    console.log(`name: ${JSON.stringify(settings.name)}`);
+    lines.push('\n── SETTINGS / PROFILE ──');
+    lines.push(`name: ${JSON.stringify(settings.name)}`);
     const fin = settings.finance as Record<string, unknown> | undefined;
-    console.log(`currency: ${JSON.stringify(fin?.currency)} | provider: ${JSON.stringify(fin?.provider)}`);
-    console.log(`theme: ${JSON.stringify(settings.theme)} | weekStartsOn: ${JSON.stringify(settings.weekStartsOn)}`);
-    console.log(`onboarded: ${JSON.stringify(data.onboarded)} | version: ${JSON.stringify(data.version)}`);
+    lines.push(`currency: ${JSON.stringify(fin?.currency)} | provider: ${JSON.stringify(fin?.provider)}`);
+    lines.push(`theme: ${JSON.stringify(settings.theme)} | weekStartsOn: ${JSON.stringify(settings.weekStartsOn)}`);
+    lines.push(`onboarded: ${JSON.stringify(data.onboarded)} | version: ${JSON.stringify(data.version)}`);
   }
 
   // unknown keys that would be lost if the model doesn't know them
   const known = new Set([...domains, 'settings', 'onboarded', 'updatedAt', 'version', 'schemaVersion', 'app', 'exportedAt', 'user', 'data', 'name', 'email']);
   const unknown = Object.keys(data).filter((k) => !known.has(k));
-  if (unknown.length > 0) console.log(`\n⚠️ UNKNOWN TOP-LEVEL KEYS (would not map to the current model): ${unknown.join(', ')}`);
+  if (unknown.length > 0) lines.push(`\n⚠️ UNKNOWN TOP-LEVEL KEYS (would not map to the current model): ${unknown.join(', ')}`);
 
-  const dupTotal = reps.reduce((a, r) => a + r.dupIds.length, 0);
-  console.log(`\n${dupTotal === 0 ? '✅' : '❌'} duplicate stable IDs: ${dupTotal}`);
-  if (dupTotal > 0) process.exit(5);
-  console.log('✅ inventory complete — file is valid and ready for migration');
+  const dupIds = reps.flatMap((r) => r.dupIds);
+  lines.push(`\n${dupIds.length === 0 ? '✅' : '❌'} duplicate stable IDs: ${dupIds.length}`);
+  lines.push(dupIds.length === 0 ? '✅ inventory complete — ready for migration' : '⚠️ duplicates present — must be resolved before migration');
+  return {
+    source,
+    isV3,
+    exportedAt,
+    user,
+    lines,
+    counts,
+    totalRecords: total,
+    duplicateIds: dupIds,
+    finance: { income, expense, recurring, savingsCurrent: savingsTotal, savingsTarget, budgetLimits, txDateMin: txnDates[0] ?? null, txDateMax: txnDates[txnDates.length - 1] ?? null },
+    unknownKeys: unknown,
+  };
 }
 
-main();
+function main() {
+  const path = process.argv[2];
+  if (!path) {
+    console.error('usage: npx tsx scripts/inventory-backup.ts <path-to-backup.json>');
+    process.exit(2);
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = loadBackupFile(path);
+  } catch (e) {
+    console.error(`❌ ${String(e).split('\n')[0]}`);
+    process.exit(e instanceof Error && e.message.startsWith('FILE NOT FOUND') ? 3 : 4);
+  }
+  const inv = buildInventory(parsed, path);
+  console.log(inv.lines.join('\n'));
+  process.exit(inv.duplicateIds.length > 0 ? 5 : 0);
+}
+
+// Direct-run detection (works whether tsx loads this as CJS or ESM).
+const invoked = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('inventory-backup.ts');
+if (invoked) main();
