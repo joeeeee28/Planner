@@ -205,10 +205,20 @@ function HabitModal({
   const [color, setColor] = useState(habit?.color ?? '#10b981');
   const [days, setDays] = useState<number[]>(habit?.daysOfWeek ?? []);
   const [active, setActive] = useState(habit?.active ?? true);
+  const [minutes, setMinutes] = useState(habit?.minutes ? String(habit.minutes) : '');
+  const [pref, setPref] = useState<'morning' | 'afternoon' | 'evening' | ''>(habit?.preferredTime ?? '');
 
   const save = () => {
     if (!name.trim()) return;
-    onSave({ name: name.trim(), icon, color, daysOfWeek: days, active });
+    onSave({
+      name: name.trim(),
+      icon,
+      color,
+      daysOfWeek: days,
+      active,
+      minutes: minutes && Number(minutes) > 0 ? Math.round(Number(minutes)) : undefined,
+      preferredTime: pref || undefined,
+    });
   };
 
   return (
@@ -269,6 +279,27 @@ function HabitModal({
           ))}
         </div>
         <div className="form-hint">Empty = every day. Pick specific days for e.g. weekdays-only habits.</div>
+      </div>
+      <div className="form-row">
+        <label className="form-label">Time estimate</label>
+        <div className="grid grid-2" style={{ gap: 8 }}>
+          <input
+            type="number"
+            min="1"
+            step="5"
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            placeholder="Minutes per check-in (e.g. 30)"
+            aria-label="Minutes per check-in"
+          />
+          <select value={pref} onChange={(e) => setPref(e.target.value as 'morning' | 'afternoon' | 'evening' | '')} aria-label="Preferred time of day">
+            <option value="">Any time of day</option>
+            <option value="morning">Prefer morning</option>
+            <option value="afternoon">Prefer afternoon</option>
+            <option value="evening">Prefer evening</option>
+          </select>
+        </div>
+        <div className="form-hint">Used as an estimate by planning &amp; availability — nothing is auto-created on your calendar.</div>
       </div>
       <div className="form-row">
         <label className="form-label flex" style={{ gap: 8 }}>

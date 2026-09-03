@@ -79,7 +79,14 @@ export interface Habit {
   daysOfWeek: number[];
   active: boolean;
   createdAt: DateStr;
+  /** Optional estimated check-in time in minutes (availability/planning). */
+  minutes?: number;
+  /** Optional preferred band of day for planning the habit. */
+  preferredTime?: HabitBand;
 }
+
+/** Loose day band used for habit/availability preferences. */
+export type HabitBand = 'morning' | 'afternoon' | 'evening';
 
 export type HabitCompletions = Record<ID, Record<DateStr, true>>;
 
@@ -367,6 +374,21 @@ export interface Settings {
     monthly: string[]; // 7 prompts: biggestAchievement…shouldChange
   };
   finance: FinanceSettings;
+  /** Slice 5 — working hours & planning defaults (optional; engine falls back). */
+  planning?: PlanningSettings;
+}
+
+/** Working-hours model for availability & scheduling. All times are local `HH:MM`. */
+export interface PlanningSettings {
+  /** Workday start, e.g. '09:00'. */
+  workStart: string;
+  /** Workday end, e.g. '18:00'. */
+  workEnd: string;
+  /** Optional fixed break window inside the workday (e.g. 13:00–14:00). */
+  breakStart?: string;
+  breakEnd?: string;
+  /** Focus-block presets offered by the scheduler (minutes). */
+  focusOptions?: number[];
 }
 
 // ── Money / finance ──────────────────────────────────────────────────────────
@@ -464,6 +486,12 @@ export interface PlannedTask {
   priority?: number;
   /** Linked goal this task supports. */
   goalId?: ID;
+  /** Optional *due* day — a deadline, distinct from the planned execution day
+   *  (planned date/time may precede it and is never silently derived from it). */
+  due?: DateStr;
+  /** Optional provenance: learning item / career project this task serves. */
+  learningId?: ID;
+  projectId?: ID;
   notes?: string;
   createdAt: string;
   /** ISO timestamps of reschedules (bounded; used to notice repeated postponing). */
@@ -486,10 +514,65 @@ export interface InboxItem {
   /** Archived items are kept (never deleted automatically) but hidden by default. */
   archived?: boolean;
 }
+
+// ── Connected calendars (Slice 5) ───────────────────────────────────────────
+
+/** Provider identities the architecture can host. */
+export type CalendarProviderId = 'google' | 'outlook';
+
+export interface ExternalCalendarMeta {
+  id: string;
+  name: string;
+}
+
+export interface CalendarConnection {
+  /** Stable per-provider connection id inside the document. */
+  provider: CalendarProviderId;
+  /** account label shown in Settings (email when known). */
+  accountEmail?: string;
+  status: 'connected' | 'syncing' | 'needs-attention';
+  connectedAt?: string;
+  /** ISO timestamp of the last successful sync. */
+  lastSyncedAt?: string;
+  /** Count of sync retries in the current failure streak. */
+  retryCount?: number;
+  /** User-safe failure label — never raw OAuth/API errors. */
+  syncError?: string;
+  calendars?: ExternalCalendarMeta[];
+  /** Calendar ids selected for availability/display. */
+  selectedCalendarIds: string[];
+  /** Explicit user opt-in before any external write is allowed. */
+  writeEnabled: boolean;
+}
+
+/**
+ * Cached external event — read-only by default. `key` is the stable dedupe id
+ * `${provider}:${calendarId}:${externalId}`. Only scheduling-relevant fields
+ * are stored: title, span, location. Descriptions are never copied.
+ */
+export interface ExternalEvent {
+  key: string;
+  provider: CalendarProviderId;
+  calendarId: string;
+  externalId: string;
+  title: string;
+  /** Local-time spans as `YYYY-MM-DDTHH:mm:ss` (no zone shifting). */
+  start: string;
+  end: string;
+  allDay?: boolean;
+  location?: string;
+  updatedAt: string;
+}
+
+
 // ── Root store ───────────────────────────────────────────────────────────────
 
 export interface AppData {
   version: number;
+  /** Connected external calendars (Slice 5) — additive, absent in older docs. */
+  calendarConnections?: CalendarConnection[];
+  /** Cached read-only external events (Slice 5) — additive. */
+  calendarEvents?: ExternalEvent[];
   onboarded: boolean;
   settings: Settings;
   cycles: GrowthCycle[];

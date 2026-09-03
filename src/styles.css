@@ -2899,3 +2899,187 @@ textarea {
 /* load-chip variants used by review capacity + workload */
 /* 'Open capacity' maps to the light (positive) look; comfortable stays neutral. */
 .load-chip.open { color: var(--pos); background: var(--pos-soft); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROWTH OS V4 — SLICE 5 · connected calendar & smart scheduling
+   (additive layer on the same tokens; warm, editorial, calm)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* utility: column flex (kept generic so older rows render as intended too) */
+.flex-col { flex-direction: column; }
+
+/* availability / workload chips (Today “Realistic plan”, Week, Agenda) */
+.cal-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.cal-chip.open { color: var(--pos); background: var(--pos-soft); border-color: color-mix(in srgb, var(--pos) 22%, transparent); }
+.cal-chip + .cal-chip { margin-left: 2px; }
+
+.warn-ink { color: var(--warn); }
+
+/* Today — realistic plan availability strip */
+.avail-strip {
+  background:
+    linear-gradient(90deg, var(--accent-soft), transparent 55%),
+    var(--surface);
+}
+.avail-strip .cal-chip { background: color-mix(in srgb, var(--surface) 72%, transparent); }
+
+/* external-event rows (Today panel, Agenda timeline, Week chips) */
+.ext-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.ext-row:hover { background: var(--surface-3); }
+.ext-dot {
+  width: 8px; height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.tl-ext { background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface-2)); }
+.tl-ext:hover { background: color-mix(in srgb, var(--accent-soft) 80%, var(--surface-2)); }
+
+/* timeline / agenda list scaffolding */
+.tl-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 4px; }
+.tl-list .task-item,
+.tl-list .ptask { margin: 0; }
+
+/* Settings — focus presets */
+.focus-chip {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.focus-chip:hover { border-color: var(--accent-line); color: var(--accent-strong); }
+.focus-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-strong);
+}
+.focus-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Settings — integration cards */
+.int-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.int-card:hover { border-color: var(--line-strong); }
+.int-card .cal-chip { margin: 4px 6px 0 0; }
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.check-row input { width: 17px; height: 17px; accent-color: var(--accent); }
+
+/* status badges shared across the app (also used by Goals/Learning/Reviews) */
+.badge-success { background: var(--pos-soft); color: var(--pos); }
+.badge-danger { background: var(--neg-soft); color: var(--neg); }
+
+/* Week workspace — proposed plan preview (review before Apply) */
+.proposal-plan {
+  border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--accent-soft) 30%, var(--surface));
+  box-shadow: none;
+}
+.proposal-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.proposal-row:hover { border-color: var(--accent-line); }
+
+/* Week grid — external (read-only) events */
+.week-mini.ext {
+  border-left: 3px dashed var(--accent-line);
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface));
+  cursor: default;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+.week-mini.ext .wm-time { color: var(--accent-strong); }
+
+/* ScheduleSheet — suggested slots, fields, conflicts */
+.sched-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.sched-sug {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.sched-sug:hover { border-color: var(--accent-line); background: var(--surface-2); }
+.sched-sug.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.sched-sug:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sched-sug-span { font-variant-numeric: tabular-nums; }
+.sched-sug-why { color: var(--ink-2); }
+.sched-fields { display: flex; flex-direction: column; gap: 4px; }
+.conflict-note {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.conflict-note .tiny.bold { color: var(--warn); }
+
+/* TaskRow — compact rows surface a single schedule affordance (◷) */
+
+@media (max-width: 640px) {
+  .ext-row .btn-sm { width: 100%; justify-content: center; }
+  .int-card { padding: 12px; }
+  .proposal-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .cal-chip { white-space: normal; }
+}

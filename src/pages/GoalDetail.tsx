@@ -11,6 +11,7 @@ import { goalDeadlineInfo, goalEffectiveProgress } from '../lib/analytics';
 import { formatMoney } from '../lib/finance';
 import { ProgressBar, EmptyState } from '../components/ui';
 import { QuickAddModal } from '../components/QuickAdd';
+import { ScheduleSheet } from '../components/ScheduleSheet';
 import { IconArrowRight, IconChevronLeft } from '../components/icons';
 import { uid } from '../lib/uid';
 import { tasksOf, nextTaskForGoal, openTasks } from '../lib/plan';
@@ -21,6 +22,7 @@ export function GoalDetailPage({ goalId }: { goalId: string }) {
   const { data, update } = useApp();
   const goal = data.goals.find((g) => g.id === goalId);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState('');
   const t = todayStr();
   const currency = data.settings.finance.currency;
@@ -143,6 +145,11 @@ export function GoalDetailPage({ goalId }: { goalId: string }) {
           <div className="flex" style={{ gap: 6 }}>
             {goal.status !== 'completed' && (
               <button className="btn btn-sm btn-primary" onClick={doNow}>{nextTask ? 'Do now' : 'Plan next action'}</button>
+            )}
+            {nextTask && goal.status !== 'completed' && (
+              <button className="btn btn-sm" onClick={() => setScheduleOpen(true)} title="Pick a future day & time for the next action">
+                Schedule
+              </button>
             )}
             {goal.status !== 'completed' ? (
               <button className="btn btn-sm" onClick={() => setStatus('completed')}>Mark complete</button>
@@ -442,6 +449,32 @@ export function GoalDetailPage({ goalId }: { goalId: string }) {
       </section>
 
       {quickOpen && <QuickAddModal initialKind="task" initialGoalId={goal.id} onClose={() => setQuickOpen(false)} />}
+      {scheduleOpen && nextTask && (
+        <ScheduleSheet
+          task={nextTask}
+          data={data}
+          onClose={() => setScheduleOpen(false)}
+          onApply={(patch) => {
+            update((d) => {
+              const moving = nextTask.date && nextTask.date !== patch.date;
+              d.tasks = (d.tasks ?? []).map((x) =>
+                x.id === nextTask.id
+                  ? {
+                      ...x,
+                      date: patch.date,
+                      start: patch.start,
+                      minutes: patch.minutes && patch.minutes > 0 ? patch.minutes : x.minutes,
+                      rescheduledAt: moving ? [...(x.rescheduledAt ?? []), new Date().toISOString()] : x.rescheduledAt,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : x,
+              );
+              return { ...d };
+            });
+            setScheduleOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 

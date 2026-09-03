@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { formatDateMed, todayStr } from '../lib/dates';
 import { LEARNING_TYPES, type LearningItem, type LearningStatus, type LearningType } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
+import { ScheduleSheet } from '../components/ScheduleSheet';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
 
@@ -61,6 +62,8 @@ const emptyDraft = (): Draft => ({
 export function LearningTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState<null | { item?: LearningItem }>(null);
+  const [schedItemId, setSchedItemId] = useState<string | null>(null);
+  const [appliedSched, setAppliedSched] = useState<Record<string, { date: string; start?: string }>>({});
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [filterType, setFilterType] = useState<LearningType | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<LearningStatus | 'all'>('all');
@@ -247,6 +250,19 @@ export function LearningTab() {
                       {l.startDate && <span>Started {formatDateMed(l.startDate)}</span>}
                       {l.completionDate && <span>✓ Completed {formatDateMed(l.completionDate)}</span>}
                     </div>
+                    {(l.status === 'in-progress' || l.status === 'planned') && (
+                      <div className="flex flex-wrap mt-8" style={{ gap: 8, alignItems: 'center' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setSchedItemId(l.id)}>
+                          Schedule a session
+                        </button>
+                        {appliedSched[l.id] && (
+                          <span className="tiny" role="status">
+                            ✓ Session planned for {formatDateMed(appliedSched[l.id].date)}
+                            {appliedSched[l.id].start ? ` at ${appliedSched[l.id].start}` : ''} — it now sits in your plan.
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex" style={{ gap: 6 }}>
                     {l.status !== 'completed' && (
@@ -276,6 +292,42 @@ export function LearningTab() {
           })}
         </div>
       )}
+
+      {schedItemId &&
+        (() => {
+          const l = data.learning.find((x) => x.id === schedItemId);
+          if (!l) return null;
+          return (
+            <ScheduleSheet
+              task={{ id: l.id, text: l.title, minutes: 45, priority: undefined, goalId: l.goalId, date: undefined, start: undefined, due: undefined }}
+              data={data}
+              onClose={() => setSchedItemId(null)}
+              onApply={(patch) => {
+                update((d) => {
+                  d.tasks = [
+                    ...(d.tasks ?? []),
+                    {
+                      id: uid('task'),
+                      text: l.title,
+                      done: false,
+                      date: patch.date,
+                      start: patch.start,
+                      minutes: patch.minutes,
+                      goalId: l.goalId,
+                      learningId: l.id,
+                      createdAt: new Date().toISOString(),
+                      rescheduledAt: [],
+                      updatedAt: new Date().toISOString(),
+                    },
+                  ];
+                  return { ...d };
+                });
+                setAppliedSched((a) => ({ ...a, [l.id]: { date: patch.date, start: patch.start } }));
+                setSchedItemId(null);
+              }}
+            />
+          );
+        })()}
 
       {modal && (
         <Modal title={modal.item ? 'Edit learning item' : 'New learning item'} onClose={() => setModal(null)} wide>

@@ -27,9 +27,9 @@ import { formatMoney, monthTotals, totalSaved, nextOccurrence } from '../lib/fin
 import type { Transaction } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
 import { MonthReviewPage } from './Reviews';
-import { DayWorkspace, WeekWorkspace } from './PlanWorkspace';
+import { DayWorkspace, WeekWorkspace, AgendaDay } from './PlanWorkspace';
 import { currentCycle } from '../lib/dates';
-type View = 'calendar' | 'year' | 'quarter' | 'month' | 'week' | 'day';
+type View = 'agenda' | 'calendar' | 'year' | 'quarter' | 'month' | 'week' | 'day';
 
 function quarterOf(date: string): string {
   return `${date.slice(0, 4)}-Q${Math.floor((Number(date.slice(5, 7)) - 1) / 3) + 1}`;
@@ -64,12 +64,12 @@ export function PlanPage() {
   const today = todayStr();
   const [view, setView] = useState<View>(() => {
     const v = route[1] as View;
-    return ['calendar', 'year', 'quarter', 'month', 'week', 'day'].includes(v) ? v : 'day';
+    return ['agenda', 'calendar', 'year', 'quarter', 'month', 'week', 'day'].includes(v) ? v : 'day';
   });
   const [cursor, setCursor] = useState(() => {
     const r2 = route[2];
     if (r2) return r2;
-    return view === 'day' || view === 'week' ? todayStr() : monthKeyOf(todayStr());
+    return view === 'agenda' || view === 'day' || view === 'week' ? todayStr() : monthKeyOf(todayStr());
   });
 
   // Adopt view + cursor when the URL changes while this page stays mounted
@@ -78,11 +78,11 @@ export function PlanPage() {
   useEffect(() => {
     if (route[0] !== 'plan') return;
     const v = route[1] as View;
-    const valid = ['calendar', 'year', 'quarter', 'month', 'week', 'day'].includes(v);
+    const valid = ['agenda', 'calendar', 'year', 'quarter', 'month', 'week', 'day'].includes(v);
     if (!valid) return;
     const r2 = route[2];
     const shapeOk =
-      (v === 'day' || v === 'week') ? !!r2 && /^\d{4}-\d{2}-\d{2}$/.test(r2)
+      (v === 'agenda' || v === 'day' || v === 'week') ? !!r2 && /^\d{4}-\d{2}-\d{2}$/.test(r2)
       : (v === 'calendar' || v === 'month') ? !!r2 && /^\d{4}-\d{2}$/.test(r2)
       : v === 'quarter' ? !!r2 && /^\d{4}-Q[1-4]$/.test(r2)
       : v === 'year' ? !!r2 && /^\d{4}/.test(r2)
@@ -131,6 +131,10 @@ export function PlanPage() {
     } else if (v === 'week') {
       setCursor(weekStartOf(dayCursor, weekStartsOn));
       navigate(`plan/week/${weekStartOf(dayCursor, weekStartsOn)}`);
+    } else if (v === 'agenda') {
+      const base = isMonthKey(cursor) ? todayStr() : cursor;
+      setCursor(base);
+      navigate(`plan/agenda/${base}`);
     } else {
       setCursor(monthKeyOf(dayCursor));
       navigate(`plan/month/${monthKeyOf(dayCursor)}`);
@@ -138,7 +142,7 @@ export function PlanPage() {
   };
 
   const label = (() => {
-    if (view === 'day') return formatDateLong(curDate);
+    if (view === 'agenda' || view === 'day') return formatDateLong(curDate);
     if (view === 'calendar') return monthLabel(cursor);
     if (view === 'year') return String(curYear);
     if (view === 'quarter') return `Quarter ${cursor.replace('-Q', ' Q')}`;
@@ -180,6 +184,7 @@ export function PlanPage() {
         {(
           [
             { id: 'day', label: 'Day' },
+            { id: 'agenda', label: 'Agenda' },
             { id: 'week', label: 'Week' },
             { id: 'calendar', label: 'Month' },
             { id: 'quarter', label: 'Quarter' },
@@ -197,6 +202,7 @@ export function PlanPage() {
       </div>
 
       {view === 'day' && <DayWorkspace date={curDate} />}
+      {view === 'agenda' && <AgendaDay date={curDate} />}
       {view === 'calendar' && (
         <MonthGrid year={curYear} month={curMonth} weekStartsOn={weekStartsOn} deadlines={deadlines} milestones={milestones} />
       )}

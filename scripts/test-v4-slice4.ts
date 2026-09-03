@@ -423,7 +423,17 @@ function mkData(over: Partial<AppData>): AppData {
   assert(sp.carriedOver.length === 1 && sp.carriedOver[0] === 'Open today', 'shutdown surfaces open tasks from today');
   const lb = weekLookBack(data, now);
   assert(lb.tasksDone === 1, 'week look-back counts completed tasks');
-  assert(lb.tasksMissed >= 0 && lb.habitsScheduled === 3 && lb.habitsDone === 2, 'habits scheduled per daysOfWeek rule within the partial week');
+  // The look-back window runs from the Monday of the current week through
+  // today, so its length depends on the weekday the suite runs on. The habit
+  // applies every day, and the fixture marks the two previous days complete —
+  // expect the engine to count exactly the days elapsed (and the two prior
+  // completions only once the window is at least three days long).
+  {
+    const wd = (new Date(now + 'T00:00:00').getDay() + 6) % 7; // 0 = Monday
+    const winDays = wd + 1;
+    const doneExp = winDays >= 3 ? 2 : Math.max(0, winDays - 1);
+    assert(lb.tasksMissed >= 0 && lb.habitsScheduled === winDays && lb.habitsDone === doneExp, 'habits scheduled per daysOfWeek rule within the partial week');
+  }
   const cap = weekCapacitySummary(data, now);
   assert(cap.plannedMin >= 60 && ['Open', 'Light', 'Comfortable', 'Full', 'Overloaded'].includes(cap.label), 'week capacity summary label');
   const ms = monthSummary(mkData({ goals: [goalFixture({ id: 'mg1', title: 'Done goal', completedDate: daysFromNow(-1), status: 'completed' })], tasks: [] }), now.slice(0, 7));

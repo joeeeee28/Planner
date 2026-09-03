@@ -17,6 +17,9 @@ import {
   activeGoals,
 } from '../lib/plan';
 import { dayWorkload, adaptiveDay, fmt as wf } from '../lib/priority';
+import { dayAvailability } from '../lib/calendar/availability';
+import { verdictFor } from '../lib/calendar/scheduler';
+import { ScheduleSheet } from '../components/ScheduleSheet';
 import { dailyShutdownProposal, SHUTDOWN_PROMPTS } from '../lib/reviewIntel';
 import type { DayEntry, PlannedTask, TaskItem, Transaction } from '../lib/types';
 
@@ -117,6 +120,9 @@ export function TodayPage() {
 
   const work = dayWorkload(data, date);
   const loadChipLevel = work.totalMin === 0 ? null : work.level;
+  const cal = dayAvailability(data, date);
+  const realistic = isTodayDay ? verdictFor(data, t) : null;
+  const [schedNextOpen, setSchedNextOpen] = useState(false);
   const loadChipTitle = work.message;
   // daily shutdown proposal (created only on explicit confirmation)
   const shutdownProposal = isTodayDay ? dailyShutdownProposal(data, t) : null;
@@ -236,6 +242,76 @@ export function TodayPage() {
         </div>
       )}
 
+
+      {isTodayDay && (
+        <section className="panel avail-strip" aria-label="Day availability">
+          <div className="flex flex-wrap" style={{ gap: 6, alignItems: 'baseline', rowGap: 8 }}>
+            <span className="tiny bold" style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Realistic plan</span>
+            {cal.extMin > 0 && (
+              <span className="cal-chip">Calendar {wf(cal.extMin)}{cal.extEvents.length > 0 ? ` · ${cal.extEvents.length} ${cal.extEvents.length === 1 ? 'event' : 'events'}` : ''}</span>
+            )}
+            <span className="cal-chip">Planned {wf(cal.plannedTaskMin)}</span>
+            {cal.habitMin > 0 && <span className="cal-chip">Habits {wf(cal.habitMin)} est.</span>}
+            <span className="cal-chip open">Open ~{wf(cal.freeMin)}</span>
+            {realistic && <span className={`tiny ${realistic.tone === 'ok' ? 'muted' : 'warn-ink'}`}>{realistic.text}</span>}
+            <div className="spacer" />
+            {inboxCount > 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setSchedNextOpen(true)}>
+                Schedule next task
+              </button>
+            )}
+          </div>
+          {schedNextOpen && inboxTasks(tasks)[0] && (
+            <div className="mt-8">
+              <ScheduleSheet
+                task={inboxTasks(tasks)[0]}
+                data={data}
+                onClose={() => setSchedNextOpen(false)}
+                onApply={(patch) => patchTask(inboxTasks(tasks)[0].id, patch)}
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      {cal.extEvents.length > 0 && (
+        <section className="panel section-gap" aria-label="External calendar">
+          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="panel-title">External calendar</h2>
+            <span className="tiny muted">Read-only — convert if it needs a follow-up.</span>
+          </div>
+          <div className="mt-8 flex flex-col" style={{ gap: 6 }}>
+            {cal.extEvents.map((e) => (
+              <div className="ext-row" key={e.key}>
+                <span className="ext-dot" aria-hidden="true" />
+                <span className="grow small">
+                  <b>{e.title}</b>{' '}
+                  <span className="tiny muted">
+                    {e.start.slice(11, 16)}–{e.end.slice(11, 16)} · {e.provider === 'google' ? 'Google' : 'Outlook'}
+                    {e.calendarId ? ` · ${e.calendarId}` : ''}
+                    {e.location ? ` · ${e.location}` : ''}
+                  </span>
+                </span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() =>
+                    update((d) => {
+                      d.inbox = [
+                        ...(d.inbox ?? []),
+                        { id: uid('in'), kind: 'note', text: `Follow-up: ${e.title}`, createdAt: new Date().toISOString(), archived: false },
+                      ];
+                      return { ...d };
+                    })
+                  }
+                >
+                  Create follow-up task
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* TOP PRIORITIES */}
       <section className="panel section-gap">
         <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 2 }}>
@@ -315,6 +391,7 @@ export function TodayPage() {
                   <TaskRow
                     key={task.id}
                     task={task}
+                    data={data}
                     goalTitle={goalTitle(task.goalId)}
                     onPatch={(p) => patchTask(task.id, p)}
                     onDelete={() => deleteTask(task.id)}
@@ -330,6 +407,7 @@ export function TodayPage() {
                   <TaskRow
                     key={task.id}
                     task={task}
+                    data={data}
                     goalTitle={goalTitle(task.goalId)}
                     onPatch={(p) => patchTask(task.id, p)}
                     onDelete={() => deleteTask(task.id)}
@@ -377,6 +455,7 @@ export function TodayPage() {
                   key={task.id}
                   task={task}
                   compact
+                  data={data}
                   goalTitle={goalTitle(task.goalId)}
                   onPatch={(p) => patchTask(task.id, p)}
                   onDelete={() => deleteTask(task.id)}

@@ -4,6 +4,7 @@ import { useRoute, navigate } from '../lib/router';
 import { formatDateMed, todayStr } from '../lib/dates';
 import type { Achievement, Project, ProjectStatus, RoadmapMilestone, Skill } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
+import { ScheduleSheet } from '../components/ScheduleSheet';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
 
@@ -25,7 +26,10 @@ const PROJECT_STATUS: Record<ProjectStatus, string> = {
 
 export function CareerTab() {
   const route = useRoute();
-  const tab = (TABS.find((t) => t.id === route[1])?.id ?? 'direction') as Tab;
+  // Career lives inside the Growth hub (#/growth/career/<sub>) but is also
+  // reachable at legacy #/career/<sub> before the redirect fires.
+  const sub = (route[0] === 'career' ? route[1] : route[2]) as Tab | undefined;
+  const tab = (TABS.find((t) => t.id === sub)?.id ?? 'direction') as Tab;
 
   return (
     <div>
@@ -191,6 +195,8 @@ function SkillsTab() {
 function ProjectsTab() {
   const { data, update } = useApp();
   const [modal, setModal] = useState<null | { project?: Project }>(null);
+  const [schedProjectId, setSchedProjectId] = useState<string | null>(null);
+  const [appliedSched, setAppliedSched] = useState<Record<string, { date: string; start?: string }>>({});
   const empty = {
     name: '',
     description: '',
@@ -302,6 +308,19 @@ function ProjectsTab() {
                 {p.startDate && <span>Start {formatDateMed(p.startDate)}</span>}
                 {p.endDate && <span>End {formatDateMed(p.endDate)}</span>}
               </div>
+              {p.status !== 'completed' && (
+                <div className="flex flex-wrap mt-8" style={{ gap: 8, alignItems: 'center' }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setSchedProjectId(p.id)}>
+                    Schedule focus session
+                  </button>
+                  {appliedSched[p.id] && (
+                    <span className="tiny" role="status">
+                      ✓ Session planned for {formatDateMed(appliedSched[p.id].date)}
+                      {appliedSched[p.id].start ? ` at ${appliedSched[p.id].start}` : ''} — it now sits in your plan.
+                    </span>
+                  )}
+                </div>
+              )}
               {p.contributions && (
                 <div className="small mt-8">
                   <b>Contributions:</b> {p.contributions}
@@ -326,6 +345,42 @@ function ProjectsTab() {
           ))}
         </div>
       )}
+
+      {schedProjectId &&
+        (() => {
+          const proj = data.projects.find((x) => x.id === schedProjectId);
+          if (!proj) return null;
+          return (
+            <ScheduleSheet
+              task={{ id: proj.id, text: proj.name, minutes: 60, priority: undefined, goalId: proj.goalId, date: undefined, start: undefined, due: undefined }}
+              data={data}
+              onClose={() => setSchedProjectId(null)}
+              onApply={(patch) => {
+                update((d) => {
+                  d.tasks = [
+                    ...(d.tasks ?? []),
+                    {
+                      id: uid('task'),
+                      text: proj.name,
+                      done: false,
+                      date: patch.date,
+                      start: patch.start,
+                      minutes: patch.minutes,
+                      goalId: proj.goalId,
+                      projectId: proj.id,
+                      createdAt: new Date().toISOString(),
+                      rescheduledAt: [],
+                      updatedAt: new Date().toISOString(),
+                    },
+                  ];
+                  return { ...d };
+                });
+                setAppliedSched((a) => ({ ...a, [proj.id]: { date: patch.date, start: patch.start } }));
+                setSchedProjectId(null);
+              }}
+            />
+          );
+        })()}
 
       {modal && (
         <Modal title={modal.project ? 'Edit project' : 'New project'} onClose={() => setModal(null)} wide>

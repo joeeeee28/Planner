@@ -151,6 +151,7 @@ export function InboxPage() {
               <InboxTaskRow
                 key={task.id}
                 task={task}
+                data={data}
                 goalTitle={data.goals.find((g) => g.id === task.goalId)?.title}
                 onPatch={(p) => patchTask(task.id, p)}
                 onDelete={() => deleteTask(task.id)}
@@ -209,7 +210,7 @@ export function InboxPage() {
 
 // ── Unscheduled task row with inline “pick a day” ─────────────────────────────
 
-function InboxTaskRow({ task, goalTitle, onPatch, onDelete }: { task: PlannedTask; goalTitle?: string; onPatch: (p: Partial<PlannedTask>) => void; onDelete: () => void }) {
+function InboxTaskRow({ task, goalTitle, onPatch, onDelete, data }: { task: PlannedTask; goalTitle?: string; onPatch: (p: Partial<PlannedTask>) => void; onDelete: () => void; data: import('../lib/types').AppData }) {
   const [scheduling, setScheduling] = useState(false);
   const [date, setDate] = useState(todayStr());
   const [start, setStart] = useState('');
@@ -254,7 +255,7 @@ function InboxTaskRow({ task, goalTitle, onPatch, onDelete }: { task: PlannedTas
 
   return (
     <div>
-      <TaskRow task={task} goalTitle={goalTitle} onPatch={onPatch} onDelete={onDelete} />
+      <TaskRow task={task} data={data} goalTitle={goalTitle} onPatch={onPatch} onDelete={onDelete} />
       {!task.date && (
         <div className="ptask-quick">
           <button className="btn btn-ghost btn-sm" onClick={() => setScheduling(true)}>

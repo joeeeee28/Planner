@@ -9,7 +9,9 @@ import { uid } from '../lib/uid';
 import { validateImport } from '../lib/store';
 import { readMeta } from '../lib/cloudData';
 import { hasMeaningfulData } from '../lib/migrate';
-import type { GrowthArea } from '../lib/types';
+import type { GrowthArea, PlanningSettings } from '../lib/types';
+import { planningOf, capacityMinutesOf, windowLabel, DEFAULT_FOCUS_OPTIONS } from '../lib/calendar/time';
+import { descriptorFor, connectionFor, connectionStatusLabel, externalConnectState } from '../lib/calendar/provider';
 
 function totalRecords(counts: Record<string, number>): number {
   return (
@@ -44,6 +46,13 @@ const AREA_ICONS = ['💼', '🧠', '🏃', '🌱', '🧘', '👥', '🎨', '�
 
 export function SettingsPage() {
   const { data, update, downloadBackup, importBackup, resetAllData } = useApp();
+  const plan = planningOf(data.settings);
+  const capacity = capacityMinutesOf(data.settings);
+  const setPlan = (patch: Partial<PlanningSettings>) =>
+    update((d) => {
+      d.settings = { ...d.settings, planning: { ...planningOf(d.settings), ...patch } };
+      return { ...d };
+    });
   const [areaModal, setAreaModal] = useState<null | { area?: GrowthArea }>(null);
   const [draft, setDraft] = useState({ name: '', icon: '🌱', color: '#10b981' });
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
@@ -247,6 +256,193 @@ export function SettingsPage() {
               <option value={0}>Sunday</option>
             </select>
           </div>
+        </div>
+
+
+        <div className="card">
+          <h2 className="card-title">🕘 Planning</h2>
+          <p className="card-sub" style={{ marginTop: 0 }}>
+            Your working hours drive availability and scheduling suggestions. These are defaults — the engine never forces a task into your day.
+          </p>
+          <div className="grid grid-2" style={{ gap: 8 }}>
+            <div className="form-row">
+              <label className="form-label">Workday starts</label>
+              <input
+                type="time"
+                value={plan.workStart}
+                aria-label="Workday starts"
+                onChange={(e) => setPlan({ workStart: e.target.value })}
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label">Workday ends</label>
+              <input
+                type="time"
+                value={plan.workEnd}
+                aria-label="Workday ends"
+                onChange={(e) => setPlan({ workEnd: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex mt-8" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label className="form-label" style={{ margin: 0 }}>Break</label>
+            <input
+              type="time"
+              value={plan.breakStart ?? '13:00'}
+              disabled={!plan.breakStart}
+              aria-label="Break starts"
+              style={{ width: 130 }}
+              onChange={(e) => setPlan({ breakStart: e.target.value || '' })}
+            />
+            <span className="tiny muted">to</span>
+            <input
+              type="time"
+              value={plan.breakEnd ?? '14:00'}
+              disabled={!plan.breakStart}
+              aria-label="Break ends"
+              style={{ width: 130 }}
+              onChange={(e) => setPlan({ breakEnd: e.target.value || '' })}
+            />
+            <label className="check-row" style={{ margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={!!plan.breakStart}
+                onChange={(e) => {
+                  if (e.target.checked) setPlan({ breakStart: plan.breakStart || '13:00', breakEnd: plan.breakEnd || '14:00' });
+                  else setPlan({ breakStart: '', breakEnd: '' });
+                }}
+              />
+              <span className="small">Fixed break</span>
+            </label>
+          </div>
+          <div className="form-row mt-8" style={{ marginBottom: 0 }}>
+            <label className="form-label">Focus-length presets (minutes)</label>
+            <div className="flex" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {DEFAULT_FOCUS_OPTIONS.map((m) => {
+                const on = plan.focusOptions?.includes(m);
+                return (
+                  <button
+                    key={m}
+                    className={`focus-chip ${on ? 'active' : ''}`}
+                    aria-pressed={!!on}
+                    onClick={() =>
+                      setPlan({
+                        focusOptions: on
+                          ? plan.focusOptions!.filter((x) => x !== m)
+                          : [...(plan.focusOptions ?? []), m].sort((a, b) => a - b),
+                      })
+                    }
+                  >
+                    {m}m
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <p className="tiny muted mt-8" style={{ marginBottom: 0 }}>
+            ≈ {windowLabel(capacity)} of planning capacity per workday
+            {plan.breakStart ? ' (break included)' : ' · no fixed break'}. Defaults are sensible for most people — leave them untouched if they suit you.
+          </p>
+        </div>
+
+        <div className="card">
+          <h2 className="card-title">🔌 Integrations</h2>
+          <p className="card-sub" style={{ marginTop: 0 }}>
+            Connect a real calendar so Growth OS plans around what already fills your time. Events stay read-only unless you enable writes — and nothing is ever shared with anyone.
+          </p>
+          <div className="stat-row">
+            <span className="k">🗓 Growth OS Calendar</span>
+            <span className="v"><span className="badge badge-success">Built in</span></span>
+          </div>
+          <p className="tiny muted" style={{ marginTop: 4 }}>
+            Your tasks, time blocks and habits <i>are</i> the Growth OS calendar — no connection needed.
+          </p>
+
+          {(['google', 'outlook'] as const).map((pid) => {
+            const label = pid === 'google' ? 'Google Calendar' : 'Microsoft Outlook';
+            const conn = connectionFor(data, pid);
+            const st = externalConnectState(pid);
+            const status = connectionStatusLabel(conn);
+            return (
+              <div key={pid} className="int-card mt-16">
+                <div className="flex" style={{ gap: 10, alignItems: 'center' }}>
+                  <span className="grow small bold">{label}</span>
+                  <span className={`badge ${status.tone === 'ok' ? 'badge-success' : status.tone === 'warn' ? 'badge-warn' : ''}`}>
+                    {status.label}
+                  </span>
+                </div>
+                <p className="tiny muted" style={{ margin: '6px 0 10px' }}>
+                  {descriptorFor(pid).permissionCopy}
+                </p>
+                {conn && (
+                  <div className="tiny" style={{ marginBottom: 8 }}>
+                    {conn.accountEmail && <div>Account: <b>{conn.accountEmail}</b></div>}
+                    <div style={{ marginTop: 4 }}>
+                      Calendars:
+                      {((conn.calendars ?? []).length > 0 ? conn.calendars! : [{ id: '…', name: 'loading…' }]).map((c) => (
+                        <span key={c.id} className="cal-chip">{c.name}</span>
+                      ))}
+                    </div>
+                    {conn.status === 'needs-attention' && conn.syncError && (
+                      <div className="tiny" style={{ color: 'var(--danger, #b91c1c)' }}>{conn.syncError}</div>
+                    )}
+                  </div>
+                )}
+                {!conn ? (
+                  <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center' }}>
+                    <button className="btn btn-sm" disabled title={st.reason}>
+                      Connect
+                    </button>
+                    <span className="tiny muted" style={{ flex: '1 1 220px', minWidth: 200 }}>
+                      {st.reason}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center' }}>
+                    <button className="btn btn-sm" disabled title="Needs a configured calendar backend in this build.">
+                      Sync now
+                    </button>
+                    <button className="btn btn-sm" disabled title="Needs a configured calendar backend in this build.">
+                      Reconnect
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        const remove = window.confirm(
+                          'Disconnect this calendar? Growth OS data stays untouched. Keep cached events for history?',
+                        );
+                        const drop = window.confirm('Remove cached events from Growth OS? Choose Cancel to keep them for past days.');
+                        if (!remove) return;
+                        update((d) => {
+                          d.calendarConnections = (d.calendarConnections ?? []).filter((c) => c.provider !== pid);
+                          if (drop) d.calendarEvents = (d.calendarEvents ?? []).filter((e) => e.provider !== pid);
+                          return { ...d };
+                        });
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                    <label className="check-row" style={{ margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!conn.writeEnabled}
+                        aria-label={`Create calendar events from Growth OS in ${label}`}
+                        onChange={(e) =>
+                          update((d) => {
+                            d.calendarConnections = (d.calendarConnections ?? []).map((c) =>
+                              c.provider === pid ? { ...c, writeEnabled: e.target.checked } : c,
+                            );
+                            return { ...d };
+                          })
+                        }
+                      />
+                      <span className="tiny">Create calendar events from Growth OS</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="card">
