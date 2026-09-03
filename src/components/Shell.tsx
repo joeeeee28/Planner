@@ -210,9 +210,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           })}
         </div>
       </nav>
-      <div className="sidebar-footer">
-        <AccountMenu />
-      </div>
     </aside>
   );
 

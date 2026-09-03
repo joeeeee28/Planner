@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Growth OS V4 — account menu (avatar + dropdown) in the app shell.
-// Makes the authenticated identity and SIGN OUT explicit on every screen:
-// desktop top-right AND mobile top-right; also rendered in the sidebar
-// footer of the mobile drawer. Keyboard accessible (Enter opens, arrows
-// optional, Escape closes, focus returns to the trigger).
+// One instance per screen, top-right (desktop AND mobile). Sign out lives
+// here only — there is deliberately no second account trigger in the sidebar
+// footer, so Sign out / Export data appear exactly once per viewport.
+// Keyboard accessible (Enter opens, arrows optional, Escape closes, focus
+// returns to the trigger).
 //   * Sign out clears the Supabase session and returns to the login screen.
 //   * Cloud data is NEVER touched on sign-out (server rows preserved).
 //   * Local-mode users see an honest "Local mode" row instead of sign-out.

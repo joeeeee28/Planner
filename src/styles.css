@@ -5,39 +5,44 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* surfaces */
-  --bg: #faf9f7;
-  --surface: #ffffff;
-  --surface-2: #f4f2ee;
-  --surface-3: #ecebe6;
+  /* surfaces — warm paper, never stark white/grey */
+  --bg: #f6f3ec;
+  --surface: #fffdf9;
+  --surface-2: #f1ece2;
+  --surface-3: #e8e2d4;
 
-  /* ink */
-  --ink: #1b1a17;
-  --ink-2: #57564e;
-  --ink-3: #98968b;
+  /* ink — soft charcoal with a warm cast */
+  --ink: #24211a;
+  --ink-2: #5f5849;
+  --ink-3: #a49b89;
 
   /* lines */
-  --line: #e8e6df;
-  --line-strong: #d9d7cf;
+  --line: #e8e1d2;
+  --line-strong: #d8cfba;
 
-  /* accent — one restrained color */
-  --accent: #0f766e;
-  --accent-strong: #0b5f59;
-  --accent-ink: #0f766e;
-  --accent-soft: rgba(15, 118, 110, 0.09);
-  --accent-line: rgba(15, 118, 110, 0.25);
+  /* accent — deep tea green; gold reserved as a warm secondary */
+  --accent: #0d7a6e;
+  --accent-strong: #0a5f56;
+  --accent-ink: #0d7a6e;
+  --accent-soft: rgba(13, 122, 110, 0.1);
+  --accent-line: rgba(13, 122, 110, 0.3);
+  --gold: #c08a2d;
 
   /* semantics */
-  --pos: #2f7d4f;
-  --pos-soft: rgba(47, 125, 79, 0.1);
-  --neg: #b3442f;
-  --neg-soft: rgba(179, 68, 47, 0.1);
-  --warn: #9a6b1f;
-  --warn-soft: rgba(154, 107, 31, 0.12);
+  --pos: #34794f;
+  --pos-soft: rgba(52, 121, 79, 0.11);
+  --neg: #bb4932;
+  --neg-soft: rgba(187, 73, 50, 0.1);
+  --warn: #a16f1d;
+  --warn-soft: rgba(161, 111, 29, 0.13);
 
-  --shadow-sm: 0 1px 2px rgba(28, 26, 20, 0.04);
-  --shadow-md: 0 6px 24px rgba(28, 26, 20, 0.06);
-  --shadow-lg: 0 18px 48px rgba(28, 26, 20, 0.12);
+  --shadow-sm: 0 1px 2px rgba(74, 60, 30, 0.05);
+  --shadow-md: 0 10px 28px rgba(74, 60, 30, 0.09);
+  --shadow-lg: 0 24px 60px rgba(56, 45, 20, 0.16);
+
+  /* soft ambient glows behind the content column */
+  --ambient-a: rgba(13, 122, 110, 0.09);
+  --ambient-b: rgba(192, 138, 45, 0.07);
 
   --r-sm: 10px;
   --r-md: 14px;
@@ -50,29 +55,33 @@
 }
 
 [data-theme='dark'] {
-  --bg: #141412;
-  --surface: #1b1a17;
-  --surface-2: #22211d;
-  --surface-3: #2a2924;
-  --ink: #f0efe9;
-  --ink-2: #a3a197;
-  --ink-3: #6d6b62;
-  --line: #2c2b26;
-  --line-strong: #3a3932;
-  --accent: #34c3a4;
-  --accent-strong: #5ed4ba;
-  --accent-ink: #34c3a4;
-  --accent-soft: rgba(52, 195, 164, 0.12);
-  --accent-line: rgba(52, 195, 164, 0.3);
-  --pos: #58b97c;
-  --pos-soft: rgba(88, 185, 124, 0.13);
-  --neg: #e07a60;
-  --neg-soft: rgba(224, 122, 96, 0.13);
-  --warn: #d3a44e;
-  --warn-soft: rgba(211, 164, 78, 0.14);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.65);
+  /* warm espresso dark — colour, not plain black */
+  --bg: #17140f;
+  --surface: #211d16;
+  --surface-2: #2b261c;
+  --surface-3: #37301f;
+  --ink: #f1ede2;
+  --ink-2: #aca290;
+  --ink-3: #776d59;
+  --line: #393226;
+  --line-strong: #4b4231;
+  --accent: #3ecfae;
+  --accent-strong: #6ee0c7;
+  --accent-ink: #46d6b4;
+  --accent-soft: rgba(62, 207, 174, 0.14);
+  --accent-line: rgba(62, 207, 174, 0.34);
+  --gold: #e0b45c;
+  --pos: #63c98c;
+  --pos-soft: rgba(99, 201, 140, 0.14);
+  --neg: #e5876d;
+  --neg-soft: rgba(229, 135, 109, 0.14);
+  --warn: #dcae55;
+  --warn-soft: rgba(220, 174, 85, 0.15);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --ambient-a: rgba(62, 207, 174, 0.06);
+  --ambient-b: rgba(224, 180, 92, 0.04);
 }
 
 * {
@@ -272,11 +281,6 @@ textarea {
   text-align: center;
   font-size: 15px;
   flex-shrink: 0;
-}
-
-.sidebar-footer {
-  padding: 14px 18px 20px;
-  border-top: 1px solid var(--line);
 }
 
 .cycle-pill {
@@ -2005,15 +2009,6 @@ textarea {
   cursor: default;
 }
 
-/* Sidebar-footer (mobile drawer) pop opens upward */
-.sidebar-footer .account-pop {
-  top: auto;
-  bottom: calc(100% + 6px);
-  right: 12px;
-  left: 12px;
-  min-width: 0;
-}
-
 /* ── Home: summary line ── */
 .hero-summary {
   display: flex;
@@ -3082,4 +3077,131 @@ textarea {
   .int-card { padding: 12px; }
   .proposal-row { flex-direction: column; align-items: flex-start; gap: 2px; }
   .cal-chip { white-space: normal; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROWTH OS V4 — APPEARANCE REFRESH · warm planner-grade finish
+   (branding layer only: ambience, brand mark, display type, colour actions)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* soft colour ambience behind the content column (both themes) */
+.app-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(780px 520px at 88% -10%, var(--ambient-a), transparent 62%),
+    radial-gradient(700px 500px at -6% 106%, var(--ambient-b), transparent 60%);
+}
+.main {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Brand: tea-green mark + serif wordmark ── */
+.sidebar-brand {
+  padding: 28px 22px 20px;
+}
+.brand-mark {
+  background: linear-gradient(135deg, var(--accent) 10%, var(--accent-strong) 90%);
+  color: #fff;
+  border-radius: 11px;
+  font-size: 16px;
+  box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+[data-theme='dark'] .brand-mark {
+  color: #0c221c;
+}
+.brand-name {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 21px;
+  letter-spacing: 0.012em;
+  color: var(--ink);
+}
+
+/* ── Sidebar nav: active = soft tea pill with hairline ── */
+.nav-item.active {
+  background: linear-gradient(90deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 30%, transparent));
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+[data-theme='dark'] .nav-item.active {
+  color: var(--accent-ink);
+}
+.nav-item.active .nav-icon {
+  color: var(--accent-strong);
+}
+[data-theme='dark'] .nav-item.active .nav-icon {
+  color: var(--accent-ink);
+}
+
+/* ── Display type: serif page + topbar titles (editorial calm) ── */
+.t-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(26px, 2.8vw, 32px);
+  letter-spacing: -0.012em;
+  line-height: 1.12;
+}
+.topbar-heading .topbar-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 21px;
+  letter-spacing: -0.008em;
+  max-width: 46vw;
+}
+
+/* ── Colour actions: tea-green instead of flat black ── */
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.btn-primary:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #000), var(--accent-strong));
+  color: #fff;
+}
+[data-theme='dark'] .btn-primary {
+  color: #08150f;
+  box-shadow: 0 8px 20px -8px rgba(62, 207, 174, 0.35);
+}
+[data-theme='dark'] .btn-primary:hover {
+  color: #08150f;
+  filter: brightness(1.07);
+}
+
+.avatar {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 28%, transparent);
+}
+[data-theme='dark'] .avatar {
+  color: #08150f;
+}
+
+.fab {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  border: none;
+}
+[data-theme='dark'] .fab {
+  color: #08150f;
+}
+
+/* mobile bottom-nav active tint matches the nav language */
+.mobile-nav .mn-item.active .ic {
+  color: var(--accent-strong);
+}
+[data-theme='dark'] .mobile-nav .mn-item.active .ic {
+  color: var(--accent-ink);
+}
+
+/* focus hint on the account trigger matches the coloured avatar */
+.account-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
