@@ -1,0 +1,40 @@
+{
+  "name": "growth-os",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "tsx scripts/test-logic.ts && tsx scripts/test-income.ts && tsx scripts/test-money-v2.ts && tsx scripts/test-goals-v2.ts && tsx scripts/test-growth-v2.ts && tsx scripts/smoke-test.ts",
+    "test:v3": "tsx scripts/test-v3-engine.ts && tsx scripts/smoke-test-v3.ts",
+    "test:all": "npm test && npm run test:v3 && npm run test:v4 && npm run test:engine5 && npm run test:engine6",
+    "test:v4": "tsx scripts/smoke-test-v4.ts && tsx scripts/smoke-test-v4-slice2.ts && tsx scripts/test-v4-slice3.ts && tsx scripts/test-v4-slice4.ts && tsx scripts/test-v4-slice5.ts && tsx scripts/test-v4-slice6.ts",
+    "test:slice5": "npm run test:engine5 && tsx scripts/test-v4-slice5.ts",
+    "test:engine5": "tsx scripts/.eng5-check.ts",
+    "test:engine6": "tsx scripts/.eng6-check.ts",
+    "test:slice6": "npm run test:engine6 && tsx scripts/test-v4-slice6.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@supabase/supabase-js": "^2.114.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "jsdom": "^30.0.1",
+    "oxlint": "^1.79.0",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2"
+  },
+  "description": "Personal & Professional Growth Operating System"
+}
