@@ -349,6 +349,8 @@ async function main() {
     process.exit(1);
   }
   console.log('\n✅ all V4 DOM tests passed');
+  // Clean exit: jsdom timers/listeners can keep the event loop alive otherwise.
+  process.exit(0);
 }
 
 main().catch((err) => {
