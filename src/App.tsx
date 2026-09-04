@@ -19,6 +19,7 @@ const JournalPage = lazy(() => import('./pages/Journal').then((m) => ({ default:
 const InsightsPage = lazy(() => import('./pages/Insights').then((m) => ({ default: m.InsightsPage })));
 const ReviewsPage = lazy(() => import('./pages/Reviews').then((m) => ({ default: m.ReviewsPage })));
 const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })));
+const AutomationPage = lazy(() => import('./pages/Automation').then((m) => ({ default: m.AutomationPage })));
 
 function PageFallback() {
   return (
@@ -89,6 +90,9 @@ function AppRouter() {
   switch (section) {
     case 'today':
       page = <TodayPage />;
+      break;
+    case 'automation':
+      page = <AutomationPage />;
       break;
     case 'inbox':
       page = <InboxPage />;

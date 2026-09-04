@@ -376,6 +376,8 @@ export interface Settings {
   finance: FinanceSettings;
   /** Slice 5 — working hours & planning defaults (optional; engine falls back). */
   planning?: PlanningSettings;
+  /** Slice 6 — automation & notification preferences (optional; defaults on). */
+  automation?: AutomationSettings;
 }
 
 /** Working-hours model for availability & scheduling. All times are local `HH:MM`. */
@@ -492,6 +494,10 @@ export interface PlannedTask {
   /** Optional provenance: learning item / career project this task serves. */
   learningId?: ID;
   projectId?: ID;
+  /** Optional provenance (Slice 6): recurring-series instance this task was generated from. */
+  seriesId?: ID;
+  /** Occurrence date this recurring instance represents — deterministic identity with seriesId. */
+  occurrence?: DateStr;
   notes?: string;
   createdAt: string;
   /** ISO timestamps of reschedules (bounded; used to notice repeated postponing). */
@@ -573,6 +579,14 @@ export interface AppData {
   calendarConnections?: CalendarConnection[];
   /** Cached read-only external events (Slice 5) — additive. */
   calendarEvents?: ExternalEvent[];
+  /** Recurring-task definitions (Slice 6) — additive. */
+  recurringTasks?: RecurringTask[];
+  /** Routine definitions (Slice 6) — additive. */
+  routines?: Routine[];
+  /** Per-day routine execution state (Slice 6) — temporary, additive. */
+  routineRuns?: RoutineRuns;
+  /** Deterministic in-app notifications (Slice 6) — additive. */
+  notifications?: AppNotification[];
   onboarded: boolean;
   settings: Settings;
   cycles: GrowthCycle[];
@@ -601,4 +615,125 @@ export interface AppData {
   cycleReviews: Record<ID, CycleReview>;
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Recurring tasks + routines + notifications (Slice 6) ─────────────────────
+
+export type RecurrenceKind = 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+
+/**
+ * Recurrence rule for a recurring task (Slice 6).
+ * - daily: every calendar day from startDate
+ * - weekdays: Monday–Friday
+ * - weekly / biweekly: on `weekDay` (defaults to startDate's weekday)
+ * - monthly / quarterly / yearly: on `monthDay` (1–31; months lacking the day
+ *   are skipped, e.g. the 31st in April), or — when `lastWeekday` is set —
+ *   on the *last* `weekDay` of the month ("last Friday of month").
+ */
+export interface TaskRecurrence {
+  kind: RecurrenceKind;
+  /** 0 = Sunday … 6 = Saturday — weekly/biweekly anchor, or monthly last-weekday target. */
+  weekDay?: number;
+  /** 1–31 — monthly/quarterly/yearly day of month. */
+  monthDay?: number;
+  /** monthly/quarterly/yearly on the last `weekDay` of the month instead of `monthDay`. */
+  lastWeekday?: boolean;
+}
+
+/** A user-defined recurring task definition (Slice 6). Instances are real PlannedTasks. */
+export interface RecurringTask {
+  id: ID;
+  text: string;
+  notes?: string;
+  rule: TaskRecurrence;
+  /** First occurrence. */
+  startDate: DateStr;
+  /** Optional series end — no occurrences after this date. */
+  endDate?: DateStr;
+  /** Preferred time of day for generated instances (HH:MM). */
+  plannedTime?: string;
+  /** Estimated duration in minutes. */
+  minutes?: number;
+  priority?: number;
+  goalId?: ID;
+  category?: string;
+  /** Paused = no new instances; existing open instances stay. */
+  active: boolean;
+  /** Default true: occurrences missed while away are skipped, never back-filled. */
+  skipMissed: boolean;
+  /** Last occurrence date that has been materialized (idempotency cursor). */
+  lastMaterialized?: DateStr;
+  createdAt: DateStr;
+  updatedAt?: string;
+}
+
+export interface RoutineStep {
+  id: ID;
+  title: string;
+  /** Estimated minutes — used by availability estimates (never auto-booked). */
+  durationMin?: number;
+  /** Reference an existing habit — checking the step completes the habit once. */
+  habitId?: ID;
+  /** A goal this step supports (display + goal-activity linkage). */
+  goalId?: ID;
+  /** When set, checking the step creates one task for today from this template. */
+  taskTemplate?: {
+    text: string;
+    minutes?: number;
+    priority?: number;
+    goalId?: ID;
+  };
+  /** Optional steps don't block a day from counting as complete. */
+  optional?: boolean;
+}
+
+/** A repeatable sequence of related actions (Slice 6). */
+export interface Routine {
+  id: ID;
+  name: string;
+  description?: string;
+  /** 0 = Sunday … 6 = Saturday; empty = every day. */
+  daysOfWeek: number[];
+  /** Preferred start time HH:MM (never auto-creates calendar events). */
+  preferredTime?: string;
+  active: boolean;
+  steps: RoutineStep[];
+  createdAt: DateStr;
+  updatedAt?: string;
+}
+
+/**
+ * Per-day routine execution state — temporary by design.
+ * Key: `${routineId}|${date}`; value: stepId → what the step wrote when it was
+ * checked (`habit`/`task`/`plain`), so unchecking never deletes user data
+ * blindly (habit completions are only removed if this step created them).
+ */
+export type RoutineRuns = Record<string, Record<ID, 'habit' | 'task' | 'plain'>>;
+
+/** Notification categories the user can mute independently. */
+export type NotifyCategory = 'tasks' | 'goals' | 'habits' | 'routines' | 'reviews' | 'money';
+
+/** Slice 6 — automation preferences on Settings (optional; engine falls back to on). */
+export interface AutomationSettings {
+  notify?: Partial<Record<NotifyCategory, boolean>>;
+  /** Quiet hours HH:MM — no notification delivery (in-app badge/panel gated). */
+  quietStart?: string;
+  quietEnd?: string;
+}
+
+/** A deterministic, deduplicated, user-dismissable in-app notification. */
+export interface AppNotification {
+  id: ID;
+  cat: NotifyCategory;
+  /** Short kind label, e.g. 'goal-deadline' | 'routine' | 'review' | 'bill'. */
+  kind: string;
+  title: string;
+  body?: string;
+  /** Day the notification belongs to (grouped Today / Upcoming / Earlier). */
+  date: DateStr;
+  /** Hash route to jump to the record (never to private content). */
+  route?: string;
+  read?: boolean;
+  dismissed?: boolean;
+  createdAt: string;
 }

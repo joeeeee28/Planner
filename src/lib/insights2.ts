@@ -8,7 +8,7 @@
 // private journal stays private.
 
 import type { AppData, DateStr } from './types';
-import { todayStr, weekStartOf, addDays, monthKeyOf, addMonths } from './dates';
+import { todayStr, weekStartOf, addDays, addMonths, formatDateMed, monthKeyOf } from './dates';
 import { changeReport, changeDeltaLabel } from './change';
 import { attentionItems } from './attention';
 import { allHabitIntel } from './habitIntel';
@@ -18,6 +18,8 @@ import { formatMoney } from './finance';
 import { nextMonthForecast } from './forecast';
 import { nextBestAction } from './priority';
 import { tasksOf, tasksOn, fmtMinutes } from './plan';
+import { routinesForDay, dayRunState, runProgress } from './automation/routines';
+import { upcomingOccurrences } from './automation/recur';
 
 export type IntelKind = 'pos' | 'warn' | 'info' | 'neg';
 export type IntelSection =
@@ -29,7 +31,8 @@ export type IntelSection =
   | 'goals'
   | 'growth'
   | 'cross'
-  | 'review';
+  | 'review'
+  | 'automation';
 
 export const INTEL_SECTION_ORDER: IntelSection[] = [
   'changed',
@@ -40,6 +43,7 @@ export const INTEL_SECTION_ORDER: IntelSection[] = [
   'goals',
   'growth',
   'cross',
+  'automation',
   'review',
 ];
 
@@ -52,6 +56,7 @@ export const INTEL_SECTION_TITLES: Record<IntelSection, string> = {
   goals: 'How are my goals moving?',
   growth: 'Habits · Learning · Career',
   cross: 'Across your goals',
+  automation: 'What is on autopilot?',
   review: 'What should I review?',
 };
 
@@ -337,6 +342,71 @@ export function intelStatements(data: AppData, now: DateStr = todayStr(), maxPer
     push({ key: 'x-career-' + g.id, icon: '◇', text: `Career evidence (projects, achievements or skills) supports “${g.title}”.`, metric: 'career', period: 'All time', kind: 'info', section: 'cross', route: `goals/${g.id}` });
   }
 
+  // ── AUTOMATION: recurring tasks + routines (derived, factual) ──
+  const routines = (data.routines ?? []).filter((r) => r.active && r.steps.length > 0);
+  if (routines.length > 0) {
+    const perRoutine = routines.map((r) => {
+      let sched = 0;
+      let done = 0;
+      let d = addDays(now, -6);
+      while (d <= now) {
+        if (routineScheduledOnDay(data, r, d)) {
+          sched++;
+          const { total, done: dn } = runProgress(r, dayRunState(data, r.id, d));
+          if (total > 0 && dn === total) done++;
+        }
+        d = addDays(d, 1);
+      }
+      return { r, sched, done, pct: sched === 0 ? 0 : Math.round((done / sched) * 100) };
+    }).filter((x) => x.sched > 0);
+    if (perRoutine.length > 0) {
+      const best = [...perRoutine].sort((a, b) => b.pct - a.pct)[0];
+      push({
+        key: 'auto-routine',
+        icon: '☀',
+        text: `“${best.r.name}” was completed ${best.done} of ${best.sched} scheduled day${best.sched === 1 ? '' : 's'} in the last 7 days (${best.pct}%).`,
+        metric: best.pct >= 100 ? 'perfect week' : best.pct >= 60 ? 'steady' : 'building',
+        period: 'Last 7 days',
+        kind: best.pct >= 60 ? 'pos' : 'info',
+        section: 'automation',
+        route: 'automation',
+      });
+      if (perRoutine.length > 1) {
+        const lowest = [...perRoutine].sort((a, b) => a.pct - b.pct)[0];
+        if (lowest.pct < best.pct) {
+          push({
+            key: 'auto-routine-gap',
+            icon: '◐',
+            text: `“${lowest.r.name}” has the softest run recently (${lowest.done}/${lowest.sched} days) — a smaller routine is easier to protect.`,
+            metric: `${lowest.pct}%`,
+            period: 'Last 7 days',
+            kind: 'info',
+            section: 'automation',
+            route: 'automation',
+          });
+        }
+      }
+    }
+  }
+  const recs = (data.recurringTasks ?? []).filter((r) => r.active);
+  const openRecInstances = (data.tasks ?? []).filter((t) => !t.done && t.seriesId && t.date && t.date >= now).length;
+  if (recs.length > 0) {
+    const nextDay = recs
+      .map((r) => upcomingOccurrences(r, addDays(now, -1), 1)[0])
+      .filter(Boolean)
+      .sort()[0];
+    push({
+      key: 'auto-recur',
+      icon: '↻',
+      text: `${recs.length} recurring task ${recs.length === 1 ? 'series is' : 'series are'} active${openRecInstances > 0 ? ` with ${openRecInstances} open instance${openRecInstances === 1 ? '' : 's'} in the next 30 days` : ''}${nextDay ? ` — next up ${formatDateMed(nextDay)}` : ''}.`,
+      metric: String(recs.length),
+      period: 'Next 30 days',
+      kind: 'info',
+      section: 'automation',
+      route: 'automation',
+    });
+  }
+
   // ── WHAT SHOULD I REVIEW? ──
   const stale = staleRows(data, now, 4).filter((s) => s.kind === 'review');
   for (const s of stale) {
@@ -348,6 +418,10 @@ export function intelStatements(data: AppData, now: DateStr = todayStr(), maxPer
   }
 
   return out;
+}
+
+function routineScheduledOnDay(data: AppData, r: { id: string }, d: DateStr): boolean {
+  return routinesForDay(data, d).some((x) => x.id === r.id);
 }
 
 function weekHasPassedHalf(data: AppData, now: DateStr): boolean {

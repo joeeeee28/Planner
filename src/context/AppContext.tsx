@@ -36,6 +36,9 @@ import {
   normalizeData,
 } from '../lib/store';
 import { materializeRecurring } from '../lib/finance';
+import { materializeRecurringTasks } from '../lib/automation/recur';
+import { todayStr } from '../lib/dates';
+import { buildNotifications, mergeNotifications, quietHoursActive } from '../lib/automation/notify';
 import { useAuth } from './AuthContext';
 import { getClient, type SupabaseLike } from '../lib/cloud';
 import { createSyncQueue, type SyncSnapshot } from '../lib/sync';
@@ -203,19 +206,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // materialize recurring transactions once per active-document load (same safety as V2)
   const materializedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const tag = isAuthedCloud && userId ? `cloud:${userId}` : 'local';
+    const tag = (isAuthedCloud && userId ? `cloud:${userId}` : 'local') + `|${todayStr()}`;
     if (materializedRef.current.has(tag)) return;
     materializedRef.current.add(tag);
     const current = dataRef.current;
-    if (!current.transactions.some((t) => t.recurrence)) return;
-    const { txs, generated } = materializeRecurring(current.transactions);
-    if (generated > 0) {
-      const next = { ...current, transactions: txs, updatedAt: new Date().toISOString() };
+    let next = current;
+    let changed = false;
+
+    // recurring transactions (V2 finance engine)
+    if (current.transactions.some((t) => t.recurrence)) {
+      const { txs, generated } = materializeRecurring(current.transactions);
+      if (generated > 0) {
+        next = { ...next, transactions: txs, updatedAt: new Date().toISOString() };
+        changed = true;
+      }
+    }
+
+    // recurring tasks (Slice 6): bounded forward window, skip-missed default,
+    // idempotent per (series, date). Definitions carry the cursor forward.
+    const recDefs = next.recurringTasks ?? [];
+    if (recDefs.some((d) => d.active)) {
+      const m = materializeRecurringTasks(recDefs, next.tasks);
+      if (m.created.length > 0) {
+        next = { ...next, tasks: m.tasks, recurringTasks: m.defs, updatedAt: new Date().toISOString() };
+        changed = true;
+      }
+    }
+
+    if (changed) {
       dataRef.current = next;
       flushData(next);
+      if (isAuthedCloud && userId) queueRef.current?.enqueue(next);
       setData(next);
     }
-  }, [isAuthedCloud, userId]);
+  }, [isAuthedCloud, userId, todayStr()]);
+
+  // ── notification tick: re-derive on every document change (and once at
+  //    mount). Deterministic merge keeps read/dismiss state; when quiet hours
+  //    are active nothing new is added. Converges in one pass — never writes
+  //    when the stored set already equals the derived set.
+  useEffect(() => {
+    const d = dataRef.current;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const prefs = d.settings.automation;
+    const fresh = quietHoursActive(prefs, nowMin) ? [] : buildNotifications(d, todayStr(), prefs);
+    const merged = mergeNotifications(d.notifications, fresh, todayStr());
+    const sameSet =
+      (d.notifications ?? []).length === merged.length &&
+      (d.notifications ?? []).every((n, i) => n.id === merged[i].id && n.read === merged[i].read && n.dismissed === merged[i].dismissed);
+    if (!sameSet) {
+      const next = { ...d, notifications: merged, updatedAt: new Date().toISOString() };
+      dataRef.current = next;
+      flushData(next);
+      if (isAuthedCloud && userId) queueRef.current?.enqueue(next);
+      setData(next);
+    }
+  }, [data, isAuthedCloud, userId]);
 
   const persistFor = (next: AppData) => {
     saveData(next); // active key (local doc or per-user cache)

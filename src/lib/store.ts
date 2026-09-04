@@ -5,7 +5,13 @@
 // moved to IndexedDB, a backend, or sync services without redesigning pages.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AppData, Transaction } from './types';
+import type {
+  AppData,
+  NotifyCategory,
+  RecurrenceKind,
+  RoutineStep,
+  Transaction,
+} from './types';
 import { SCHEMA_VERSION, STORAGE_KEY, createInitialData } from './defaults';
 import { mergeDeep } from './merge';
 
@@ -207,6 +213,7 @@ function normalizePlannedTasks(list: unknown): AppData['tasks'] {
     seen.add(id);
     const date = typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : undefined;
     const start = typeof r.start === 'string' && /^\d{1,2}:\d{2}$/.test(r.start) ? r.start : undefined;
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
     out.push({
       id,
       text: r.text,
@@ -216,6 +223,13 @@ function normalizePlannedTasks(list: unknown): AppData['tasks'] {
       minutes: typeof r.minutes === 'number' && r.minutes > 0 ? Math.round(r.minutes) : undefined,
       priority: typeof r.priority === 'number' && r.priority >= 1 && r.priority <= 3 ? r.priority : undefined,
       goalId: typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined,
+      // deadline is separate from the planned day and is never derived — preserve it.
+      due: typeof r.due === 'string' && DATE_RE.test(r.due) ? r.due : undefined,
+      learningId: typeof r.learningId === 'string' && r.learningId ? r.learningId : undefined,
+      projectId: typeof r.projectId === 'string' && r.projectId ? r.projectId : undefined,
+      // recurring-series provenance (Slice 6) — instance identity must survive round-trips.
+      seriesId: typeof r.seriesId === 'string' && r.seriesId ? r.seriesId : undefined,
+      occurrence: typeof r.occurrence === 'string' && DATE_RE.test(r.occurrence) ? r.occurrence : undefined,
       notes: typeof r.notes === 'string' && r.notes ? r.notes : undefined,
       createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
       updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
@@ -255,6 +269,141 @@ function normalizeInbox(list: unknown): AppData['inbox'] {
  * Backward-compatible migrations — run after every load/import so old or
  * partial data is repaired in place. Never wipes user data.
  */
+function normalizeRecurringTasks(list: unknown): AppData['recurringTasks'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['recurringTasks']> = [];
+  const KINDS = new Set(['daily', 'weekdays', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']);
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.text !== 'string' || !r.text.trim()) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `rec-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const rule = (r.rule ?? {}) as Record<string, unknown>;
+    const kind = KINDS.has(String(rule.kind)) ? (rule.kind as RecurrenceKind) : 'weekly';
+    const weekDay = typeof rule.weekDay === 'number' && rule.weekDay >= 0 && rule.weekDay <= 6 ? rule.weekDay : undefined;
+    const monthDay = typeof rule.monthDay === 'number' && rule.monthDay >= 1 && rule.monthDay <= 31 ? Math.round(rule.monthDay) : undefined;
+    out.push({
+      id,
+      text: String(r.text).trim(),
+      notes: typeof r.notes === 'string' && r.notes ? r.notes : undefined,
+      rule: { kind, weekDay, monthDay, lastWeekday: rule.lastWeekday === true },
+      startDate: typeof r.startDate === 'string' && D.test(r.startDate) ? r.startDate : '2026-01-01',
+      endDate: typeof r.endDate === 'string' && D.test(r.endDate) ? r.endDate : undefined,
+      plannedTime: typeof r.plannedTime === 'string' && /^\d{1,2}:\d{2}$/.test(r.plannedTime) ? r.plannedTime : undefined,
+      minutes: typeof r.minutes === 'number' && r.minutes > 0 ? Math.round(r.minutes) : undefined,
+      priority: typeof r.priority === 'number' && r.priority >= 1 && r.priority <= 3 ? r.priority : undefined,
+      goalId: typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined,
+      category: typeof r.category === 'string' && r.category ? r.category : undefined,
+      active: r.active !== false,
+      skipMissed: r.skipMissed !== false,
+      lastMaterialized: typeof r.lastMaterialized === 'string' && D.test(r.lastMaterialized) ? r.lastMaterialized : undefined,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+    });
+  }
+  return out;
+}
+
+function normalizeRoutines(list: unknown): AppData['routines'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['routines']> = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.name !== 'string' || !r.name.trim()) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `rt-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const stepsRaw = Array.isArray(r.steps) ? r.steps : [];
+    const steps: RoutineStep[] = [];
+    for (const sr of stepsRaw) {
+      if (!sr || typeof sr !== 'object') continue;
+      const st = sr as Record<string, unknown>;
+      if (typeof st.title !== 'string' || !st.title.trim()) continue;
+      const tmpl = (st.taskTemplate ?? {}) as Record<string, unknown>;
+      steps.push({
+        id: typeof st.id === 'string' && st.id ? st.id : `st-${Math.random().toString(36).slice(2, 10)}`,
+        title: String(st.title).trim(),
+        durationMin: typeof st.durationMin === 'number' && st.durationMin > 0 ? Math.round(st.durationMin) : undefined,
+        habitId: typeof st.habitId === 'string' && st.habitId ? st.habitId : undefined,
+        goalId: typeof st.goalId === 'string' && st.goalId ? st.goalId : undefined,
+        taskTemplate:
+          typeof tmpl.text === 'string' && tmpl.text.trim()
+            ? {
+                text: String(tmpl.text).trim(),
+                minutes: typeof tmpl.minutes === 'number' && tmpl.minutes > 0 ? Math.round(tmpl.minutes) : undefined,
+                priority: typeof tmpl.priority === 'number' && tmpl.priority >= 1 && tmpl.priority <= 3 ? tmpl.priority : undefined,
+                goalId: typeof tmpl.goalId === 'string' && tmpl.goalId ? tmpl.goalId : undefined,
+              }
+            : undefined,
+        optional: st.optional === true,
+      });
+    }
+    const days = Array.isArray(r.daysOfWeek) ? r.daysOfWeek.filter((d): d is number => typeof d === 'number' && d >= 0 && d <= 6) : [];
+    out.push({
+      id,
+      name: String(r.name).trim(),
+      description: typeof r.description === 'string' && r.description ? r.description : undefined,
+      daysOfWeek: days,
+      preferredTime: typeof r.preferredTime === 'string' && /^\d{1,2}:\d{2}$/.test(r.preferredTime) ? r.preferredTime : undefined,
+      active: r.active !== false,
+      steps,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+    });
+  }
+  return out;
+}
+
+function normalizeRoutineRuns(obj: unknown): AppData['routineRuns'] {
+  const out: NonNullable<AppData['routineRuns']> = {};
+  if (!obj || typeof obj !== 'object') return out;
+  const KINDS = new Set(['habit', 'task', 'plain']);
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    if (!key.includes('|') || !value || typeof value !== 'object') continue;
+    const day: Record<string, 'habit' | 'task' | 'plain'> = {};
+    for (const [stepId, kind] of Object.entries(value as Record<string, unknown>)) {
+      const k = KINDS.has(String(kind)) ? (String(kind) as 'habit' | 'task' | 'plain') : 'plain';
+      day[stepId] = k;
+    }
+    if (Object.keys(day).length > 0) out[key] = day;
+  }
+  return out;
+}
+
+function normalizeNotifications(list: unknown): AppData['notifications'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['notifications']> = [];
+  const CATS = new Set(['tasks', 'goals', 'habits', 'routines', 'reviews', 'money']);
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.id !== 'string' || !r.id || typeof r.title !== 'string' || !r.title.trim()) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push({
+      id: r.id,
+      cat: CATS.has(String(r.cat)) ? (r.cat as NotifyCategory) : 'tasks',
+      kind: typeof r.kind === 'string' ? r.kind : 'notice',
+      title: String(r.title),
+      body: typeof r.body === 'string' && r.body ? r.body : undefined,
+      date: typeof r.date === 'string' && D.test(r.date) ? r.date : '2026-01-01',
+      route: typeof r.route === 'string' && r.route ? r.route : undefined,
+      read: r.read === true,
+      dismissed: r.dismissed === true,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
 export function normalizeData(cached: AppData): AppData {
   if (cached.transactions) cached.transactions = normalizeTransactions(cached.transactions);
   if (cached.savingsGoals) cached.savingsGoals = normalizeSavingsGoals(cached.savingsGoals);
@@ -262,6 +411,11 @@ export function normalizeData(cached: AppData): AppData {
   if (cached.reminders) cached.reminders = normalizeReminders(cached.reminders);
   cached.tasks = normalizePlannedTasks(cached.tasks);
   cached.inbox = normalizeInbox(cached.inbox);
+  cached.recurringTasks = normalizeRecurringTasks(cached.recurringTasks);
+  cached.routines = normalizeRoutines(cached.routines);
+  cached.routineRuns = normalizeRoutineRuns(cached.routineRuns);
+  cached.notifications = normalizeNotifications(cached.notifications);
+  if (!cached.settings.automation || typeof cached.settings.automation !== 'object') cached.settings.automation = {};
   if (!cached.periodReviews || typeof cached.periodReviews !== 'object') cached.periodReviews = {};
   cached.periodReviews = normalizePeriodReviews(cached.periodReviews);
   if (!cached.settings.finance.provider) cached.settings.finance.provider = 'manual';

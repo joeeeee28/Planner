@@ -1607,6 +1607,7 @@ textarea {
 /* ── Calendar dots: journal & recurring ── */
 .cal-dot.journal { background: var(--warn); }
 .cal-dot.recurring { background: var(--pos); }
+.cal-dot.rec { background: var(--accent-strong); }
 
 /* ── V3: authentication screens ── */
 .auth-wrap {
@@ -2366,7 +2367,24 @@ textarea {
   cursor: pointer;
   white-space: nowrap;
 }
-.ptask-goal:hover {
+ .ptask-goal:hover {
+  background: var(--accent-line);
+}
+.rec-chip {
+  flex: none;
+  border: none;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  cursor: pointer;
+  line-height: 1;
+}
+.rec-chip:hover {
   background: var(--accent-line);
 }
 .ptask-acts {
@@ -3204,4 +3222,236 @@ textarea {
 .account-trigger:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ── Slice 6: notification center ─────────────────────────────────────────── */
+.notif-wrap {
+  position: relative;
+}
+.notif-bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.notif-bell:hover {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+.notif-bell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.notif-bell[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--accent-ink);
+}
+.notif-dot {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+[data-theme='dark'] .notif-dot {
+  color: #08150f;
+}
+.notif-panel {
+  position: absolute;
+  right: -6px;
+  top: calc(100% + 8px);
+  width: min(380px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop, 0 14px 40px rgba(40, 30, 10, 0.16));
+  z-index: 90;
+  overflow: hidden;
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.notif-groups {
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.notif-group-label {
+  padding: 10px 14px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.notif-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px 6px 14px;
+}
+.notif-row:hover {
+  background: var(--surface-2);
+}
+.notif-row.is-read {
+  opacity: 0.72;
+}
+.notif-main {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.notif-kind {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ink-1);
+}
+.notif-body {
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.notif-acts {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.notif-row:hover .notif-acts,
+.notif-row:focus-within .notif-acts {
+  opacity: 1;
+}
+.notif-act {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 5px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.notif-act:hover {
+  background: var(--line);
+  color: var(--ink-1);
+}
+.notif-foot {
+  border-top: 1px solid var(--line);
+  padding: 8px 14px;
+  background: var(--surface-2);
+}
+@media (max-width: 640px) {
+  .notif-panel {
+    position: fixed;
+    right: 12px;
+    top: 60px;
+    width: calc(100vw - 24px);
+  }
+}
+
+/* ── Slice 6: automation cards & routine steps ────────────────────────────── */
+.auto-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.auto-state {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+.auto-state.on {
+  background: var(--pos);
+  box-shadow: 0 0 0 3px var(--pos-soft);
+}
+.auto-state.off {
+  background: var(--ink-3);
+}
+.auto-step {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  background: var(--surface);
+}
+.auto-step input[type='text'],
+.auto-step select,
+.auto-step input:not([type]) {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--ink-1);
+}
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  padding: 2px 8px;
+  margin-left: 4px;
+}
+.cal-chip {
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Settings automation badge toggles (calm, text-only chips) */
+.badge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.badge-toggle:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-2);
+}
+.badge-toggle input {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  margin: 0;
 }

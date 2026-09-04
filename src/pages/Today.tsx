@@ -16,12 +16,13 @@ import {
   nextTaskForGoal,
   activeGoals,
 } from '../lib/plan';
+import { routinesForDay, dayRunState, runProgress, applyStepToggle } from '../lib/automation/routines';
 import { dayWorkload, adaptiveDay, fmt as wf } from '../lib/priority';
 import { dayAvailability } from '../lib/calendar/availability';
 import { verdictFor } from '../lib/calendar/scheduler';
 import { ScheduleSheet } from '../components/ScheduleSheet';
 import { dailyShutdownProposal, SHUTDOWN_PROMPTS } from '../lib/reviewIntel';
-import type { DayEntry, PlannedTask, TaskItem, Transaction } from '../lib/types';
+import type { DayEntry, PlannedTask, Routine, TaskItem, Transaction } from '../lib/types';
 
 const emptyJournal = {
   wentWell: '',
@@ -350,6 +351,11 @@ export function TodayPage() {
           </button>
         )}
       </section>
+
+      {/* ROUTINES — only meaningful for the real “today” */}
+      {isTodayDay && !isFuture && (
+        <RoutinesCard />
+      )}
 
       {/* DO NOW / UP NEXT */}
       <section className="panel section-gap">
@@ -803,4 +809,84 @@ function taskProgressLocal(tasks: TaskItem[]) {
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   return { done, total, pct: total === 0 ? 0 : Math.round((done / total) * 100) };
+}
+
+/** Today's routines — step sequences that belong to the day. Steps can be
+ *  plain checks, habit links (single completion record) or task creators. */
+function RoutinesCard() {
+  const { data, update } = useApp();
+  const today = todayStr();
+  const routines = routinesForDay(data, today);
+  const habitsById = new Map(data.habits.map((h) => [h.id, h]));
+  if (routines.length === 0) return null;
+  const progressOf = (r: Routine) => runProgress(r, dayRunState(data, r.id, today));
+  const allDone = routines.every((r) => {
+    const { total, done } = progressOf(r);
+    return total > 0 && done === total;
+  });
+  return (
+    <section className="panel section-gap" aria-label="Today's routines">
+      <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 2 }}>
+        <h2 className="panel-title">Routines</h2>
+        {allDone && <span className="tiny muted t-num">done for today ✓</span>}
+      </div>
+      <p className="panel-sub">Run today's routine — one tap per step.</p>
+      {routines.map((r) => {
+        const run = dayRunState(data, r.id, today);
+        const { done, total } = runProgress(r, run);
+        const complete = total > 0 && done === total;
+        return (
+          <div key={r.id} className="panel-flat" style={{ padding: '10px 12px', marginBottom: 8, borderColor: 'transparent', background: 'var(--bg-soft)' }}>
+            <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
+              <span className="small" style={{ fontWeight: 600 }}>{r.name}</span>
+              {r.preferredTime && <span className="tiny muted">{r.preferredTime}</span>}
+              {complete && <span className="tiny muted">· complete ✓</span>}
+              <span className="tiny muted t-num grow" style={{ textAlign: 'right' }}>{done}/{total}</span>
+            </div>
+            {total > 0 && <ProgressBar pct={Math.round((done / total) * 100)} height={4} />}
+            <div className="flex flex-col mt-8" style={{ gap: 4 }}>
+              {r.steps.map((st, idx) => {
+                const state = run[st.id];
+                const habit = st.habitId ? habitsById.get(st.habitId) : undefined;
+                const checked = state !== undefined;
+                return (
+                  <div className="task-item" key={st.id}>
+                    <input
+                      type="checkbox"
+                      className="task-check"
+                      checked={checked}
+                      aria-label={`${r.name}: ${st.title}`}
+                      onChange={() => update((d) => applyStepToggle(d, r.id, today, st.id))}
+                    />
+                    <span className={`task-text ${checked ? 'done' : ''}`} style={{ cursor: 'default' }}>
+                      {st.title}
+                      {st.optional ? <em className="tiny muted"> optional</em> : null}
+                      {habit ? <span className="tiny muted"> · {habit.icon} {habit.name}</span> : null}
+                      {st.taskTemplate ? <span className="tiny muted"> · adds a task when checked</span> : null}
+                      <span className="tiny muted"> · ~{st.durationMin}m</span>
+                    </span>
+                    {idx === r.steps.length - 1 && !complete && total > 0 && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        title="Mark every step done"
+                        onClick={() =>
+                          update((d) => r.steps.reduce((acc, x) => applyStepToggle(acc, r.id, today, x.id), d))
+                        }
+                      >
+                        ✓ all
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex" style={{ gap: 10, alignItems: 'center', marginTop: 6 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('automation')}>Manage routines</button>
+        <span className="tiny muted">Linking a step to a habit keeps one completion record — never a duplicate.</span>
+      </div>
+    </section>
+  );
 }

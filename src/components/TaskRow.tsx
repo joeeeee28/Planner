@@ -7,6 +7,7 @@ import { useState } from 'react';
 import type { AppData, PlannedTask } from '../lib/types';
 import { navigate } from '../lib/router';
 import { noteReschedule } from '../lib/plan';
+import { recurrenceLabel } from '../lib/automation/recur';
 import { IconCheck } from './icons';
 import { ScheduleSheet, type SchedulePatch } from './ScheduleSheet';
 
@@ -110,6 +111,21 @@ export function TaskRow({ task, goalTitle, onPatch, onDelete, compact, data }: T
       {typeof task.minutes === 'number' && task.minutes > 0 && !editing && (
         <span className="ptask-dur" title="Estimated duration">{task.minutes}m</span>
       )}
+
+      {!editing && task.seriesId && data?.recurringTasks && (() => {
+        const def = data.recurringTasks.find((d) => d.id === task.seriesId);
+        if (!def) return null;
+        return (
+          <button
+            className="rec-chip"
+            title={`Recurring task — ${recurrenceLabel(def.rule, def.startDate)}. Open Automation to pause or edit the series.`}
+            aria-label={`Recurring task: ${recurrenceLabel(def.rule, def.startDate)}`}
+            onClick={() => navigate('automation')}
+          >
+            ↻
+          </button>
+        );
+      })()}
 
       {!editing && (compact && data ? (
         <button

@@ -9,7 +9,8 @@ import { uid } from '../lib/uid';
 import { validateImport } from '../lib/store';
 import { readMeta } from '../lib/cloudData';
 import { hasMeaningfulData } from '../lib/migrate';
-import type { GrowthArea, PlanningSettings } from '../lib/types';
+import type { AutomationSettings, GrowthArea, NotifyCategory, PlanningSettings } from '../lib/types';
+import { CATEGORY_LABELS, ALL_CATEGORIES, categoryEnabled } from '../lib/automation/notify';
 import { planningOf, capacityMinutesOf, windowLabel, DEFAULT_FOCUS_OPTIONS } from '../lib/calendar/time';
 import { descriptorFor, connectionFor, connectionStatusLabel, externalConnectState } from '../lib/calendar/provider';
 
@@ -685,6 +686,92 @@ export function SettingsPage() {
           <button className="btn btn-sm mt-8" onClick={() => navigate('growth/cycles')}>
             Manage cycles →
           </button>
+        </div>
+
+        <div className="card" style={{ gridColumn: '1 / -1' }}>
+          <h2 className="card-title">🤖 Automation &amp; notifications</h2>
+          <p className="card-sub">
+            Reminders are derived from your own records — they never change a task, goal, habit, review or budget.
+            Nothing here reads your journal, and dismissing a reminder never touches the thing it points to.
+          </p>
+          {(() => {
+            const auto: AutomationSettings = data.settings.automation ?? {};
+            const setAuto = (patch: Partial<AutomationSettings>) =>
+              setSettings({ automation: { ...auto, ...patch } });
+            const toggleCat = (cat: NotifyCategory) =>
+              setAuto({ notify: { ...(auto.notify ?? {}), [cat]: !categoryEnabled(auto, cat) } });
+            const quietOn = !!auto.quietStart && !!auto.quietEnd && auto.quietStart !== auto.quietEnd;
+            return (
+              <div>
+                <div className="stat-row" style={{ alignItems: 'center' }}>
+                  <span className="k">Quiet hours</span>
+                  <span className="v flex" style={{ gap: 8, alignItems: 'center' }}>
+                    <label className="check-row" style={{ margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={quietOn}
+                        aria-label="Enable quiet hours"
+                        onChange={(e) =>
+                          setAuto(
+                            e.target.checked
+                              ? { quietStart: '22:00', quietEnd: '07:00' }
+                              : { quietStart: '', quietEnd: '' },
+                          )
+                        }
+                      />
+                      <span className="small">{quietOn ? 'On' : 'Off'}</span>
+                    </label>
+                    {quietOn && (
+                      <>
+                        <input
+                          type="time"
+                          value={auto.quietStart}
+                          aria-label="Quiet hours start"
+                          style={{ width: 110 }}
+                          onChange={(e) => setAuto({ quietStart: e.target.value || undefined, quietEnd: auto.quietEnd || '07:00' })}
+                        />
+                        <span className="tiny muted">to</span>
+                        <input
+                          type="time"
+                          value={auto.quietEnd}
+                          aria-label="Quiet hours end"
+                          style={{ width: 110 }}
+                          onChange={(e) => setAuto({ quietEnd: e.target.value || undefined, quietStart: auto.quietStart || '22:00' })}
+                        />
+                      </>
+                    )}
+                  </span>
+                </div>
+                <p className="tiny muted" style={{ margin: '2px 0 12px' }}>
+                  During quiet hours the notification center holds off adding new reminders (default 22:00–07:00).
+                </p>
+                <div className="flex flex-wrap" style={{ gap: 8 }}>
+                  {ALL_CATEGORIES.map((cat) => {
+                    const on = categoryEnabled(auto, cat);
+                    return (
+                      <label key={cat} className="badge-toggle" style={{ opacity: on ? 1 : 0.55 }}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => toggleCat(cat)}
+                          aria-label={`${CATEGORY_LABELS[cat]} notifications`}
+                        />
+                        <span className="tiny" style={{ fontWeight: 650 }}>{CATEGORY_LABELS[cat]}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="flex mt-16" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button className="btn btn-sm" onClick={() => navigate('automation')}>
+                    Open Automation (recurring tasks &amp; routines) →
+                  </button>
+                  <span className="tiny muted">
+                    {(data.recurringTasks ?? []).length} recurring task series · {(data.routines ?? []).length} routines
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="card" style={{ gridColumn: '1 / -1' }}>

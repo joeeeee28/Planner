@@ -22,6 +22,8 @@ import { IconArrowRight } from '../components/icons';
 import { uid } from '../lib/uid';
 import { QuickAddModal, type QuickAddKind } from '../components/QuickAdd';
 import { activeGoals, tasksOf, nextTaskForGoal } from '../lib/plan';
+import { routinesForDay, dayRunState, runProgress } from '../lib/automation/routines';
+import { unreadCount } from '../lib/automation/notify';
 import { useState } from 'react';
 
 function greeting(name: string): string {
@@ -55,6 +57,15 @@ export function DashboardPage() {
 
   const dayP = dayProgress(entry, data.growthAreas);
   const streak = dayStreak(data);
+
+  // ── automation glance (single summary line, Home stays calm) ──
+  const routinesToday = routinesForDay(data, t);
+  const rtDone = routinesToday.filter((r) => {
+    const { total, done } = runProgress(r, dayRunState(data, r.id, t));
+    return total > 0 && done === total;
+  }).length;
+  const openRec = (data.tasks ?? []).filter((x) => !x.done && x.seriesId && x.date && x.date >= t).length;
+  const unreadNotifs = unreadCount(data.notifications);
   const mk = monthKeyOf(t);
 
   // ── attention (evidence-based, calm, capped) ──
@@ -182,7 +193,7 @@ export function DashboardPage() {
       </section>
 
       {/* TODAY SUMMARY */}
-      {(priorities.length > 0 || dayP.pct > 0 || attentionItems.length > 0 || streak > 1) && (
+      {(priorities.length > 0 || dayP.pct > 0 || attentionItems.length > 0 || streak > 1 || routinesToday.length > 0 || openRec > 0 || unreadNotifs > 0) && (
         <p className="hero-summary" aria-label="Summary">
           {priorities.length > 0 && (
             <span>
@@ -210,6 +221,30 @@ export function DashboardPage() {
               <span className="sep">·</span>
               <span>
                 <b>{streak}</b>-day streak
+              </span>
+            </>
+          )}
+          {routinesToday.length > 0 && (
+            <>
+              <span className="sep">·</span>
+              <span>
+                <b>{rtDone}/{routinesToday.length}</b> routine{routinesToday.length === 1 ? '' : 's'} done today
+              </span>
+            </>
+          )}
+          {openRec > 0 && (
+            <>
+              <span className="sep">·</span>
+              <span>
+                <b>{openRec}</b> recurring task{openRec === 1 ? '' : 's'} open
+              </span>
+            </>
+          )}
+          {unreadNotifs > 0 && (
+            <>
+              <span className="sep">·</span>
+              <span>
+                <b>{unreadNotifs}</b> unread notification{unreadNotifs === 1 ? '' : 's'}
               </span>
             </>
           )}

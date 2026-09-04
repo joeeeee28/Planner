@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
-import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu } from './icons';
+import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle } from './icons';
 import { QuickAddModal } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
+import { NotificationBell } from './NotificationBell';
 
 interface NavItem {
   path: string;
@@ -16,6 +17,7 @@ interface NavItem {
 const NAV_MAIN: NavItem[] = [
   { path: 'home', label: 'Home', icon: IconHome, group: 'do' },
   { path: 'today', label: 'Today', icon: IconToday, group: 'do' },
+  { path: 'automation', label: 'Automation', icon: IconCycle, group: 'do' },
   { path: 'inbox', label: 'Inbox', icon: IconInbox, group: 'do' },
   { path: 'plan', label: 'Plan', icon: IconPlan, group: 'do' },
   { path: 'goals', label: 'Goals', icon: IconGoal, group: 'grow' },
@@ -297,6 +299,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <button className="btn btn-primary quick-add-btn" onClick={() => setQuickAdd(true)}>
               <IconPlus size={14} /> <span className="qa-label">Quick add</span>
             </button>
+            <NotificationBell />
             <AccountMenu />
           </div>
         </div>

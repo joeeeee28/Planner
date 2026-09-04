@@ -24,6 +24,7 @@ import {
   cycleSummary,
 } from '../lib/analytics';
 import { formatMoney, monthTotals, totalSaved, nextOccurrence } from '../lib/finance';
+import { isOccurrenceOn as recOccurrenceOn } from '../lib/automation/recur';
 import type { Transaction } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
 import { MonthReviewPage } from './Reviews';
@@ -250,6 +251,10 @@ function MonthGrid({
           const hasJournal = !!(j && (j.wentWell || j.learned || j.accomplished || j.freeform || j.grateful));
           const recurring = data.transactions.some((tx) => tx.recurrence && !tx.recurrencePaused && occursOnDate(tx, d));
           const moneyDay = data.transactions.some((tx) => tx.date === d) || recurring;
+          const t = todayStr();
+          const recTaskDay = d >= t && (data.recurringTasks ?? []).some(
+            (def) => def.active && (!def.endDate || d <= def.endDate) && recOccurrenceOn(def.rule, d, def.startDate),
+          );
           const savingsDay = data.savingsGoals.some((g) => (g.contributions ?? []).some((c) => c.date === d));
           const plannedTasks = (data.tasks ?? []).filter((x) => !x.done && x.date === d).length;
           return (
@@ -271,6 +276,7 @@ function MonthGrid({
                 {(deadlines.get(d) ?? 0) > 0 && <span className="cal-dot deadline" />}
                 {milestones.has(d) && <span className="cal-dot milestone" />}
                 {plannedTasks > 0 && <span className="cal-dot task" />}
+                {recTaskDay && <span className="cal-dot rec" title="Recurring task occurrence" />}
                 {habit.scheduled > 0 && <span className="cal-dot habit" />}
                 {hasJournal && <span className="cal-dot journal" />}
                 {moneyDay && <span className="cal-dot money" />}
@@ -286,6 +292,7 @@ function MonthGrid({
         <Legend color="neg" label="Goal deadline" />
         <Legend color="ink" label="Milestone" />
         <Legend color="task" label="Planned task" />
+        <Legend color="rec" label="Recurring task" />
         <Legend color="muted" label="Habit day" />
         <Legend color="warn" label="Journal entry" />
         <Legend color="pos" label="Money — income, expense or recurring date" />
@@ -305,6 +312,7 @@ function Legend({ color, label }: { color: string; label: string }) {
     task: 'var(--accent-strong)',
     money: 'var(--pos)',
     savings: 'var(--accent-strong)',
+    rec: 'var(--accent-strong)',
   };
   return (
     <span className="flex tiny muted" style={{ gap: 6 }}>

@@ -21,6 +21,7 @@ import { weekLookBack, monthSummary, weekCapacitySummary, quarterAutoRows, yearA
 import { fmt as wf } from '../lib/priority';
 import type { MonthPlan, MonthKey, WeekReview, CycleReview, PeriodReview, DateStr } from '../lib/types';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
+import { routinesForDay, dayRunState, runProgress } from '../lib/automation/routines';
 
 const EMPTY_WEEK: WeekReview = {
   wins: '',
@@ -215,6 +216,16 @@ export function WeekReviewPage({ weekStart }: { weekStart: string }) {
     habitSched += info.scheduled;
     habitDone += info.done;
   }
+  // routines across the review week (derived from run state — nothing stored)
+  let rtSched = 0;
+  let rtDone = 0;
+  for (const d of days) {
+    for (const r of routinesForDay(data, d)) {
+      const { total, done } = runProgress(r, dayRunState(data, r.id, d));
+      if (total > 0) rtSched++;
+      if (total > 0 && done === total) rtDone++;
+    }
+  }
 
   const set = (patch: Partial<WeekReview>) =>
     update((d) => {
@@ -277,6 +288,7 @@ export function WeekReviewPage({ weekStart }: { weekStart: string }) {
         const chips: { k: string; v: string }[] = [];
         if (lb.tasksPlannedTotal > 0 || lb.tasksDone > 0) chips.push({ k: 'Tasks', v: `${lb.tasksDone} done${lb.tasksMissed > 0 ? ` · ${lb.tasksMissed} missed` : ''}` });
         if (lb.habitsScheduled > 0) chips.push({ k: 'Habits', v: `${lb.habitsDone}/${lb.habitsScheduled}` });
+        if (rtSched > 0) chips.push({ k: 'Routines', v: `${rtDone}/${rtSched} fully completed` });
         if (lb.goalsCompleted > 0 || lb.goalActivity > 0) chips.push({ k: 'Goals', v: `${lb.goalActivity} actions · ${lb.goalsCompleted} completed` });
         if (lb.learningDone > 0) chips.push({ k: 'Learning', v: `${lb.learningDone} completed` });
         if (lb.journalDays > 0) chips.push({ k: 'Journal', v: `${lb.journalDays} days` });
