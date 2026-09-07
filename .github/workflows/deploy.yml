@@ -95,23 +95,24 @@ jobs:
           GROWTH_OS_EXPECT_CLOUD: '1'
         run: npm run check:build
 
-      # First-party publish (no third-party action): copy the built artifact
-      # onto an orphan-style gh-pages worktree. Only dist/ output is published
-      # — never src/, scripts/, node_modules/ or any env file.
+      # First-party publish (no third-party action). Builds a fresh commit
+      # containing ONLY the dist/ output — never src/, scripts/, node_modules/
+      # or any env file — in an isolated directory outside the repo checkout.
       - name: Publish to gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          publish_dir="$RUNNER_TEMP/ghpages"
+          rm -rf "$publish_dir"
+          mkdir -p "$publish_dir"
+          cp -r dist/. "$publish_dir"/
+          touch "$publish_dir/.nojekyll"
+          cd "$publish_dir"
+          git init -q -b gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages --depth=1 || true
-          rm -rf .ghpages && mkdir .ghpages
-          if git show-ref --quiet refs/remotes/origin/gh-pages; then
-            git --work-tree=.ghpages checkout origin/gh-pages -- . 2>/dev/null || true
-          fi
-          find .ghpages -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-          cp -r dist/. .ghpages/
-          touch .ghpages/.nojekyll
-          cd .ghpages
-          git init -q
           git add -A
-          git commit -q -m "deploy: ${{ github.event.head_commit.message || 'manual deploy' }}"
-          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/gh-pages
+          git commit -q -m "deploy: ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages:gh-pages
+          echo "Published $(find . -type f -not -path './.git/*' | wc -l) files to gh-pages"
