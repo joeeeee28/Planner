@@ -57,10 +57,21 @@ jobs:
       # production: the build ran without credentials, so Vite compiled
       # readEnvConfig() down to `return null` and cloud auth was impossible.
       - name: Require Supabase credentials
+        env:
+          # Read via env so the values are never interpolated into the script
+          # text, and never appear in the run log.
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
           missing=0
-          [ -z "${{ secrets.VITE_SUPABASE_URL }}" ] && { echo "::error::VITE_SUPABASE_URL secret is not set"; missing=1; }
-          [ -z "${{ secrets.VITE_SUPABASE_ANON_KEY }}" ] && { echo "::error::VITE_SUPABASE_ANON_KEY secret is not set"; missing=1; }
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::VITE_SUPABASE_URL secret is not set"
+            missing=1
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY secret is not set"
+            missing=1
+          fi
           if [ "$missing" = "1" ]; then
             echo "::error::Refusing to deploy — without these the site opens a LOCAL DEFAULT ACCOUNT instead of the login screen."
             exit 1
@@ -84,10 +95,23 @@ jobs:
           GROWTH_OS_EXPECT_CLOUD: '1'
         run: npm run check:build
 
+      # First-party publish (no third-party action): copy the built artifact
+      # onto an orphan-style gh-pages worktree. Only dist/ output is published
+      # — never src/, scripts/, node_modules/ or any env file.
       - name: Publish to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          publish_branch: gh-pages
-          commit_message: "deploy: ${{ github.event.head_commit.message }}"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages --depth=1 || true
+          rm -rf .ghpages && mkdir .ghpages
+          if git show-ref --quiet refs/remotes/origin/gh-pages; then
+            git --work-tree=.ghpages checkout origin/gh-pages -- . 2>/dev/null || true
+          fi
+          find .ghpages -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -r dist/. .ghpages/
+          touch .ghpages/.nojekyll
+          cd .ghpages
+          git init -q
+          git add -A
+          git commit -q -m "deploy: ${{ github.event.head_commit.message || 'manual deploy' }}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/gh-pages
