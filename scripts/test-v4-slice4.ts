@@ -15,6 +15,7 @@
 import { JSDOM } from 'jsdom';
 import { pushUserDocument } from '../src/lib/cloudData';
 import { changeReport, topChanges, changeDeltaLabel, changeRange, quarterOf } from '../src/lib/change';
+import { weekStartOf, addDays } from '../src/lib/dates';
 import { taskPriority, nextBestAction, topGoal, postponeCount, adaptiveDay, dayWorkload, repeatedlyPostponed } from '../src/lib/priority';
 import { staleRows, staleCount } from '../src/lib/stale';
 import { nextMonthForecast, savingsProjection, contributedInMonth } from '../src/lib/forecast';
@@ -108,7 +109,13 @@ function mkData(over: Partial<AppData>): AppData {
 {
   console.log('S4-P1 comparison engine + change detection');
   const now = daysFromNow(0);
-  const t7 = daysFromNow(-7);
+  // Anchor the fixture to the ACTUAL week boundary. Using raw day offsets made
+  // this suite fail whenever it ran on the first day of the week (e.g. Monday
+  // with weekStartsOn=1), where "yesterday" belongs to the previous week.
+  const wkStart = weekStartOf(now, mkData({}).settings.weekStartsOn);
+  const inCurrentWeek = wkStart;              // first day of this week
+  const inPrevWeek = addDays(wkStart, -2);    // safely inside last week
+  const t7 = inPrevWeek;
   const data = mkData({
     tasks: [
       taskFixture({ id: 'done1', text: 'Done last week', done: true, doneAt: new Date(t7 + 'T10:00:00').toISOString(), createdAt: daysFromNow(-20) }),
@@ -116,10 +123,10 @@ function mkData(over: Partial<AppData>): AppData {
       taskFixture({ id: 'open1', text: 'Still open', done: false, date: daysFromNow(1), createdAt: daysFromNow(-2) }),
     ],
     transactions: [
-      { id: 'x1', type: 'income', amount: 10000, date: daysFromNow(-6), category: 'Salary', createdAt: '' },
-      { id: 'x2', type: 'income', amount: 10000, date: daysFromNow(-1), category: 'Salary', createdAt: '' },
-      { id: 'x3', type: 'expense', amount: 4000, date: daysFromNow(-8), category: 'Food', createdAt: '' },
-      { id: 'x4', type: 'expense', amount: 2000, date: daysFromNow(-1), category: 'Food', createdAt: '' },
+      { id: 'x1', type: 'income', amount: 10000, date: addDays(inPrevWeek, 1), category: 'Salary', createdAt: '' },
+      { id: 'x2', type: 'income', amount: 10000, date: inCurrentWeek, category: 'Salary', createdAt: '' },
+      { id: 'x3', type: 'expense', amount: 4000, date: inPrevWeek, category: 'Food', createdAt: '' },
+      { id: 'x4', type: 'expense', amount: 2000, date: inCurrentWeek, category: 'Food', createdAt: '' },
     ],
     habits: [],
     habitCompletions: {},

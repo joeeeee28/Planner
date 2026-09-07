@@ -1,0 +1,117 @@
+# Growth OS — build and publish the production site to gh-pages.
+#
+# IMPORTANT — activating cloud authentication:
+#   The app runs in `development-local` mode unless real Supabase credentials
+#   are supplied AT BUILD TIME. Add these two repository secrets
+#   (Settings → Secrets and variables → Actions):
+#
+#       VITE_SUPABASE_URL       https://<project-ref>.supabase.co
+#       VITE_SUPABASE_ANON_KEY  the "anon public" / publishable key
+#
+#   The anon key is client-safe by design — Row-Level Security protects the
+#   data. NEVER add the service_role key, database password or any OAuth
+#   secret here: everything below is compiled into the browser bundle.
+#
+#   Once the secrets exist, the next run of this workflow publishes a build in
+#   `cloud-authenticated` mode: unauthenticated visitors get the LOGIN screen
+#   and each user loads their own cloud document.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify (types, lint, tests)
+        run: |
+          npx tsc -b
+          npm run lint
+          npm test
+          npm run test:v3
+          npm run test:v4
+          npm run test:auth
+
+      # Fail BEFORE building rather than silently shipping a local-mode bundle.
+      # This is the exact regression that put a local default account into
+      # production: the build ran without credentials, so Vite compiled
+      # readEnvConfig() down to `return null` and cloud auth was impossible.
+      - name: Require Supabase credentials
+        env:
+          # Read via env so the values are never interpolated into the script
+          # text, and never appear in the run log.
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          missing=0
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::VITE_SUPABASE_URL secret is not set"
+            missing=1
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY secret is not set"
+            missing=1
+          fi
+          if [ "$missing" = "1" ]; then
+            echo "::error::Refusing to deploy — without these the site opens a LOCAL DEFAULT ACCOUNT instead of the login screen."
+            exit 1
+          fi
+          echo "Both Supabase build secrets are present (values not printed)."
+
+      - name: Build production bundle
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Add .nojekyll (Vite does not emit it)
+        run: touch dist/.nojekyll
+
+      # Verifies the COMPILED bundle: Supabase config actually present, env
+      # reader not collapsed to constant-null, and no server-side secrets.
+      # Never prints credential values.
+      - name: Audit production bundle
+        env:
+          GROWTH_OS_EXPECT_CLOUD: '1'
+        run: npm run check:build
+
+      # First-party publish (no third-party action): copy the built artifact
+      # onto an orphan-style gh-pages worktree. Only dist/ output is published
+      # — never src/, scripts/, node_modules/ or any env file.
+      - name: Publish to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages --depth=1 || true
+          rm -rf .ghpages && mkdir .ghpages
+          if git show-ref --quiet refs/remotes/origin/gh-pages; then
+            git --work-tree=.ghpages checkout origin/gh-pages -- . 2>/dev/null || true
+          fi
+          find .ghpages -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -r dist/. .ghpages/
+          touch .ghpages/.nojekyll
+          cd .ghpages
+          git init -q
+          git add -A
+          git commit -q -m "deploy: ${{ github.event.head_commit.message || 'manual deploy' }}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/gh-pages

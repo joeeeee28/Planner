@@ -1,18 +1,190 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useLock } from '../context/LockContext';
 import { navigate } from '../lib/router';
 import { formatDateMed } from '../lib/dates';
 import { Modal } from '../components/ui';
-import { IconDownload, IconUpload, IconTrash } from '../components/icons';
+import { IconDownload, IconUpload, IconTrash, IconLock } from '../components/icons';
 import { uid } from '../lib/uid';
 import { validateImport } from '../lib/store';
 import { readMeta } from '../lib/cloudData';
 import { hasMeaningfulData } from '../lib/migrate';
 import type { AutomationSettings, GrowthArea, NotifyCategory, PlanningSettings } from '../lib/types';
 import { CATEGORY_LABELS, ALL_CATEGORIES, categoryEnabled } from '../lib/automation/notify';
+import { AUTO_LOCK_LABELS, PASSCODE_MAX, PASSCODE_MIN, isValidPasscode, type AutoLock } from '../lib/passcode';
 import { planningOf, capacityMinutesOf, windowLabel, DEFAULT_FOCUS_OPTIONS } from '../lib/calendar/time';
 import { descriptorFor, connectionFor, connectionStatusLabel, externalConnectState } from '../lib/calendar/provider';
+
+/**
+ * Settings → Security & privacy — the device passcode lock.
+ * Enabling/changing needs the passcode itself; forgetting it is recovered by
+ * account re-authentication (from the lock screen), never by weakening the lock.
+ */
+function SecurityCard() {
+  const auth = useAuth();
+  const lock = useLock();
+  const [mode, setMode] = useState<null | 'set' | 'change' | 'disable'>(null);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (auth.status !== 'authed') return null;
+
+  const reset = () => {
+    setMode(null);
+    setCurrent('');
+    setNext('');
+    setConfirm('');
+    setError(null);
+  };
+
+  const digits = (v: string) => v.replace(/\D/g, '').slice(0, PASSCODE_MAX);
+
+  const submit = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      // Changing or disabling always requires proving the current passcode.
+      if (mode !== 'set') {
+        const res = await lock.unlock(current);
+        if (!res.ok) {
+          setError(res.retryAfterMs > 0 ? 'Too many attempts. Try again shortly.' : 'Incorrect passcode.');
+          return;
+        }
+      }
+      if (mode === 'disable') {
+        lock.disable();
+        reset();
+        return;
+      }
+      if (!isValidPasscode(next)) {
+        setError(`Choose a passcode of ${PASSCODE_MIN}–${PASSCODE_MAX} digits.`);
+        return;
+      }
+      if (next !== confirm) {
+        setError('Those passcodes do not match.');
+        return;
+      }
+      await lock.enable(next, lock.autoLock);
+      reset();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2 className="card-title">🔒 Security &amp; privacy</h2>
+      <div className="stat-row">
+        <span className="k">App passcode</span>
+        <span className="v">
+          {lock.enabled ? <span className="badge badge-success">Enabled</span> : <span className="badge">Not enabled</span>}
+        </span>
+      </div>
+      <p className="card-sub" style={{ marginTop: 6 }}>
+        A {PASSCODE_MIN}–{PASSCODE_MAX} digit passcode that hides your workspace on this device. It is stored only here (never in
+        the cloud), and it is <b>not</b> your account password — locking keeps you signed in.
+      </p>
+
+      {lock.enabled && (
+        <div className="form-row mt-8">
+          <label className="form-label" htmlFor="sec-autolock">Lock after</label>
+          <select
+            id="sec-autolock"
+            value={lock.autoLock}
+            onChange={(e) => lock.setAutoLock(e.target.value as AutoLock)}
+          >
+            {(Object.keys(AUTO_LOCK_LABELS) as AutoLock[]).map((k) => (
+              <option key={k} value={k}>{AUTO_LOCK_LABELS[k]}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="flex flex-wrap mt-8" style={{ gap: 8 }}>
+        {!lock.enabled && <button className="btn btn-sm btn-primary" onClick={() => setMode('set')}>Set up passcode</button>}
+        {lock.enabled && (
+          <>
+            <button className="btn btn-sm" onClick={() => setMode('change')}>Change passcode</button>
+            <button className="btn btn-sm" onClick={() => setMode('disable')}>Disable passcode</button>
+            <button className="btn btn-sm" onClick={() => lock.lockNow()}><IconLock size={14} /> Lock app</button>
+          </>
+        )}
+      </div>
+
+      {mode && (
+        <Modal
+          title={mode === 'set' ? 'Set app passcode' : mode === 'change' ? 'Change app passcode' : 'Disable app passcode'}
+          onClose={reset}
+        >
+          {mode === 'disable' && (
+            <p className="small muted" style={{ marginTop: 0 }}>
+              Your workspace will open without a passcode on this device. Confirm with your current passcode.
+            </p>
+          )}
+          {error && <div role="alert" className="auth-notice error" aria-live="polite">{error}</div>}
+          <form
+            className="auth-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            {mode !== 'set' && (
+              <div className="form-row">
+                <label className="form-label" htmlFor="sec-cur">Current passcode</label>
+                <input
+                  id="sec-cur"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={current}
+                  onChange={(e) => setCurrent(digits(e.target.value))}
+                  autoFocus
+                />
+              </div>
+            )}
+            {mode !== 'disable' && (
+              <>
+                <div className="form-row">
+                  <label className="form-label" htmlFor="sec-new">New passcode ({PASSCODE_MIN}–{PASSCODE_MAX} digits)</label>
+                  <input
+                    id="sec-new"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    value={next}
+                    onChange={(e) => setNext(digits(e.target.value))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" htmlFor="sec-conf">Confirm new passcode</label>
+                  <input
+                    id="sec-conf"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(digits(e.target.value))}
+                  />
+                </div>
+              </>
+            )}
+            <div className="flex flex-wrap" style={{ gap: 8 }}>
+              <button className="btn btn-primary" disabled={busy}>
+                {busy ? 'Working…' : mode === 'disable' ? 'Disable passcode' : 'Save passcode'}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={reset}>Cancel</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
 
 function totalRecords(counts: Record<string, number>): number {
   return (
@@ -236,6 +408,8 @@ export function SettingsPage() {
             </>
           )}
         </div>
+
+        <SecurityCard />
 
         <div className="card">
           <h2 className="card-title">🎨 Appearance</h2>

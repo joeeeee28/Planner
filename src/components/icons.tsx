@@ -273,3 +273,11 @@ export const IconCalendarToday = ({ size = 16 }: IconProps) => (
     <path d="M3 10h18M8 3v4M16 3v4M12 13v4M10 15h4" />
   </svg>
 );
+
+export const IconLock = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <rect x="4" y="10" width="16" height="10" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    <circle cx="12" cy="15" r="1.2" />
+  </svg>
+);

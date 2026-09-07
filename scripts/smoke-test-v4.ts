@@ -248,6 +248,11 @@ async function main() {
           set('auth-password', 'secret123');
           return s.clickByText('Sign in');
         }],
+        ['dismiss the optional passcode offer shown after an interactive sign-in', async () => {
+          await waitFor(() => s.body().includes('Protect your Growth OS'), 8000);
+          if (s.body().includes('Protect your Growth OS')) return s.clickByText('Skip for now');
+          return true; // offer not shown → nothing to dismiss
+        }],
         ['home with cloud income restored (₹50,000 visible)', () => waitFor(() => /, Jothika\./.test(s.body()) && s.body().includes('50,000'))],
         ['zero runtime errors', () => s.errors.length === 0],
       ],
@@ -349,6 +354,8 @@ async function main() {
     process.exit(1);
   }
   console.log('\n✅ all V4 DOM tests passed');
+  // Clean exit: jsdom timers/listeners can keep the event loop alive otherwise.
+  process.exit(0);
 }
 
 main().catch((err) => {
