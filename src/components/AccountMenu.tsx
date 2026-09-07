@@ -11,13 +11,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLock } from '../context/LockContext';
 import { useApp } from '../context/AppContext';
 import { navigate } from '../lib/router';
-import { IconLogOut, IconChevronDown, IconSettings, IconDownload } from './icons';
+import { IconLogOut, IconChevronDown, IconSettings, IconDownload, IconLock } from './icons';
 
 export function AccountMenu() {
   const auth = useAuth();
   const { mode, sync, downloadBackup } = useApp();
+  const lock = useLock();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -106,6 +108,16 @@ export function AccountMenu() {
             <button role="menuitem" className="account-pop-item" onClick={() => { setOpen(false); downloadBackup(); }}>
               <IconDownload size={15} /> <span>Export data</span>
             </button>
+            {cloud && lock.enabled && (
+              <button
+                role="menuitem"
+                className="account-pop-item"
+                onClick={() => { setOpen(false); lock.lockNow(); }}
+                title="Hide your data — stays signed in"
+              >
+                <IconLock size={15} /> <span>Lock app</span>
+              </button>
+            )}
             {cloud && (
               <button
                 role="menuitem"

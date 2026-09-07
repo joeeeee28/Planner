@@ -3455,3 +3455,52 @@ textarea {
   height: 14px;
   margin: 0;
 }
+
+/* ── Device passcode lock (warm V4 language: paper, serif title, teal action) ── */
+.pc-card {
+  max-width: 400px;
+}
+.pc-input {
+  width: 100%;
+  text-align: center;
+  font-size: 26px;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em; /* keep the tracked glyphs optically centred */
+  font-variant-numeric: tabular-nums;
+  padding: 12px 10px;
+}
+.pc-dots {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.pc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong, var(--line));
+  background: transparent;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.pc-dot.on {
+  background: var(--accent, #0d9488);
+  border-color: var(--accent, #0d9488);
+  transform: scale(1.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-dot {
+    transition: none;
+  }
+  .pc-dot.on {
+    transform: none;
+  }
+}
+@media (max-width: 480px) {
+  .pc-card {
+    padding: 26px 20px 22px;
+  }
+  .pc-input {
+    font-size: 22px;
+  }
+}

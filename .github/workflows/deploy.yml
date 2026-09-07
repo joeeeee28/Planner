@@ -1,0 +1,77 @@
+# Growth OS — build and publish the production site to gh-pages.
+#
+# IMPORTANT — activating cloud authentication:
+#   The app runs in `development-local` mode unless real Supabase credentials
+#   are supplied AT BUILD TIME. Add these two repository secrets
+#   (Settings → Secrets and variables → Actions):
+#
+#       VITE_SUPABASE_URL       https://<project-ref>.supabase.co
+#       VITE_SUPABASE_ANON_KEY  the "anon public" / publishable key
+#
+#   The anon key is client-safe by design — Row-Level Security protects the
+#   data. NEVER add the service_role key, database password or any OAuth
+#   secret here: everything below is compiled into the browser bundle.
+#
+#   Once the secrets exist, the next run of this workflow publishes a build in
+#   `cloud-authenticated` mode: unauthenticated visitors get the LOGIN screen
+#   and each user loads their own cloud document.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify (types, lint, tests)
+        run: |
+          npx tsc -b
+          npm run lint
+          npm test
+          npm run test:v3
+          npm run test:v4
+          npm run test:auth
+
+      - name: Build production bundle
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Add .nojekyll (Vite does not emit it)
+        run: touch dist/.nojekyll
+
+      - name: Guard against leaked secrets in the bundle
+        run: |
+          if grep -rqE 'service_role|sb_secret_|BEGIN [A-Z ]*PRIVATE KEY' dist/; then
+            echo "::error::A server-side secret was found in the production bundle"
+            exit 1
+          fi
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          commit_message: "deploy: ${{ github.event.head_commit.message }}"

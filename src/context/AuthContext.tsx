@@ -27,9 +27,10 @@ import {
   type AuthFailure,
   type AuthResult,
   type SignUpOutcome,
-  isCloudConfigured,
+
 } from '../lib/cloud';
 import { writeMeta, clearMeta } from '../lib/cloudData';
+import { requiresAuthentication } from '../lib/runtimeMode';
 
 export type AuthStatus = 'local' | 'restoring' | 'guest' | 'authed';
 
@@ -39,6 +40,8 @@ interface AuthCtx {
   isCloud: boolean;
   /** True right after a password-recovery link opened the app (Supabase event). */
   passwordResetRequired: boolean;
+  /** True only after an interactive sign-in in this tab. */
+  justSignedIn: boolean;
   markPasswordResetDone: () => void;
   signUp: (name: string, email: string, password: string) => Promise<AuthResult<SignUpOutcome>>;
   signIn: (email: string, password: string) => Promise<AuthResult<AuthUser>>;
@@ -52,15 +55,23 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<AuthStatus>(() => (isCloudConfigured() ? 'restoring' : 'local'));
+  // PRODUCTION RULE: when Supabase is configured the app boots into
+  // 'restoring' and can only ever resolve to 'authed' or 'guest'. The 'local'
+  // status is reachable ONLY in development-local mode, so production never
+  // silently converts an unauthenticated visitor into a default account.
+  const [status, setStatus] = useState<AuthStatus>(() => (requiresAuthentication() ? 'restoring' : 'local'));
   const [user, setUser] = useState<AuthUser | null>(null);
   const [passwordResetRequired, setPasswordResetRequired] = useState(false);
+  // True only after an interactive sign-in in this tab (not a restored session
+  // and not sign-up). The optional passcode offer keys off this so returning
+  // users and brand-new accounts are never interrupted.
+  const [justSignedIn, setJustSignedIn] = useState(false);
   const unsubRef = useRef<(() => void) | null>(null);
 
   const markPasswordResetDone = useCallback(() => setPasswordResetRequired(false), []);
 
   useEffect(() => {
-    if (!isCloudConfigured()) return;
+    if (!requiresAuthentication()) return;
     let cancelled = false;
 
     // Restore the persisted session first (never a blank screen — see App).
@@ -104,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInCb = useCallback(async (email: string, password: string) => {
     const res = await cloudSignIn(email, password);
+    if (res.ok) setJustSignedIn(true);
     return res;
   }, []);
 
@@ -112,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearMeta();
     setUser(null);
     setStatus('guest');
+    setJustSignedIn(false);
     return err;
   }, []);
 
@@ -124,8 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
-      isCloud: isCloudConfigured(),
+      isCloud: requiresAuthentication(),
       passwordResetRequired,
+      justSignedIn,
       markPasswordResetDone,
       signUp: signUpCb,
       signIn: signInCb,
@@ -135,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       changePassword: changePasswordCb,
       deleteAccount: deleteAccountCb,
     }),
-    [status, user, passwordResetRequired, markPasswordResetDone, signUpCb, signInCb, signOutCb, requestResetCb, updateNameCb, changePasswordCb, deleteAccountCb],
+    [status, user, passwordResetRequired, justSignedIn, markPasswordResetDone, signUpCb, signInCb, signOutCb, requestResetCb, updateNameCb, changePasswordCb, deleteAccountCb],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

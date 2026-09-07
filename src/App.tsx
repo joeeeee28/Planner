@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LockProvider, useLock } from './context/LockContext';
+import { LockScreen, PasscodeSetup } from './pages/LockScreen';
 import { useRoute, navigate } from './lib/router';
 import { Shell } from './components/Shell';
 import { Onboarding } from './pages/Onboarding';
@@ -223,25 +225,67 @@ function ResetPasswordGate() {
   );
 }
 
+/** Neutral bootstrap screen shown while auth + lock + hydration resolve. */
+function BootScreen({ message }: { message: string }) {
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card" style={{ alignItems: 'center', textAlign: 'center' }}>
+        <div className="auth-mark" style={{ fontSize: 34 }}>🌱</div>
+        <h1 className="auth-title">Growth OS</h1>
+        <p className="auth-sub">{message}</p>
+        <div className="spinner" aria-label="Loading" role="status" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The single startup state machine.
+ *
+ *   BOOTING → AUTH_CHECK → LOGIN | AUTHENTICATED
+ *   AUTHENTICATED → LOCK_CHECK → LOCKED | UNLOCKED → HYDRATE → app
+ *
+ * Ordering is deliberate: nothing private renders until auth, lock AND cloud
+ * hydration have all resolved. In production (Supabase configured) an
+ * unauthenticated visitor ALWAYS gets the login screen — never a local or
+ * default account.
+ */
 function RootGate() {
   const auth = useAuth();
+  const lock = useLock();
   const { mode, migration, cloudHydrated } = useApp();
+  const [setupDone, setSetupDone] = useState(false);
 
-  // Session still resolving → branded loading state (never blank).
+  // AUTH_CHECK — session still resolving → branded loading state (never blank).
   if (auth.status === 'restoring') return <RestoreScreen />;
 
-  // Cloud configured but signed out → dedicated Login / Sign Up screens.
+  // LOGIN — cloud configured but signed out. No silent local fallback.
   if (auth.status === 'guest') return <AuthPage />;
 
-  // Local mode → exact V2 behavior (no auth, no network).
+  // development-local only: Supabase absent (or an explicit dev opt-in) → V2
+  // behavior. `status` can only be 'local' when requiresAuthentication() is
+  // false, so production can never land here.
   if (auth.status === 'local') return <AppRouter />;
 
   // Signed in: if a recovery flow is pending, force a new password first.
   if (auth.passwordResetRequired) return <ResetPasswordGate />;
 
-  // First sign-in with meaningful local data and an empty cloud account →
-  // offer migration before the app (local data is never deleted).
+  // LOCK_CHECK — before any private content is rendered.
+  if (lock.locked) return <LockScreen />;
+
+  // HYDRATE — never show default/local data while the cloud document loads.
+  if (mode === 'cloud' && !cloudHydrated) return <BootScreen message="Loading your workspace…" />;
+
+  // Migration offer for legacy users with an empty cloud account.
   if (mode === 'cloud' && cloudHydrated && migration.show) return <MigrateGate />;
+
+  // Optional first-run passcode setup. Deliberately NOT shown to a user who is
+  // still onboarding — a brand-new account finishes setting up Growth OS first,
+  // and the offer appears once there is actually private data to protect. It is
+  // always skippable and never blocks access to the app.
+  if (lock.setupOffered && !setupDone) {
+    return <PasscodeSetup onDone={() => setSetupDone(true)} onSkip={() => setSetupDone(true)} />;
+  }
 
   return <AppRouter />;
 }
@@ -249,9 +293,11 @@ function RootGate() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppProvider>
-        <RootGate />
-      </AppProvider>
+      <LockProvider>
+        <AppProvider>
+          <RootGate />
+        </AppProvider>
+      </LockProvider>
     </AuthProvider>
   );
 }
