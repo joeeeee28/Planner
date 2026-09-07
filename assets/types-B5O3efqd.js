@@ -1,0 +1,1 @@
+var e=[`long-term`,`yearly`,`quarterly`,`monthly`,`weekly`,`daily-action`],t={"long-term":`Long-term goal`,yearly:`Yearly goal`,quarterly:`Quarterly goal`,monthly:`Monthly goal`,weekly:`Weekly goal`,"daily-action":`Daily action`},n=[`topic`,`course`,`certification`,`book`,`article`,`video`,`project`,`other`];export{t as n,n as r,e as t};
