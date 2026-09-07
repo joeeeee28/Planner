@@ -337,7 +337,13 @@ console.log('✅ extended tests passed');
   assert.strictEqual(untouched[0].currentAmount, 10000, 'unknown goal unchanged');
   assert.strictEqual(untouched.length, 1, 'unknown goal keeps list');
   assert.strictEqual(f.todaySpending([]), 0, 'no txs');
-  assert.strictEqual(f.todaySpending(txs), 0, 'no tx today');
+  // The fixture uses fixed days (5/6/7) of the current month, so on those dates
+  // a transaction legitimately IS today. Compare against the expected sum for
+  // the actual run date instead of assuming zero (date-independent).
+  const expectedTodaySpend = txs
+    .filter((t) => t.type === 'expense' && t.date === now)
+    .reduce((sum, t) => sum + t.amount, 0);
+  assert.strictEqual(f.todaySpending(txs), expectedTodaySpend, 'today spending matches fixture for the run date');
 
   // settings.finance defaults exist on fresh data
   const fresh = mkData();

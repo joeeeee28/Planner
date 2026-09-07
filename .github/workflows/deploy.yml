@@ -52,6 +52,21 @@ jobs:
           npm run test:v4
           npm run test:auth
 
+      # Fail BEFORE building rather than silently shipping a local-mode bundle.
+      # This is the exact regression that put a local default account into
+      # production: the build ran without credentials, so Vite compiled
+      # readEnvConfig() down to `return null` and cloud auth was impossible.
+      - name: Require Supabase credentials
+        run: |
+          missing=0
+          [ -z "${{ secrets.VITE_SUPABASE_URL }}" ] && { echo "::error::VITE_SUPABASE_URL secret is not set"; missing=1; }
+          [ -z "${{ secrets.VITE_SUPABASE_ANON_KEY }}" ] && { echo "::error::VITE_SUPABASE_ANON_KEY secret is not set"; missing=1; }
+          if [ "$missing" = "1" ]; then
+            echo "::error::Refusing to deploy — without these the site opens a LOCAL DEFAULT ACCOUNT instead of the login screen."
+            exit 1
+          fi
+          echo "Both Supabase build secrets are present (values not printed)."
+
       - name: Build production bundle
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -61,12 +76,13 @@ jobs:
       - name: Add .nojekyll (Vite does not emit it)
         run: touch dist/.nojekyll
 
-      - name: Guard against leaked secrets in the bundle
-        run: |
-          if grep -rqE 'service_role|sb_secret_|BEGIN [A-Z ]*PRIVATE KEY' dist/; then
-            echo "::error::A server-side secret was found in the production bundle"
-            exit 1
-          fi
+      # Verifies the COMPILED bundle: Supabase config actually present, env
+      # reader not collapsed to constant-null, and no server-side secrets.
+      # Never prints credential values.
+      - name: Audit production bundle
+        env:
+          GROWTH_OS_EXPECT_CLOUD: '1'
+        run: npm run check:build
 
       - name: Publish to gh-pages
         uses: peaceiris/actions-gh-pages@v4
