@@ -202,74 +202,85 @@ export function attentionItems(data: AppData, opts: AttentionOptions = {}): Atte
     }
   }
 
-  // 2) Credit Cards (outstanding balance due, overdue or coming up)
+  // 2) Credit Cards (outstanding balance due, overdue, due today, or coming up)
   for (const card of data.creditCards ?? []) {
     const summary = summarizeCard(card, data.transactions ?? [], data.cardPayments ?? [], t);
-    if (summary.outstanding > 0 && summary.dueDate) {
-      const dueDate = summary.dueDate;
-      const route = 'money/accounts';
-      if (dueDate < t) {
-        const priority: AttentionPriority = 'P0';
-        push({
-          id: `card-overdue-${card.id}`,
-          key: `card-overdue-${card.id}`,
-          type: 'credit-card-due',
-          priority,
-          severity: severityFromPriority(priority),
-          title: `Credit Card ${card.name} payment is overdue`,
-          description: `${formatMoney(summary.outstanding, currency, true)} balance was due on ${formatDateMed(dueDate)}`,
-          dueAt: dueDate,
-          sourceModule: 'credit-cards',
-          entityId: card.id,
-          action: { label: 'Pay Card', route },
-          derivedAt: t,
-          text: `Credit Card ${card.name} payment overdue`,
-          sub: `${formatMoney(summary.outstanding, currency, true)} due ${formatDateMed(dueDate)}`,
-          route,
-          tone: toneFromPriority(priority),
-        });
-      } else if (dueDate === t) {
-        const priority: AttentionPriority = 'P1';
-        push({
-          id: `card-today-${card.id}`,
-          key: `card-today-${card.id}`,
-          type: 'credit-card-due',
-          priority,
-          severity: severityFromPriority(priority),
-          title: `Credit Card ${card.name} payment due today`,
-          description: `${formatMoney(summary.outstanding, currency, true)} balance due today`,
-          dueAt: dueDate,
-          sourceModule: 'credit-cards',
-          entityId: card.id,
-          action: { label: 'Pay Card', route },
-          derivedAt: t,
-          text: `Credit Card ${card.name} payment due`,
-          sub: `${formatMoney(summary.outstanding, currency, true)} due today`,
-          route,
-          tone: toneFromPriority(priority),
-        });
-      } else {
-        const days = Math.round((new Date(dueDate + 'T00:00:00').getTime() - new Date(t + 'T00:00:00').getTime()) / 86400000);
-        if (days <= 7) {
-          const priority: AttentionPriority = 'P2';
+    if (summary.outstanding > 0) {
+      let dueDate = summary.dueDate;
+      if (card.dueDay && card.dueDay > 0) {
+        const base = new Date(t + 'T00:00:00');
+        const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+        const thisMonthDue = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(Math.min(card.dueDay, lastDay)).padStart(2, '0')}`;
+        if (thisMonthDue < t) {
+          dueDate = thisMonthDue;
+        }
+      }
+
+      if (dueDate) {
+        const route = 'money/accounts';
+        if (dueDate < t) {
+          const priority: AttentionPriority = 'P0';
           push({
-            id: `card-soon-${card.id}`,
-            key: `card-soon-${card.id}`,
+            id: `card-overdue-${card.id}`,
+            key: `card-overdue-${card.id}`,
             type: 'credit-card-due',
             priority,
             severity: severityFromPriority(priority),
-            title: `Credit Card ${card.name} bill due soon`,
-            description: `${formatMoney(summary.outstanding, currency, true)} due in ${days} day${days === 1 ? '' : 's'}`,
+            title: `Credit Card ${card.name} payment is overdue`,
+            description: `${formatMoney(summary.outstanding, currency, true)} balance was due on ${formatDateMed(dueDate)}`,
             dueAt: dueDate,
             sourceModule: 'credit-cards',
             entityId: card.id,
             action: { label: 'Pay Card', route },
             derivedAt: t,
-            text: `Credit Card ${card.name} bill due in ${days} days`,
+            text: `Credit Card ${card.name} payment overdue`,
             sub: `${formatMoney(summary.outstanding, currency, true)} due ${formatDateMed(dueDate)}`,
             route,
             tone: toneFromPriority(priority),
           });
+        } else if (dueDate === t) {
+          const priority: AttentionPriority = 'P1';
+          push({
+            id: `card-today-${card.id}`,
+            key: `card-today-${card.id}`,
+            type: 'credit-card-due',
+            priority,
+            severity: severityFromPriority(priority),
+            title: `Credit Card ${card.name} payment due today`,
+            description: `${formatMoney(summary.outstanding, currency, true)} balance due today`,
+            dueAt: dueDate,
+            sourceModule: 'credit-cards',
+            entityId: card.id,
+            action: { label: 'Pay Card', route },
+            derivedAt: t,
+            text: `Credit Card ${card.name} payment due`,
+            sub: `${formatMoney(summary.outstanding, currency, true)} due today`,
+            route,
+            tone: toneFromPriority(priority),
+          });
+        } else {
+          const days = Math.round((new Date(dueDate + 'T00:00:00').getTime() - new Date(t + 'T00:00:00').getTime()) / 86400000);
+          if (days <= 7) {
+            const priority: AttentionPriority = 'P2';
+            push({
+              id: `card-soon-${card.id}`,
+              key: `card-soon-${card.id}`,
+              type: 'credit-card-due',
+              priority,
+              severity: severityFromPriority(priority),
+              title: `Credit Card ${card.name} bill due soon`,
+              description: `${formatMoney(summary.outstanding, currency, true)} due in ${days} day${days === 1 ? '' : 's'}`,
+              dueAt: dueDate,
+              sourceModule: 'credit-cards',
+              entityId: card.id,
+              action: { label: 'Pay Card', route },
+              derivedAt: t,
+              text: `Credit Card ${card.name} bill due in ${days} days`,
+              sub: `${formatMoney(summary.outstanding, currency, true)} due ${formatDateMed(dueDate)}`,
+              route,
+              tone: toneFromPriority(priority),
+            });
+          }
         }
       }
     }

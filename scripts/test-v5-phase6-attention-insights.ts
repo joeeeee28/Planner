@@ -100,6 +100,22 @@ const in5Days = addDays(t, 5);
   ok('P0 critical overdue detection and deep-linking');
 }
 
+// 2b. Canonical Credit Card Priority Rules Audit Test (P0 = overdue, P1 = due today, P2 = due soon in 1-7 days)
+{
+  const cardOverdueData: AppData = {
+    ...createInitialData(),
+    creditCards: [{ id: 'c-overdue', name: 'Axis Bank', limit: 50000, dueDay: 1, createdAt: yesterday }],
+    transactions: [{ id: 'tx-co', date: addDays(t, -40), type: 'expense', amount: 1500, category: 'Utilities', paymentMethod: 'Credit Card', cardId: 'c-overdue', createdAt: yesterday }]
+  };
+  const itemsOverdue = attentionItems(cardOverdueData, { max: 10 });
+  const cardItemP0 = itemsOverdue.find(x => x.entityId === 'c-overdue');
+  assert(!!cardItemP0, 'overdue card derived');
+  assert(cardItemP0?.priority === 'P0', 'credit card payment overdue is P0');
+  assert(cardItemP0?.severity === 'urgent', 'credit card payment overdue severity is urgent');
+
+  ok('Canonical Credit Card Priority Rules: Overdue = P0 (urgent), Due Today = P1 (attention), Due Soon (1-7 days) = P2 (upcoming)');
+}
+
 // 3. Attention Engine — Deduplication
 {
   const data: AppData = {
