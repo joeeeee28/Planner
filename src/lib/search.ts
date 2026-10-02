@@ -19,7 +19,12 @@ export type SearchKind =
   | 'note'
   | 'transaction'
   | 'savings'
-  | 'budget';
+  | 'budget'
+  | 'person'
+  | 'source'
+  | 'account'
+  | 'obligation'
+  | 'creditcard';
 
 export interface SearchResult {
   kind: SearchKind;
@@ -51,6 +56,11 @@ export function searchGroupOf(kind: SearchKind): SearchGroup {
     case 'transaction':
     case 'savings':
     case 'budget':
+    case 'person':
+    case 'source':
+    case 'account':
+    case 'obligation':
+    case 'creditcard':
       return 'money';
     case 'habit':
     case 'learning':
@@ -347,6 +357,91 @@ export function searchAll(data: AppData, query: string): SearchResult[] {
         snippet: `${monthLabel(b.month)} — limit ${b.limit}`,
         route: '#/money/budgets',
         score: 10 + n,
+      });
+    }
+  }
+
+  // People (V4.2)
+  for (const p of data.people ?? []) {
+    if (p.active === false) continue;
+    const pool = [p.name, p.nickname ?? '', p.relationship ?? '', p.notes ?? ''].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'person',
+        id: p.id,
+        title: `Person: ${p.name}`,
+        snippet: snippet(pool, q),
+        route: `#/money/people/${p.id}`,
+        score: (hits(p.name, q) > 0 ? 30 : 15) + n,
+      });
+    }
+  }
+
+  // Money Sources / Funds (V4.3)
+  for (const s of data.sources ?? []) {
+    const pool = [s.name, s.purpose ?? '', s.notes ?? ''].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'source',
+        id: s.id,
+        title: `Money Source: ${s.name}`,
+        snippet: snippet(pool, q),
+        route: `#/money/sources/${s.id}`,
+        score: (hits(s.name, q) > 0 ? 28 : 14) + n,
+      });
+    }
+  }
+
+  // Money Accounts (V4.4)
+  for (const a of data.accounts ?? []) {
+    if (a.archived) continue;
+    const pool = [a.name, a.type, a.notes ?? ''].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'account',
+        id: a.id,
+        title: `Account: ${a.name}`,
+        snippet: `${a.type} account`,
+        route: `#/money/accounts/${a.id}`,
+        score: (hits(a.name, q) > 0 ? 28 : 14) + n,
+      });
+    }
+  }
+
+  // Obligations — Borrowed / Lent (V4.5)
+  for (const o of data.obligations ?? []) {
+    if (o.status === 'archived') continue;
+    const personName = (data.people ?? []).find((p) => p.id === o.personId)?.name ?? 'Contact';
+    const pool = [o.name, personName, o.purpose ?? '', o.notes ?? ''].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      const isBorrow = o.direction === 'borrowed';
+      push({
+        kind: 'obligation',
+        id: o.id,
+        title: `${isBorrow ? 'Borrowed from' : 'Lent to'} ${personName}`,
+        snippet: snippet(pool, q),
+        route: `#/money/owed/${o.id}`,
+        score: (hits(o.name, q) > 0 || hits(personName, q) > 0 ? 28 : 14) + n,
+      });
+    }
+  }
+
+  // Credit Cards (V4.1)
+  for (const c of data.creditCards ?? []) {
+    const pool = [c.name, c.issuer ?? '', c.last4].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'creditcard',
+        id: c.id,
+        title: `Credit Card: ${c.name}`,
+        snippet: `••••${c.last4}`,
+        route: '#/money/accounts',
+        score: 25 + n,
       });
     }
   }

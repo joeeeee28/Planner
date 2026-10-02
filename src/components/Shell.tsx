@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
 import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle } from './icons';
-import { QuickAddModal } from './QuickAdd';
+import { QuickAddModal, type QuickAddKind } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
 
@@ -80,7 +80,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [focused, setFocused] = useState(false);
-  const [quickAdd, setQuickAdd] = useState(false);
+  const [quickAdd, setQuickAdd] = useState<QuickAddKind | boolean>(false);
   const [activeIdx, setActiveIdx] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -92,21 +92,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setQ('');
   }, [route.join('/')]);
 
-  // Command menu: Ctrl/Cmd+K opens the Quick Add palette from anywhere.
+  // Command menu: Ctrl/Cmd+K opens the Universal Quick Add / Palette from anywhere.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setQuickAdd((v) => !v);
+        setQuickAdd((v) => (v ? false : 'palette'));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Slice 4 shortcuts — single keys navigate when nothing is being typed:
-  // T Today · G Goals · M Money · P Plan · I Inbox · R Reviews · S Search ·
-  // N New task. Never intercept keyboard input in form fields.
+  // Single key shortcuts when no input control is focused
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -116,6 +114,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
       }
       const key = e.key.toLowerCase();
+      if (key === 's') {
+        e.preventDefault();
+        setQuickAdd('palette');
+        return;
+      }
+      if (key === 'n') {
+        e.preventDefault();
+        setQuickAdd('task');
+        return;
+      }
+      if (key === 'e') {
+        e.preventDefault();
+        setQuickAdd('expense');
+        return;
+      }
+      if (key === 'j') {
+        e.preventDefault();
+        setQuickAdd('journal');
+        return;
+      }
+
       const map: Record<string, string> = {
         t: 'today',
         g: 'goals',
@@ -124,17 +143,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
         i: 'inbox',
         r: 'reviews',
       };
-      if (key === 's') {
-        e.preventDefault();
-        const input = document.querySelector<HTMLInputElement>('.search-box input');
-        input?.focus();
-        return;
-      }
-      if (key === 'n') {
-        e.preventDefault();
-        setQuickAdd(true);
-        return;
-      }
       if (map[key]) {
         navigate(map[key]);
       }
@@ -342,7 +350,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </nav>
 
-      {quickAdd && <QuickAddModal onClose={() => setQuickAdd(false)} />}
+      {quickAdd && <QuickAddModal onClose={() => setQuickAdd(false)} initialKind={typeof quickAdd === 'string' ? quickAdd : 'task'} />}
     </div>
   );
 }
