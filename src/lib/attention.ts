@@ -92,22 +92,21 @@ function severityFromPriority(p: AttentionPriority): AttentionSeverity {
 function tierOf(key: string): number {
   if (key.startsWith('obl-overdue-')) return 1;
   if (key.startsWith('card-overdue-')) return 1;
-  if (key.startsWith('goal-overdue-')) return 2;
-  if (key.startsWith('task-p0-')) return 2;
-  if (key.startsWith('obl-today-')) return 3;
-  if (key.startsWith('card-today-')) return 3;
-  if (key.startsWith('task-')) return 4;
-  if (key.startsWith('goal-risk-')) return 5;
-  if (key.startsWith('budget-over-')) return 6;
-  if (key.startsWith('routine-missed-')) return 7;
-  if (key.startsWith('commit-today-')) return 8;
-  if (key.startsWith('commit-soon-')) return 9;
-  if (key.startsWith('inbox-stale-')) return 10;
-  if (key.startsWith('budget-warn-')) return 11;
-  if (key.startsWith('sav-')) return 12;
-  if (key.startsWith('learning-stall-')) return 13;
-  if (key.startsWith('review-')) return 14;
-  if (key.startsWith('notif-unread')) return 15;
+  if (key.startsWith('goal-overdue-')) return 1;
+  if (key.startsWith('obl-today-')) return 2;
+  if (key.startsWith('card-today-')) return 2;
+  if (key.startsWith('goal-risk-')) return 2;
+  if (key.startsWith('task-') && !key.startsWith('task-moved-')) return 3;
+  if (key.startsWith('task-moved-')) return 4;
+  if (key.startsWith('commit-today-')) return 4;
+  if (key.startsWith('commit-soon-')) return 5;
+  if (key.startsWith('inbox-stale-')) return 5;
+  if (key.startsWith('budget-')) return 6;
+  if (key.startsWith('sav-')) return 7;
+  if (key.startsWith('goal-idle-')) return 8;
+  if (key.startsWith('learning-stall-')) return 9;
+  if (key.startsWith('review-')) return 10;
+  if (key.startsWith('notif-unread')) return 11;
   return 20;
 }
 
@@ -646,12 +645,12 @@ export function attentionItems(data: AppData, opts: AttentionOptions = {}): Atte
     );
   }
 
-  // Sort deterministically: P0 > P1 > P2 > P3, then tierOf, then dueAt, then title
+  // Sort deterministically: tierOf severity order, then priority, then dueAt, then title
   filtered.sort((a, b) => {
-    const pDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-    if (pDiff !== 0) return pDiff;
     const tierDiff = tierOf(a.key) - tierOf(b.key);
     if (tierDiff !== 0) return tierDiff;
+    const pDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    if (pDiff !== 0) return pDiff;
     if (a.dueAt && b.dueAt) return a.dueAt.localeCompare(b.dueAt);
     return a.title.localeCompare(b.title);
   });
