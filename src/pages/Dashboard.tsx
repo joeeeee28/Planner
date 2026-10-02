@@ -18,7 +18,8 @@ import { factualSmartInsights } from '../lib/insights2';
 import { changeReport, changeDeltaLabel } from '../lib/change';
 import { nextBestAction } from '../lib/priority';
 import { formatMoney, monthTotals, goalPct, savingsRate, monthlyMoneySeries } from '../lib/finance';
-import { ProgressBar, Stars } from '../components/ui';
+import { deriveCommitments } from '../lib/commitments';
+import { ProgressBar, Stars, Modal } from '../components/ui';
 import { IconArrowRight } from '../components/icons';
 import { uid } from '../lib/uid';
 import { QuickAddModal, type QuickAddKind } from '../components/QuickAdd';
@@ -50,11 +51,22 @@ type Capture = { kind: QuickAddKind; goalId?: string } | null;
 export function DashboardPage() {
   const { data, update, sync, mode } = useApp();
   const [capture, setCapture] = useState<Capture>(null);
+  const [customizingHome, setCustomizingHome] = useState(false);
   const t = todayStr();
   const cycle = currentCycle(data.cycles);
   const entry = data.daily[t];
   const currency = data.settings.finance.currency;
   const [dismissedAction, setDismissedAction] = useState<string | null>(null);
+
+  // Widget preferences
+  const hw = data.settings.homeWidgets ?? {};
+  const showToday = hw.today !== false;
+  const showAttention = hw.attention !== false;
+  const showMoney = hw.money !== false;
+  const showGoals = hw.goals !== false;
+  const showLearning = hw.learning !== false;
+  const showHabits = hw.habits !== false;
+  const showUpcoming = hw.upcoming !== false;
 
   const dayP = dayProgress(entry, data.growthAreas);
   const streak = dayStreak(data);
@@ -96,6 +108,13 @@ export function DashboardPage() {
     deadline: goalDeadlineInfo(g),
     next: nextTaskForGoal(g.id, tasks),
   }));
+
+  // ── Life Progress Snapshot (Factual summaries) ──
+  const commitments = deriveCommitments(data, t);
+  const upcomingOutflows30d = commitments.filter((c) => c.direction === 'outflow').reduce((a, c) => a + c.amount, 0);
+  const activeGoalsCount = data.goals.filter((g) => g.status === 'in-progress' || g.status === 'not-started').length;
+  const tasksDoneThisWeek = tasks.filter((x) => x.done && x.doneAt && x.doneAt.slice(0, 10) >= addDays(t, -7)).length;
+  const activeLearningCount = data.learning.filter((l) => l.status === 'in-progress' || l.status === 'planned').length;
 
   // ── money summary ──
   const mm = monthTotals(data.transactions, mk);
@@ -175,20 +194,55 @@ export function DashboardPage() {
 
   return (
     <div className="page">
-      {/* ── GREETING ── */}
+      {/* ── GREETING & HERO ── */}
       <section className="hero section-gap">
-        <h1 className="t-display">{greeting(data.settings.name)}</h1>
-        <p style={{ margin: '4px 0 0', fontSize: 16, color: 'var(--ink-2)' }}>Let's make today count.</p>
-        <div className="hero-date">
-          {formatDateLong(t)}
-          {mode === 'cloud' && sync.lastSyncAt && (
-            <span className="sync-chip ok" style={{ marginLeft: 10, verticalAlign: 'middle' }} title="Cloud sync status">
-              <span className="sync-dot" /> Synced {timeAgo(sync.lastSyncAt)}
-            </span>
-          )}
+        <div className="flex flex-wrap" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 className="t-display">{greeting(data.settings.name)}</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 16, color: 'var(--ink-2)' }}>Let's make today count.</p>
+            <div className="hero-date">
+              {formatDateLong(t)}
+              {mode === 'cloud' && sync.lastSyncAt && (
+                <span className="sync-chip ok" style={{ marginLeft: 10, verticalAlign: 'middle' }} title="Cloud sync status">
+                  <span className="sync-dot" /> Synced {timeAgo(sync.lastSyncAt)}
+                </span>
+              )}
+            </div>
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={() => setCustomizingHome(true)}>
+            ⚙ Customize Home
+          </button>
         </div>
+
+        {/* Life Progress Snapshot (Factual summaries) */}
+        <div className="panel-flat mt-16" style={{ background: 'var(--surface-2)', padding: '14px 16px' }}>
+          <div className="tiny bold muted mb-8 uppercase tracking" style={{ fontSize: 11 }}>Life Progress Snapshot</div>
+          <div className="grid grid-5 flex-wrap" style={{ gap: 10 }}>
+            <div>
+              <div className="tiny muted">Active Goals</div>
+              <div className="bold small">{activeGoalsCount} goals</div>
+            </div>
+            <div>
+              <div className="tiny muted">Tasks Completed (7d)</div>
+              <div className="bold small">{tasksDoneThisWeek} tasks</div>
+            </div>
+            <div>
+              <div className="tiny muted">Habit Streak</div>
+              <div className="bold small">{streak} days</div>
+            </div>
+            <div>
+              <div className="tiny muted">Active Learning</div>
+              <div className="bold small">{activeLearningCount} items</div>
+            </div>
+            <div>
+              <div className="tiny muted">30d Outflows</div>
+              <div className="bold small t-num">{formatMoney(upcomingOutflows30d, currency, true)}</div>
+            </div>
+          </div>
+        </div>
+
         {cycle && (
-          <div className="hero-cycle">
+          <div className="hero-cycle mt-12">
             <span className="day-num">Day {cycleDayNumber(cycle, t)}</span>
             <span>of {cycleTotalDays(cycle)} · {cycle.name}</span>
             <span className="bar"><i style={{ width: `${cycleProgressPct(cycle, t)}%` }} /></span>
@@ -256,9 +310,10 @@ export function DashboardPage() {
       )}
 
       {/* TOP PRIORITIES — what matters now */}
-      <section className="panel section-gap">
-        <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
-          <h2 className="panel-title">Today's focus</h2>
+      {showToday && (
+        <section className="panel section-gap">
+          <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+            <h2 className="panel-title">Today's focus</h2>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('today')}>
             Open day <IconArrowRight size={13} />
           </button>
@@ -310,6 +365,7 @@ export function DashboardPage() {
           <ProgressBar pct={dayP.pct} />
         </div>
       </section>
+      )}
 
       {/* NEXT BEST ACTION — one recommendation with a reason; dismiss is
           local-only and nothing is ever moved without the user. */}
@@ -345,67 +401,69 @@ export function DashboardPage() {
       )}
 
       {/* WHAT NEEDS ATTENTION — Unified Attention Center (V5 Phase 6) */}
-      <section className="attention section-gap" aria-label="What needs attention">
-        <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div>
-            <h2 className="panel-title" style={{ margin: 0 }}>Needs Attention</h2>
-            <div className="flex" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              {catAttention.overdue.length > 0 && (
-                <span className="badge badge-neg">
-                  {catAttention.overdue.length} overdue
-                </span>
-              )}
-              {catAttention.dueToday.length > 0 && (
-                <span className="badge badge-warn">
-                  {catAttention.dueToday.length} due today
-                </span>
-              )}
-              {catAttention.comingUp.length > 0 && (
-                <span className="badge">
-                  {catAttention.comingUp.length} coming up
-                </span>
-              )}
-              {catAttention.all.length === 0 && (
-                <span className="tiny muted">You're clear for now. No overdue tasks, payments or important actions.</span>
-              )}
-            </div>
-          </div>
-          {catAttention.all.length > 5 && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowAllAttention(!showAllAttention)}>
-              {showAllAttention ? 'Show top 5' : `View all (${catAttention.all.length})`}
-            </button>
-          )}
-        </div>
-
-        {catAttention.all.length === 0 ? (
-          <div className="panel v5-card" style={{ padding: '20px', textAlign: 'center' }}>
-            <p className="bold" style={{ margin: '0 0 4px 0', color: 'var(--ink-1)' }}>You're clear for now</p>
-            <p className="small muted" style={{ margin: 0 }}>No overdue tasks, payments or urgent actions need your look today.</p>
-          </div>
-        ) : (
-          <div className="attention-list">
-            {(showAllAttention ? catAttention.all : catAttention.top5).map((a) => (
-              <div key={a.id} className={`attention-item v5-card ${a.tone}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', gap: 12 }}>
-                <div className="flex" style={{ gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-                  <span className={`badge ${a.priority === 'P0' ? 'badge-neg' : a.priority === 'P1' ? 'badge-warn' : ''}`} style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
-                    {a.priority === 'P0' ? 'P0 · Critical' : a.priority === 'P1' ? 'P1 · Attention' : a.priority === 'P2' ? 'P2 · Coming Up' : 'P3 · Info'}
+      {showAttention && (
+        <section className="attention section-gap" aria-label="What needs attention">
+          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div>
+              <h2 className="panel-title" style={{ margin: 0 }}>Needs Attention</h2>
+              <div className="flex" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                {catAttention.overdue.length > 0 && (
+                  <span className="badge badge-neg">
+                    {catAttention.overdue.length} overdue
                   </span>
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div className="attention-text bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
-                    <div className="attention-sub tiny muted">{a.description}</div>
+                )}
+                {catAttention.dueToday.length > 0 && (
+                  <span className="badge badge-warn">
+                    {catAttention.dueToday.length} due today
+                  </span>
+                )}
+                {catAttention.comingUp.length > 0 && (
+                  <span className="badge">
+                    {catAttention.comingUp.length} coming up
+                  </span>
+                )}
+                {catAttention.all.length === 0 && (
+                  <span className="tiny muted">You're clear for now. No overdue tasks, payments or important actions.</span>
+                )}
+              </div>
+            </div>
+            {catAttention.all.length > 5 && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAllAttention(!showAllAttention)}>
+                {showAllAttention ? 'Show top 5' : `View all (${catAttention.all.length})`}
+              </button>
+            )}
+          </div>
+
+          {catAttention.all.length === 0 ? (
+            <div className="panel v5-card" style={{ padding: '20px', textAlign: 'center' }}>
+              <p className="bold" style={{ margin: '0 0 4px 0', color: 'var(--ink-1)' }}>You're clear for now</p>
+              <p className="small muted" style={{ margin: 0 }}>No overdue tasks, payments or urgent actions need your look today.</p>
+            </div>
+          ) : (
+            <div className="attention-list">
+              {(showAllAttention ? catAttention.all : catAttention.top5).map((a) => (
+                <div key={a.id} className={`attention-item v5-card ${a.tone}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', gap: 12 }}>
+                  <div className="flex" style={{ gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                    <span className={`badge ${a.priority === 'P0' ? 'badge-neg' : a.priority === 'P1' ? 'badge-warn' : ''}`} style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
+                      {a.priority === 'P0' ? 'P0 · Critical' : a.priority === 'P1' ? 'P1 · Attention' : a.priority === 'P2' ? 'P2 · Coming Up' : 'P3 · Info'}
+                    </span>
+                    <div className="grow" style={{ minWidth: 0 }}>
+                      <div className="attention-text bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                      <div className="attention-sub tiny muted">{a.description}</div>
+                    </div>
+                  </div>
+                  <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+                    {a.dueAt && <span className="tiny muted t-num">{formatDateMed(a.dueAt)}</span>}
+                    <button className="btn btn-sm btn-ghost" onClick={() => navigate(a.action.route)}>
+                      {a.action.label} <IconArrowRight size={13} />
+                    </button>
                   </div>
                 </div>
-                <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
-                  {a.dueAt && <span className="tiny muted t-num">{formatDateMed(a.dueAt)}</span>}
-                  <button className="btn btn-sm btn-ghost" onClick={() => navigate(a.action.route)}>
-                    {a.action.label} <IconArrowRight size={13} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* SMART INSIGHTS (V5 Phase 7) */}
       {smartInsights.length > 0 && (
@@ -463,75 +521,78 @@ export function DashboardPage() {
       )}
 
       {/* TOP GOALS */}
-      <section className="section-gap">
-        <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
-          <h2 className="t-section" style={{ margin: 0 }}>Top goals</h2>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('goals')}>All goals <IconArrowRight size={13} /></button>
-        </div>
-        {topGs.length === 0 ? (
-          <div className="panel">
-            <p className="small muted" style={{ margin: 0 }}>
-              No active goals yet. <button className="btn btn-sm" onClick={() => navigate('goals')}>Create your first goal</button>
-            </p>
+      {showGoals && (
+        <section className="section-gap">
+          <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
+            <h2 className="t-section" style={{ margin: 0 }}>Top goals</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('goals')}>All goals <IconArrowRight size={13} /></button>
           </div>
-        ) : (
-          <div className="grid grid-4 topgoals">
-            {topGs.map(({ goal: g, pct, deadline, next }) => (
-              <div key={g.id} className="panel-flat topgoal" style={{ textAlign: 'left' }}>
-                <button className="topgoal-main" onClick={() => navigate(`goals/${g.id}`)}>
-                  <div className="flex" style={{ justifyContent: 'space-between', gap: 8 }}>
-                    <span className="small bold grow">{g.title}</span>
-                    <span className="small t-num" style={{ color: 'var(--ink-2)' }}>{pct}%</span>
-                  </div>
-                  <div className="mt-8"><ProgressBar pct={pct} /></div>
-                  <div className="tiny muted mt-8">
-                    {deadline.status === 'no-deadline' ? 'No deadline' : deadline.label}
-                  </div>
-                  {next && (
-                    <div className="tiny mt-8" style={{ color: 'var(--ink-2)' }}>
-                      Next: <b style={{ color: 'var(--ink)' }}>{next.text}</b>
+          {topGs.length === 0 ? (
+            <div className="panel">
+              <p className="small muted" style={{ margin: 0 }}>
+                No active goals yet. <button className="btn btn-sm" onClick={() => navigate('goals')}>Create your first goal</button>
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-4 topgoals">
+              {topGs.map(({ goal: g, pct, deadline, next }) => (
+                <div key={g.id} className="panel-flat topgoal" style={{ textAlign: 'left' }}>
+                  <button className="topgoal-main" onClick={() => navigate(`goals/${g.id}`)}>
+                    <div className="flex" style={{ justifyContent: 'space-between', gap: 8 }}>
+                      <span className="small bold grow">{g.title}</span>
+                      <span className="small t-num" style={{ color: 'var(--ink-2)' }}>{pct}%</span>
                     </div>
-                  )}
-                  {!next && g.milestones.length > 0 && (
-                    <div className="tiny mt-8" style={{ color: 'var(--ink-2)' }}>
-                      Next: <b style={{ color: 'var(--ink)' }}>{g.milestones.find((m) => !m.done)?.title ?? '—'}</b>
+                    <div className="mt-8"><ProgressBar pct={pct} /></div>
+                    <div className="tiny muted mt-8">
+                      {deadline.status === 'no-deadline' ? 'No deadline' : deadline.label}
                     </div>
-                  )}
-                </button>
-                <div className="flex mt-8" style={{ gap: 8 }}>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      if (next) {
-                        // Do now → the goal's next action lands on today's plan
-                        update((d) => {
-                          d.tasks = (d.tasks ?? []).map((x) =>
-                            x.id === next.id ? { ...x, date: t, rescheduledAt: [...(x.rescheduledAt ?? []), new Date().toISOString()], updatedAt: new Date().toISOString() } : x,
-                          );
-                          return { ...d };
-                        });
-                        navigate('today');
-                      } else {
-                        setCapture({ kind: 'task', goalId: g.id });
-                      }
-                    }}
-                  >
-                    Do now
+                    {next && (
+                      <div className="tiny mt-8" style={{ color: 'var(--ink-2)' }}>
+                        Next: <b style={{ color: 'var(--ink)' }}>{next.text}</b>
+                      </div>
+                    )}
+                    {!next && g.milestones.length > 0 && (
+                      <div className="tiny mt-8" style={{ color: 'var(--ink-2)' }}>
+                        Next: <b style={{ color: 'var(--ink)' }}>{g.milestones.find((m) => !m.done)?.title ?? '—'}</b>
+                      </div>
+                    )}
                   </button>
-                  <button className="btn btn-sm" onClick={() => navigate(`goals/${g.id}`)}>
-                    Open
-                  </button>
+                  <div className="flex mt-8" style={{ gap: 8 }}>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => {
+                        if (next) {
+                          // Do now → the goal's next action lands on today's plan
+                          update((d) => {
+                            d.tasks = (d.tasks ?? []).map((x) =>
+                              x.id === next.id ? { ...x, date: t, rescheduledAt: [...(x.rescheduledAt ?? []), new Date().toISOString()], updatedAt: new Date().toISOString() } : x,
+                            );
+                            return { ...d };
+                          });
+                          navigate('today');
+                        } else {
+                          setCapture({ kind: 'task', goalId: g.id });
+                        }
+                      }}
+                    >
+                      Do now
+                    </button>
+                    <button className="btn btn-sm" onClick={() => navigate(`goals/${g.id}`)}>
+                      Open
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* MONEY */}
-      <section className="section-gap">
-        <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
-          <h2 className="t-section" style={{ margin: 0 }}>Money</h2>
+      {showMoney && (
+        <section className="section-gap">
+          <div className="flex mb-16" style={{ justifyContent: 'space-between' }}>
+            <h2 className="t-section" style={{ margin: 0 }}>Money</h2>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('money')}>Open Money <IconArrowRight size={13} /></button>
         </div>
         {hasFinance ? (
@@ -592,6 +653,61 @@ export function DashboardPage() {
           </div>
         )}
       </section>
+      )}
+
+      {/* UPCOMING COMMITMENTS */}
+      {showUpcoming && commitments.length > 0 && (
+        <section className="section-gap" aria-label="Upcoming commitments">
+          <div className="flex mb-12" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="t-section" style={{ margin: 0 }}>Upcoming Commitments</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('money/commitments')}>
+              View all <IconArrowRight size={12} />
+            </button>
+          </div>
+          <div className="grid grid-3" style={{ gap: 12 }}>
+            {commitments.slice(0, 3).map((c) => (
+              <div key={c.id} className="panel v5-card" style={{ padding: '12px 14px' }}>
+                <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="small bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  <span className={`small bold t-num ${c.direction === 'outflow' ? '' : 'money-pos'}`}>
+                    {c.direction === 'outflow' ? '−' : '+'}{formatMoney(c.amount, currency, true)}
+                  </span>
+                </div>
+                <div className="tiny muted mt-4 flex" style={{ justifyContent: 'space-between' }}>
+                  <span>Due: {formatDateMed(c.dueDate)}</span>
+                  <span className="badge tiny">{c.type}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* HABITS & LEARNING SNAPSHOT */}
+      {(showLearning || showHabits) && (
+        <section className="section-gap">
+          <div className="grid grid-2" style={{ gap: 12 }}>
+            {showHabits && (
+              <div className="panel v5-card" style={{ padding: '14px 16px' }}>
+                <div className="flex mb-8" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 className="small bold" style={{ margin: 0 }}>Habit Consistency</h3>
+                  <button className="btn btn-ghost tiny" onClick={() => navigate('growth/habits')}>Open Habits</button>
+                </div>
+                <div className="small">Current Streak: <strong>{streak} days</strong> ({data.habits.filter((h) => h.active).length} active habits)</div>
+              </div>
+            )}
+            {showLearning && (
+              <div className="panel v5-card" style={{ padding: '14px 16px' }}>
+                <div className="flex mb-8" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 className="small bold" style={{ margin: 0 }}>Learning Progress</h3>
+                  <button className="btn btn-ghost tiny" onClick={() => navigate('growth/learning')}>Open Learning</button>
+                </div>
+                <div className="small">Active Items: <strong>{activeLearningCount} learning items</strong> in progress</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* GROWTH */}
       <section className="section-gap">
@@ -704,6 +820,49 @@ export function DashboardPage() {
           />
         </div>
       </section>
+      {customizingHome && (
+        <Modal title="Customize Home Sections" onClose={() => setCustomizingHome(false)}>
+          <p className="small muted mb-16">Select which sections to display on your personal command center.</p>
+          <div className="flex flex-column mb-16" style={{ gap: 12 }}>
+            {[
+              { key: 'today', label: 'Today & Top Priorities' },
+              { key: 'attention', label: 'Needs Attention' },
+              { key: 'money', label: 'Money Snapshot' },
+              { key: 'goals', label: 'Goal Momentum' },
+              { key: 'upcoming', label: 'Upcoming Commitments' },
+              { key: 'learning', label: 'Learning Progress' },
+              { key: 'habits', label: 'Habits & Routines' },
+            ].map((w) => {
+              const val = (data.settings.homeWidgets as any)?.[w.key] !== false;
+              return (
+                <label key={w.key} className="flex" style={{ gap: 10, cursor: 'pointer', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={val}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      update((d) => ({
+                        ...d,
+                        settings: {
+                          ...d.settings,
+                          homeWidgets: {
+                            ...(d.settings.homeWidgets ?? {}),
+                            [w.key]: checked,
+                          },
+                        },
+                      }));
+                    }}
+                  />
+                  <span className="small bold">{w.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="flex" style={{ justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary" onClick={() => setCustomizingHome(false)}>Done</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

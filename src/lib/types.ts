@@ -364,6 +364,16 @@ export interface FinanceSettings {
   provider?: FinancialProvider;
 }
 
+export interface HomeWidgetPreferences {
+  today?: boolean;
+  attention?: boolean;
+  money?: boolean;
+  goals?: boolean;
+  learning?: boolean;
+  habits?: boolean;
+  upcoming?: boolean;
+}
+
 export interface Settings {
   name: string;
   theme: ThemeMode;
@@ -378,6 +388,8 @@ export interface Settings {
   planning?: PlanningSettings;
   /** Slice 6 — automation & notification preferences (optional; defaults on). */
   automation?: AutomationSettings;
+  /** V5 Phase 9 — Home command center section visibility preferences. */
+  homeWidgets?: HomeWidgetPreferences;
 }
 
 /** Working-hours model for availability & scheduling. All times are local `HH:MM`. */

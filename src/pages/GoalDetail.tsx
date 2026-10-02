@@ -17,6 +17,7 @@ import { uid } from '../lib/uid';
 import { tasksOf, nextTaskForGoal, openTasks } from '../lib/plan';
 import { healthForGoal, momentumForGoal, moneyInfoForGoal, activityForGoal, inactiveForDays } from '../lib/goalIntel';
 import type { Goal } from '../lib/types';
+import { RelatedPanel } from '../components/RelatedPanel';
 
 export function GoalDetailPage({ goalId }: { goalId: string }) {
   const { data, update } = useApp();
@@ -190,6 +191,9 @@ export function GoalDetailPage({ goalId }: { goalId: string }) {
           {idleDays > 14 && ` No activity in ${idleDays} days.`}
         </p>
       </section>
+
+      {/* Cross-Module Connections Panel */}
+      <RelatedPanel entityType="goal" entityId={goal.id} />
 
       {/* progress (milestones) */}
       <section className="panel section-gap">
