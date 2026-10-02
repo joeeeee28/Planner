@@ -20,6 +20,7 @@ import { nextBestAction } from './priority';
 import { tasksOf, tasksOn, fmtMinutes } from './plan';
 import { routinesForDay, dayRunState, runProgress } from './automation/routines';
 import { upcomingOccurrences } from './automation/recur';
+import { deriveCommitments } from './commitments';
 
 export type IntelKind = 'pos' | 'warn' | 'info' | 'neg';
 export type IntelSection =
@@ -498,3 +499,216 @@ function moneyStatementRows(data: AppData, now: DateStr, fmt: (n: number, c?: bo
   }
   return out.slice(0, 3);
 }
+
+export interface SmartInsight {
+  id: string;
+  category: 'Money' | 'Goals' | 'Tasks' | 'Habits' | 'Learning' | 'Projects';
+  title: string;
+  detail: string;
+  metric?: string;
+  route: string;
+  tone: 'pos' | 'warn' | 'info';
+}
+
+/** Pure factual smart insights engine (Growth OS V5 Phase 7). */
+export function factualSmartInsights(data: AppData, now: DateStr = todayStr()): SmartInsight[] {
+  const currency = data.settings.finance.currency;
+  const fmt = (n: number, compact = false) => formatMoney(n, currency, compact);
+  const mk = monthKeyOf(now);
+  const prevMk = monthKeyOf(addMonths(now, -1));
+  const out: SmartInsight[] = [];
+
+  // 1. Money Insights
+  const monthTxs = data.transactions.filter((t) => t.date.slice(0, 7) === mk);
+  const monthInc = monthTxs.filter((t) => t.type === 'income').reduce((a, t) => a + t.amount, 0);
+  const monthExp = monthTxs.filter((t) => t.type !== 'income').reduce((a, t) => a + t.amount, 0);
+
+  if (monthInc > 0) {
+    out.push({
+      id: 'money-inc-month',
+      category: 'Money',
+      title: `Received ${fmt(monthInc)} this month`,
+      detail: `Income recorded across ${monthTxs.filter((t) => t.type === 'income').length} transaction(s)`,
+      metric: fmt(monthInc, true),
+      route: 'money/income',
+      tone: 'pos',
+    });
+  }
+
+  if (monthExp > 0) {
+    out.push({
+      id: 'money-exp-month',
+      category: 'Money',
+      title: `Spent ${fmt(monthExp)} this month`,
+      detail: `Total expenses recorded for ${mk}`,
+      metric: fmt(monthExp, true),
+      route: 'money/expenses',
+      tone: 'info',
+    });
+  }
+
+  const commitments30 = deriveCommitments(data, now).filter(
+    (c) => c.status !== 'completed' && c.status !== 'cancelled' && c.dueDate >= now && c.dueDate <= addDays(now, 30),
+  );
+  const totalCommit30 = commitments30.reduce((a, c) => a + c.amount, 0);
+  if (totalCommit30 > 0) {
+    out.push({
+      id: 'money-commit-30',
+      category: 'Money',
+      title: `${fmt(totalCommit30)} committed in next 30 days`,
+      detail: `Across ${commitments30.length} upcoming commitment(s)`,
+      metric: fmt(totalCommit30, true),
+      route: 'money/upcoming',
+      tone: 'warn',
+    });
+  }
+
+  const obligations = (data.obligations ?? []).filter(
+    (o) => (o.status === 'outstanding' || o.status === 'partially-paid') && o.outstandingAmount > 0,
+  );
+  for (const o of obligations.slice(0, 2)) {
+    const isOut = o.direction === 'borrowed';
+    const party = o.personId ? (data.people ?? []).find((p) => p.id === o.personId)?.name ?? 'Person' : 'Obligation';
+    out.push({
+      id: `money-obl-${o.id}`,
+      category: 'Money',
+      title: isOut ? `${fmt(o.outstandingAmount)} owed to ${party}` : `${fmt(o.outstandingAmount)} owed to you by ${party}`,
+      detail: o.dueDate ? `Due ${formatDateMed(o.dueDate)}` : 'Active obligation balance',
+      metric: fmt(o.outstandingAmount, true),
+      route: 'money/owed',
+      tone: isOut ? 'warn' : 'pos',
+    });
+  }
+
+  // Top spending category & trend (only when previous period data exists)
+  const expCatTotals: Record<string, number> = {};
+  for (const tx of monthTxs.filter((t) => t.type !== 'income')) {
+    expCatTotals[tx.category] = (expCatTotals[tx.category] ?? 0) + tx.amount;
+  }
+  const topCat = Object.entries(expCatTotals).sort((a, b) => b[1] - a[1])[0];
+  if (topCat) {
+    const prevCatTotal = data.transactions
+      .filter((t) => t.date.slice(0, 7) === prevMk && t.type !== 'income' && t.category === topCat[0])
+      .reduce((a, t) => a + t.amount, 0);
+    const hasPrev = data.transactions.some((t) => t.date.slice(0, 7) === prevMk);
+
+    if (hasPrev && prevCatTotal > 0) {
+      const diff = topCat[1] - prevCatTotal;
+      const label = diff >= 0 ? `${fmt(diff)} higher` : `${fmt(-diff)} lower`;
+      out.push({
+        id: 'money-top-cat-trend',
+        category: 'Money',
+        title: `${topCat[0]} spending is ${label} than last month`,
+        detail: `${fmt(topCat[1])} spent this month vs ${fmt(prevCatTotal)} last month`,
+        metric: fmt(topCat[1], true),
+        route: 'money/expenses',
+        tone: diff > 0 ? 'warn' : 'pos',
+      });
+    } else {
+      out.push({
+        id: 'money-top-cat',
+        category: 'Money',
+        title: `Largest spending category is ${topCat[0]}`,
+        detail: `${fmt(topCat[1])} spent in ${topCat[0]} this month`,
+        metric: fmt(topCat[1], true),
+        route: 'money/expenses',
+        tone: 'info',
+      });
+    }
+  }
+
+  // 2. Goal Insights
+  const savGoals = data.savingsGoals.filter((g) => g.targetAmount > 0);
+  if (savGoals.length > 0) {
+    const topSav = savGoals[0];
+    const pct = Math.min(100, Math.round(((topSav.currentAmount || 0) / topSav.targetAmount) * 100));
+    const remaining = Math.max(0, topSav.targetAmount - (topSav.currentAmount || 0));
+    out.push({
+      id: `goal-sav-${topSav.id}`,
+      category: 'Goals',
+      title: `“${topSav.name}” is ${pct}% complete`,
+      detail: `${fmt(remaining)} remains to reach target of ${fmt(topSav.targetAmount)}`,
+      metric: `${pct}%`,
+      route: 'money/goals',
+      tone: pct >= 80 ? 'pos' : 'info',
+    });
+  }
+
+  // 3. Task / Project Insights
+  const tasks = data.tasks ?? [];
+  const overdueN = tasks.filter((t) => !t.done && t.date && t.date < now).length;
+  if (overdueN > 0) {
+    out.push({
+      id: 'tasks-overdue-count',
+      category: 'Tasks',
+      title: `You have ${overdueN} overdue task${overdueN === 1 ? '' : 's'}`,
+      detail: 'Review and reschedule or complete pending work',
+      metric: String(overdueN),
+      route: 'today',
+      tone: 'warn',
+    });
+  }
+
+  const todayOpenTasks = tasks.filter((t) => !t.done && t.date === now);
+  if (todayOpenTasks.length > 0) {
+    out.push({
+      id: 'tasks-today-open',
+      category: 'Tasks',
+      title: `${todayOpenTasks.length} task${todayOpenTasks.length === 1 ? ' is' : 's are'} scheduled for today`,
+      detail: 'Planned items ready for focus',
+      metric: String(todayOpenTasks.length),
+      route: 'today',
+      tone: 'info',
+    });
+  }
+
+  // 4. Habit / Routine Insights
+  const routines = (data.routines ?? []).filter((r) => r.active);
+  if (routines.length > 0) {
+    const r = routines[0];
+    let sched = 0;
+    let done = 0;
+    let d = addDays(now, -6);
+    while (d <= now) {
+      if (routineScheduledOnDay(data, r, d)) {
+        sched++;
+        const { total, done: dn } = runProgress(r, dayRunState(data, r.id, d));
+        if (total > 0 && dn === total) done++;
+      }
+      d = addDays(d, 1);
+    }
+    if (sched > 0) {
+      out.push({
+        id: `routine-stat-${r.id}`,
+        category: 'Habits',
+        title: `Completed “${r.name}” ${done} of last ${sched} scheduled days`,
+        detail: `${Math.round((done / sched) * 100)}% consistency over the past week`,
+        metric: `${done}/${sched}`,
+        route: 'automation',
+        tone: done === sched ? 'pos' : 'info',
+      });
+    }
+  }
+
+  // 5. Learning Insights
+  const learningInProgress = data.learning.filter((l) => l.status === 'in-progress');
+  if (learningInProgress.length > 0) {
+    out.push({
+      id: 'learning-active-count',
+      category: 'Learning',
+      title: `${learningInProgress.length} learning item${learningInProgress.length === 1 ? ' is' : 's are'} active`,
+      detail: `“${learningInProgress[0].title}” and related topics`,
+      metric: String(learningInProgress.length),
+      route: 'growth/learning',
+      tone: 'info',
+    });
+  }
+
+  return out;
+}
+
+/** Convenience function for Money page to get money-specific insights */
+export function moneyInsights(data: AppData, now: DateStr = todayStr()): SmartInsight[] {
+  return factualSmartInsights(data, now).filter((x) => x.category === 'Money');
+}
+

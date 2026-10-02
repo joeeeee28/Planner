@@ -97,6 +97,7 @@ import {
   periodTotals,
 } from '../lib/people';
 import { nextMonthForecast, savingsProjection } from '../lib/forecast';
+import { moneyInsights } from '../lib/insights2';
 import { Modal, ProgressBar, EmptyState } from '../components/ui';
 import { IconPlus, IconTrash, IconEdit, IconCopy, IconArrowRight, IconChart, IconCard } from '../components/icons';
 import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
@@ -1144,6 +1145,7 @@ function OverviewTab() {
     [data.transactions],
   );
   const flowSeries = useMemo(() => monthlyMoneySeries(data, 10).map((p) => ({ ...p, net: p.income - p.expense })), [data]);
+  const mInsights = useMemo(() => moneyInsights(data, t), [data, t]);
 
   // savings goals — compact multi-goal list
   const goals = [...data.savingsGoals].sort((a, b) => (b.targetAmount || 0) - (a.targetAmount || 0));
@@ -1272,6 +1274,27 @@ function OverviewTab() {
           </div>
         </div>
       </div>
+
+      {/* Money Insights (V5 Phase 7) */}
+      {mInsights.length > 0 && (
+        <div className="panel v5-card mb-16" aria-label="Money Insights">
+          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span className="tiny uppercase bold" style={{ letterSpacing: '0.06em', color: 'var(--ink-2)' }}>Money Insights</span>
+            <span className="tiny muted">Factual analysis from actual records</span>
+          </div>
+          <div className="grid grid-2" style={{ gap: 10 }}>
+            {mInsights.map((ins) => (
+              <div key={ins.id} className="panel-flat" style={{ padding: '10px 14px', borderRadius: 'var(--r-md)' }}>
+                <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span className="small bold" style={{ color: 'var(--ink-1)' }}>{ins.title}</span>
+                  {ins.metric && <span className="tiny bold t-num">{ins.metric}</span>}
+                </div>
+                <div className="tiny muted">{ins.detail}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Accounts — V4.4 */}
       <div className="panel section-gap">

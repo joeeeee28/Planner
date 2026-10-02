@@ -25,6 +25,7 @@ import { dayAvailability } from '../lib/calendar/availability';
 import { verdictFor } from '../lib/calendar/scheduler';
 import { ScheduleSheet } from '../components/ScheduleSheet';
 import { dailyShutdownProposal, SHUTDOWN_PROMPTS } from '../lib/reviewIntel';
+import { todayAttentionItems } from '../lib/attention';
 import type { DayEntry, PlannedTask, Routine, TaskItem, Transaction } from '../lib/types';
 
 const emptyJournal = {
@@ -239,6 +240,8 @@ export function TodayPage() {
       return { goal: g, pct, taskNext, milestoneNext, nextActionText };
     });
 
+  const todayAttn = isTodayDay ? todayAttentionItems(data) : [];
+
   return (
     <div className="page">
       {/* header */}
@@ -276,6 +279,35 @@ export function TodayPage() {
           </button>
         </div>
       </div>
+
+      {/* Needs Attention Today Contextual Card */}
+      {isTodayDay && todayAttn.length > 0 && (
+        <section className="panel v5-card mb-16" style={{ borderLeft: '4px solid var(--accent)' }} aria-label="Needs attention today">
+          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span className="tiny uppercase bold" style={{ letterSpacing: '0.06em', color: 'var(--ink-2)' }}>
+              Needs Attention Today ({todayAttn.length})
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('home')}>
+              Full Attention Center <IconArrowRight size={13} />
+            </button>
+          </div>
+          <div className="flex flex-col" style={{ gap: 8 }}>
+            {todayAttn.slice(0, 3).map((item) => (
+              <div key={item.id} className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <div className="flex" style={{ gap: 8, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                  <span className={`badge ${item.priority === 'P0' ? 'badge-neg' : 'badge-warn'}`} style={{ fontSize: '10px' }}>
+                    {item.priority === 'P0' ? 'Overdue' : 'Due Today'}
+                  </span>
+                  <span className="small bold grow truncate" style={{ color: 'var(--ink-1)' }}>{item.title}</span>
+                </div>
+                <button className="btn btn-sm btn-ghost" onClick={() => navigate(item.action.route)}>
+                  {item.action.label}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {isFuture && (
         <div className="panel-flat mb-16" style={{ background: 'var(--warn-soft)', borderColor: 'transparent' }}>

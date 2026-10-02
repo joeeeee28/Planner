@@ -13,7 +13,8 @@ import {
 } from '../lib/dates';
 import { dayProgress, dayStreak, goalEffectiveProgress, goalDeadlineInfo } from '../lib/analytics';
 import { navigate } from '../lib/router';
-import { attentionItems as computeAttention } from '../lib/attention';
+import { attentionItems as computeAttention, categorizedAttention } from '../lib/attention';
+import { factualSmartInsights } from '../lib/insights2';
 import { changeReport, changeDeltaLabel } from '../lib/change';
 import { nextBestAction } from '../lib/priority';
 import { formatMoney, monthTotals, goalPct, savingsRate, monthlyMoneySeries } from '../lib/finance';
@@ -69,7 +70,10 @@ export function DashboardPage() {
   const mk = monthKeyOf(t);
 
   // ── attention (evidence-based, calm, capped) ──
+  const [showAllAttention, setShowAllAttention] = useState(false);
   const attentionItems = computeAttention(data);
+  const catAttention = categorizedAttention(data, { currency });
+  const smartInsights = factualSmartInsights(data, t);
 
   // ── one next best action (single, explained, never auto-moves) ──
   const nba = nextBestAction(data);
@@ -340,23 +344,89 @@ export function DashboardPage() {
         </section>
       )}
 
-      {/* WHAT NEEDS ATTENTION */}
-      {attentionItems.length > 0 && (
-        <section className="attention section-gap" aria-label="What needs attention">
-          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <h2 className="panel-title">What needs attention</h2>
-            <span className="tiny muted">Only what matters</span>
-          </div>
-          <div className="attention-list">
-            {attentionItems.map((a) => (
-              <button key={a.key} className={`attention-item ${a.tone}`} onClick={() => navigate(a.route)}>
-                <span className="dot" aria-hidden="true" />
-                <span className="grow">
-                  <span className="attention-text">{a.text}</span>
-                  <span className="attention-sub">{a.sub}</span>
+      {/* WHAT NEEDS ATTENTION — Unified Attention Center (V5 Phase 6) */}
+      <section className="attention section-gap" aria-label="What needs attention">
+        <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <h2 className="panel-title" style={{ margin: 0 }}>Needs Attention</h2>
+            <div className="flex" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+              {catAttention.overdue.length > 0 && (
+                <span className="badge badge-neg">
+                  {catAttention.overdue.length} overdue
                 </span>
-                <IconArrowRight size={13} />
-              </button>
+              )}
+              {catAttention.dueToday.length > 0 && (
+                <span className="badge badge-warn">
+                  {catAttention.dueToday.length} due today
+                </span>
+              )}
+              {catAttention.comingUp.length > 0 && (
+                <span className="badge">
+                  {catAttention.comingUp.length} coming up
+                </span>
+              )}
+              {catAttention.all.length === 0 && (
+                <span className="tiny muted">You're clear for now. No overdue tasks, payments or important actions.</span>
+              )}
+            </div>
+          </div>
+          {catAttention.all.length > 5 && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowAllAttention(!showAllAttention)}>
+              {showAllAttention ? 'Show top 5' : `View all (${catAttention.all.length})`}
+            </button>
+          )}
+        </div>
+
+        {catAttention.all.length === 0 ? (
+          <div className="panel v5-card" style={{ padding: '20px', textAlign: 'center' }}>
+            <p className="bold" style={{ margin: '0 0 4px 0', color: 'var(--ink-1)' }}>You're clear for now</p>
+            <p className="small muted" style={{ margin: 0 }}>No overdue tasks, payments or urgent actions need your look today.</p>
+          </div>
+        ) : (
+          <div className="attention-list">
+            {(showAllAttention ? catAttention.all : catAttention.top5).map((a) => (
+              <div key={a.id} className={`attention-item v5-card ${a.tone}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', gap: 12 }}>
+                <div className="flex" style={{ gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                  <span className={`badge ${a.priority === 'P0' ? 'badge-neg' : a.priority === 'P1' ? 'badge-warn' : ''}`} style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
+                    {a.priority === 'P0' ? 'P0 · Critical' : a.priority === 'P1' ? 'P1 · Attention' : a.priority === 'P2' ? 'P2 · Coming Up' : 'P3 · Info'}
+                  </span>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="attention-text bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                    <div className="attention-sub tiny muted">{a.description}</div>
+                  </div>
+                </div>
+                <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+                  {a.dueAt && <span className="tiny muted t-num">{formatDateMed(a.dueAt)}</span>}
+                  <button className="btn btn-sm btn-ghost" onClick={() => navigate(a.action.route)}>
+                    {a.action.label} <IconArrowRight size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* SMART INSIGHTS (V5 Phase 7) */}
+      {smartInsights.length > 0 && (
+        <section className="section-gap" aria-label="Smart Insights">
+          <div className="flex mb-12" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="t-section" style={{ margin: 0 }}>Smart Insights</h2>
+            <span className="tiny muted">Factual analysis from actual data</span>
+          </div>
+          <div className="grid grid-3" style={{ gap: 12 }}>
+            {smartInsights.map((ins) => (
+              <div key={ins.id} className="panel v5-card" style={{ padding: '14px 16px' }}>
+                <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span className="tiny uppercase bold" style={{ color: 'var(--ink-2)', letterSpacing: '0.05em' }}>{ins.category}</span>
+                  {ins.metric && <span className="small bold t-num">{ins.metric}</span>}
+                </div>
+                <div className="small bold mb-4" style={{ color: 'var(--ink-1)' }}>{ins.title}</div>
+                <div className="tiny muted mb-12">{ins.detail}</div>
+                <button className="btn btn-ghost btn-sm" style={{ padding: 0, height: 'auto', color: 'var(--accent)' }} onClick={() => navigate(ins.route)}>
+                  Explore <IconArrowRight size={12} />
+                </button>
+              </div>
             ))}
           </div>
         </section>
