@@ -1006,3 +1006,8 @@ export interface AppNotification {
   dismissed?: boolean;
   createdAt: string;
 }
+
+declare global {
+  const __APP_VERSION__: string;
+  const __BUILD_COMMIT__: string;
+}

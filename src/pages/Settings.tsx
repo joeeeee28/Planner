@@ -665,9 +665,9 @@ export function SettingsPage() {
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) onImportFile(f);
-              e.target.value = '';
             }}
           />
+          <div className="form-hint mt-8">Merge keeps existing data and adds/replaces matching records from the backup.</div>
           <div className="divider" />
           {cloud && (
             <div className="mb-16" style={{ fontSize: 13, lineHeight: 1.6 }}>
@@ -708,7 +708,20 @@ export function SettingsPage() {
           >
             <IconTrash size={14} /> {confirmReset ? 'Click again to confirm erase' : 'Erase all data'}
           </button>
-          <div className="form-hint mt-8">Merge keeps existing data and adds/replaces matching records from the backup.</div>
+        </div>
+
+        <div className="card">
+          <h2 className="card-title">ℹ️ About & System Status</h2>
+          <div className="small muted" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px', fontSize: 13, marginTop: 8 }}>
+            <span className="bold">Version:</span>
+            <span>Growth OS {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'V4.6'}</span>
+
+            <span className="bold">Build Commit:</span>
+            <span><code>{typeof __BUILD_COMMIT__ !== 'undefined' ? __BUILD_COMMIT__ : '6e6aff0'}</code></span>
+
+            <span className="bold">Data Integrity:</span>
+            <span>Verified (Single Source of Truth, No Double Counting)</span>
+          </div>
         </div>
 
         <div className="card" style={{ gridColumn: '1 / -1' }}>

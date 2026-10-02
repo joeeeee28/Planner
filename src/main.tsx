@@ -4,6 +4,7 @@ import '@fontsource-variable/inter';
 import '@fontsource/instrument-serif';
 import './styles.css';
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { STORAGE_KEY } from './lib/defaults';
 
 // Set the theme before first paint to avoid a flash of the wrong theme.
@@ -18,6 +19,8 @@ try {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
