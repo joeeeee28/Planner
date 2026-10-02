@@ -299,8 +299,11 @@ export function TodayPage() {
               <button className="btn btn-sm" onClick={() => navigate(`plan/day/${date}`)}>Review plan</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setKeepLoad(true)}>Keep as planned</button>
             </div>
-          ) : work.level === 'light' && inboxCount > 0 ? (
-            <button className="btn btn-sm" onClick={() => navigate('inbox')}>View Inbox</button>
+          ) : work.level === 'light' ? (
+            <div className="flex" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className="tiny muted">Open capacity — no need to fill it.</span>
+              <button className="btn btn-sm" onClick={() => navigate('inbox')}>View Inbox</button>
+            </div>
           ) : (
             <span className="tiny muted">Open capacity — no need to fill it.</span>
           )}

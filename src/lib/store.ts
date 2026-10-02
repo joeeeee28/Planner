@@ -96,6 +96,10 @@ function normalizeTransactions(list: unknown): Transaction[] {
       personId: typeof t.personId === 'string' && t.personId ? t.personId : undefined,
       // V4.3 — the same rule for an explicit money-source link.
       sourceId: typeof t.sourceId === 'string' && t.sourceId ? t.sourceId : undefined,
+      // V4.5 — obligation link and kind survive reloads.
+      obligationId: typeof t.obligationId === 'string' && t.obligationId ? t.obligationId : undefined,
+      obligationKind: (t.obligationKind === 'borrow' || t.obligationKind === 'lend' || t.obligationKind === 'repay-borrow' || t.obligationKind === 'repay-lend') ? t.obligationKind : undefined,
+      interestAmount: typeof t.interestAmount === 'number' && t.interestAmount > 0 ? t.interestAmount : undefined,
       notes: typeof t.notes === 'string' ? t.notes : undefined,
       recurrence: (t.recurrence === 'weekly' || t.recurrence === 'monthly' || t.recurrence === 'quarterly' || t.recurrence === 'yearly') ? t.recurrence : undefined,
       lastGenerated: typeof t.lastGenerated === 'string' ? t.lastGenerated : undefined,
@@ -581,6 +585,44 @@ function normalizeAccounts(list: unknown): AppData['accounts'] {
   return out;
 }
 
+/** Normalize money obligations (V4.5). Default direction is 'borrowed', status is 'outstanding'. */
+function normalizeObligations(list: unknown): AppData['obligations'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['obligations']> = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const personId = typeof r.personId === 'string' ? r.personId.trim() : '';
+    if (!personId) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `obl-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const direction = r.direction === 'lent' ? 'lent' : 'borrowed';
+    const status = r.status === 'partially-paid' || r.status === 'settled' || r.status === 'archived' ? r.status : 'outstanding';
+    const principalAmount = Number.isFinite(Number(r.principalAmount)) ? Number(r.principalAmount) : 0;
+    const outstandingAmount = Number.isFinite(Number(r.outstandingAmount)) ? Number(r.outstandingAmount) : principalAmount;
+    const name = typeof r.name === 'string' && r.name.trim() ? r.name.trim() : direction === 'borrowed' ? 'Borrowed money' : 'Lent money';
+    out.push({
+      id,
+      personId,
+      direction,
+      name,
+      principalAmount,
+      outstandingAmount,
+      sourceId: str(r.sourceId),
+      purpose: str(r.purpose),
+      dueDate: str(r.dueDate),
+      status,
+      notes: str(r.notes),
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: str(r.updatedAt),
+    });
+  }
+  return out;
+}
+
 export function normalizeData(cached: AppData): AppData {
   if (cached.transactions) cached.transactions = normalizeTransactions(cached.transactions);
   if (cached.savingsGoals) cached.savingsGoals = normalizeSavingsGoals(cached.savingsGoals);
@@ -590,6 +632,7 @@ export function normalizeData(cached: AppData): AppData {
   cached.people = normalizePeople(cached.people);
   cached.sources = normalizeSources(cached.sources);
   cached.accounts = normalizeAccounts(cached.accounts);
+  cached.obligations = normalizeObligations(cached.obligations);
   if (cached.reminders) cached.reminders = normalizeReminders(cached.reminders);
   cached.tasks = normalizePlannedTasks(cached.tasks);
   cached.inbox = normalizeInbox(cached.inbox);

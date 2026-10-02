@@ -211,6 +211,7 @@ export function createInitialData(): AppData {
     people: [],
     sources: [],
     accounts: [],
+    obligations: [],
     reminders: [],
     tasks: [],
     inbox: [],

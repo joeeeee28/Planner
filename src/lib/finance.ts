@@ -105,13 +105,18 @@ export function txsInRange(txs: Transaction[], from: DateStr, to: DateStr): Tran
   return txs.filter((t) => t.date >= from && t.date <= to);
 }
 
-/** Legacy transactions (created before the type field existed) are treated as expenses. */
+/** Income calculation: obligation principal movements do NOT count as ordinary income. Only explicit interest/fee counts. */
 export function txIncome(t: Transaction): number {
-  return t.type === 'income' ? t.amount : 0;
+  if (t.type !== 'income') return 0;
+  if (t.obligationId) return safeAmount(t.interestAmount);
+  return t.amount;
 }
 
+/** Expense calculation: obligation principal movements & repayments do NOT count as ordinary expenses. Only explicit interest/fee counts. */
 export function txExpense(t: Transaction): number {
-  return t.type === 'expense' ? t.amount : 0;
+  if (t.type !== 'expense') return 0;
+  if (t.obligationId) return safeAmount(t.interestAmount);
+  return t.amount;
 }
 
 export function totals(txs: Transaction[]): { income: number; expense: number; saved: number } {

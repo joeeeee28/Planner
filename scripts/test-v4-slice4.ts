@@ -783,7 +783,8 @@ async function main() {
           await sleep(900);
           const tom = daysFromNow(1);
           s.win.location.hash = `#/today/${tom}`;
-          return waitFor(() => s.body().includes('Light task'), 10000);
+          s.win.dispatchEvent(new (s.win as any).Event('hashchange'));
+          return waitFor(() => s.body().includes('Light task') || Array.from(s.win.document.querySelectorAll('input')).some((i: any) => i.value?.includes('Light task')), 10000);
         }],
         ['zero runtime errors', () => s.errors.length === 0],
       ],

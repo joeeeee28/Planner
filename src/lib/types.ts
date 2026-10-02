@@ -459,13 +459,14 @@ export interface Transaction {
   /**
    * Optional money source / fund this transaction belongs to (V4.3): the
    * ₹10,000 Appa gave *for college*, the client payment for a project.
-   *
-   * A source is context, never a second record: income linked to a source is
-   * still income (counted once), and an expense linked to a source is still an
-   * expense (counted once). `sourceId` only answers “which money was this?” —
-   * it changes no amount, type or total, and it is never inferred.
    */
   sourceId?: ID;
+  /** Optional obligation link for borrowed / lent money or loan repayments (V4.5). */
+  obligationId?: ID;
+  /** Obligation transaction direction / kind (V4.5). */
+  obligationKind?: 'borrow' | 'lend' | 'repay-borrow' | 'repay-lend';
+  /** Optional interest or fee component (V4.5) — only this part counts as income/expense. */
+  interestAmount?: number;
   notes?: string;
   /** Optional recurrence: e.g. 'monthly'. Only one transaction is generated per occurrence. */
   recurrence?: Recurrence;
@@ -571,6 +572,32 @@ export interface MoneySource {
   receivedAmount: number;
   receivedDate?: DateStr;
   status: MoneySourceStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/**
+ * Money Obligation (V4.5) — money owed / borrowed / lent.
+ *
+ * borrowed: money I borrowed from someone (I owe them)
+ * lent: money I lent to someone (they owe me)
+ */
+export type ObligationDirection = 'borrowed' | 'lent';
+export type ObligationStatus = 'outstanding' | 'partially-paid' | 'settled' | 'archived';
+export type ObligationTxKind = 'borrow' | 'lend' | 'repay-borrow' | 'repay-lend';
+
+export interface MoneyObligation {
+  id: ID;
+  personId: ID;
+  direction: ObligationDirection;
+  name: string;
+  principalAmount: number;
+  outstandingAmount: number;
+  sourceId?: ID;
+  purpose?: string;
+  dueDate?: DateStr;
+  status: ObligationStatus;
   notes?: string;
   createdAt: string;
   updatedAt?: string;
@@ -790,6 +817,10 @@ export interface AppData {
    * Accounts / wallets (V4.4) — optional and additive. Bank, cash, wallets, etc.
    */
   accounts?: MoneyAccount[];
+  /**
+   * Obligations (V4.5) — money owed / borrowed / lent. Optional and additive.
+   */
+  obligations?: MoneyObligation[];
   reminders: Reminder[];
   /** Optional planned tasks (V4) — additive; absent in older documents. */
   tasks?: PlannedTask[];

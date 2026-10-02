@@ -31,8 +31,19 @@ import {
   sumContributionsInMonth,
   type BudgetStatus,
 } from '../lib/finance';
-import type { CardPayment, CreditCard, MoneyAccount, MoneyAccountType, MoneySource, MoneySourceStatus, Person, Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
+import type { CardPayment, CreditCard, MoneyAccount, MoneyAccountType, MoneyObligation, MoneySource, MoneySourceStatus, ObligationDirection, ObligationStatus, ObligationTxKind, Person, Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
 import { MONEY_ACCOUNT_TYPES } from '../lib/types';
+import {
+  makeObligation,
+  makeObligationTx,
+  obligationTransactions,
+  obligationTotals,
+  summarizeObligations,
+  personObligationTotals,
+  STATUS_LABEL as OBLIGATION_STATUS_LABEL,
+  STATUS_COLOR as OBLIGATION_STATUS_COLOR,
+  type ObligationSummary,
+} from '../lib/obligations';
 import {
   accountTotals,
   accountTransactions,
@@ -111,12 +122,13 @@ import {
   Line,
 } from 'recharts';
 
-type Tab = 'overview' | 'transactions' | 'accounts' | 'income' | 'expenses' | 'creditcards' | 'savings' | 'budgets' | 'recurring' | 'history' | 'people' | 'sources';
+type Tab = 'overview' | 'transactions' | 'accounts' | 'owed' | 'income' | 'expenses' | 'creditcards' | 'savings' | 'budgets' | 'recurring' | 'history' | 'people' | 'sources';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'transactions', label: 'Transactions' },
   { id: 'accounts', label: 'Accounts' },
+  { id: 'owed', label: 'Owed' },
   { id: 'income', label: 'Income' },
   { id: 'expenses', label: 'Expenses' },
   { id: 'creditcards', label: 'Credit Cards' },
@@ -147,6 +159,8 @@ export function MoneyPage() {
   const route = useRoute();
   const raw = route[1] ?? 'overview';
   const tab: Tab = (TABS.find((t) => t.id === raw)?.id ?? (raw === 'goals' ? 'savings' : 'overview')) as Tab;
+  const [borrowModal, setBorrowModal] = useState(false);
+  const crud = useTxCrud();
 
   return (
     <div className="page">
@@ -161,8 +175,10 @@ export function MoneyPage() {
         <div className="flex flex-wrap" style={{ gap: 6 }}>
           <button className="btn btn-sm" onClick={() => navigate('money/transactions')}>View transactions</button>
           <button className="btn btn-sm" onClick={() => navigate('money/accounts')}>Accounts</button>
+          <button className="btn btn-sm" onClick={() => navigate('money/owed')}>Owed</button>
           <button className="btn btn-sm" onClick={() => navigate('money/people')}>People</button>
           <button className="btn btn-sm" onClick={() => navigate('money/sources')}>Sources</button>
+          <button className="btn btn-sm btn-primary" onClick={() => setBorrowModal(true)}>+ Borrow / Lend</button>
         </div>
       </div>
 
@@ -177,6 +193,7 @@ export function MoneyPage() {
       {tab === 'overview' && <OverviewTab />}
       {tab === 'transactions' && <TransactionsTab />}
       {tab === 'accounts' && <AccountsTab accountId={route[2]} />}
+      {tab === 'owed' && <ObligationsTab obligationId={route[2]} />}
       {tab === 'income' && <IncomeTab />}
       {tab === 'expenses' && <ExpensesTab />}
       {tab === 'creditcards' && <CreditCardsTab />}
@@ -186,6 +203,14 @@ export function MoneyPage() {
       {tab === 'history' && <HistoryTab />}
       {tab === 'people' && <PeopleTab personId={route[2]} />}
       {tab === 'sources' && <SourcesTab sourceId={route[2]} />}
+
+      {borrowModal && (
+        <BorrowLendModal
+          onClose={() => setBorrowModal(false)}
+          crud={crud}
+          currency={crud.data.settings.finance.currency}
+        />
+      )}
     </div>
   );
 }
@@ -798,6 +823,86 @@ function useTxCrud() {
     });
   };
 
+  const saveObligation = (input: {
+    personId: string;
+    direction: ObligationDirection;
+    name?: string;
+    principalAmount: number;
+    accountId?: string;
+    sourceId?: string;
+    purpose?: string;
+    dueDate?: string;
+    notes?: string;
+  }): string => {
+    const obl = makeObligation(input);
+    const tx = makeObligationTx({
+      obligationId: obl.id,
+      personId: input.personId,
+      direction: input.direction,
+      kind: input.direction === 'borrowed' ? 'borrow' : 'lend',
+      amount: input.principalAmount,
+      accountId: input.accountId,
+      sourceId: input.sourceId,
+      notes: input.notes,
+    });
+    update((d) => {
+      d.obligations = [obl, ...(d.obligations ?? [])];
+      d.transactions = [tx, ...(d.transactions ?? [])];
+      return { ...d };
+    });
+    return obl.id;
+  };
+
+  const saveRepayment = (input: {
+    obligationId: string;
+    amount: number;
+    accountId?: string;
+    date?: string;
+    interestAmount?: number;
+    notes?: string;
+  }) => {
+    const target = (data.obligations ?? []).find((o) => o.id === input.obligationId);
+    if (!target) return;
+    const kind: ObligationTxKind = target.direction === 'borrowed' ? 'repay-borrow' : 'repay-lend';
+    const tx = makeObligationTx({
+      obligationId: target.id,
+      personId: target.personId,
+      direction: target.direction,
+      kind,
+      amount: input.amount,
+      date: input.date,
+      accountId: input.accountId,
+      sourceId: target.sourceId,
+      interestAmount: input.interestAmount,
+      notes: input.notes,
+    });
+    update((d) => {
+      const nextTxs = [tx, ...(d.transactions ?? [])];
+      d.transactions = nextTxs;
+      const summary = obligationTotals(target, nextTxs);
+      d.obligations = (d.obligations ?? []).map((o) =>
+        o.id === target.id
+          ? {
+              ...o,
+              outstandingAmount: summary.outstandingAmount,
+              status: summary.status,
+              updatedAt: new Date().toISOString(),
+            }
+          : o,
+      );
+      return { ...d };
+    });
+  };
+
+  const updateObligation = (obligationId: string, patch: Partial<MoneyObligation>) => {
+    update((d) => {
+      d.obligations = (d.obligations ?? []).map((o) =>
+        o.id === obligationId ? { ...o, ...patch, updatedAt: new Date().toISOString() } : o,
+      );
+      return { ...d };
+    });
+  };
+
   const save = () => {
     const amt = safeAmount(Number(draft.amount));
     if (amt <= 0) return;
@@ -964,6 +1069,11 @@ function useTxCrud() {
     saveSource,
     setSourceStatus,
     removeSource,
+    /** V4.5 — money obligations (borrowed/lent) */
+    obligations: data.obligations ?? [],
+    saveObligation,
+    saveRepayment,
+    updateObligation,
   };
 }
 
@@ -1043,6 +1153,11 @@ function OverviewTab() {
   const availTotal = useMemo(
     () => totalAvailableBalance(data.accounts ?? [], data.transactions, data.cardPayments ?? []),
     [data.accounts, data.transactions, data.cardPayments],
+  );
+
+  const obSummary = useMemo(
+    () => summarizeObligations(data.obligations ?? [], data.transactions),
+    [data.obligations, data.transactions],
   );
 
   return (
@@ -1152,6 +1267,41 @@ function OverviewTab() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Money Owed — compact dashboard widget (V4.5) */}
+      <div className="panel section-gap">
+        <div className="flex flex-wrap mb-8" style={{ alignItems: 'center' }}>
+          <div>
+            <h2 className="panel-title" style={{ marginBottom: 0 }}>Money owed</h2>
+            <p className="panel-sub" style={{ marginBottom: 0 }}>
+              Money borrowed or lent across contacts ({obSummary.borrowedCount + obSummary.lentCount} active).
+            </p>
+          </div>
+          <span className="spacer" />
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('money/owed')}>
+            View obligations <IconArrowRight size={13} />
+          </button>
+        </div>
+        <div className="grid grid-3 mt-8">
+          <div className="panel-flat">
+            <div className="stat-label">I owe</div>
+            <div className="stat-value">{formatMoney(obSummary.iOweTotal, currency)}</div>
+            <div className="stat-hint">{obSummary.borrowedCount} active borrowed obligation{obSummary.borrowedCount === 1 ? '' : 's'}</div>
+          </div>
+          <div className="panel-flat">
+            <div className="stat-label">Owed to me</div>
+            <div className="stat-value money-pos">{formatMoney(obSummary.owedToMeTotal, currency)}</div>
+            <div className="stat-hint">{obSummary.lentCount} active lent obligation{obSummary.lentCount === 1 ? '' : 's'}</div>
+          </div>
+          <div className="panel-flat">
+            <div className="stat-label">Net position</div>
+            <div className="stat-value" style={{ color: obSummary.netPosition >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+              {obSummary.netPosition >= 0 ? '+' : '−'}{formatMoney(Math.abs(obSummary.netPosition), currency)}
+            </div>
+            <div className="stat-hint">Informational only</div>
+          </div>
+        </div>
       </div>
 
       {/* Money flow — the trend, using the same chart language as History */}
@@ -3275,7 +3425,7 @@ function PeopleTab({ personId }: { personId?: string }) {
           />
         </div>
       ) : (
-        <PeopleList rows={rows} currency={currency} />
+        <PeopleList rows={rows} currency={currency} obligations={data.obligations} transactions={data.transactions} />
       )}
 
       {personModal && <PersonModal person={personModal.person} crud={crud} onClose={() => setPersonModal(null)} />}
@@ -3303,7 +3453,7 @@ function PeopleTab({ personId }: { personId?: string }) {
 }
 
 /** Search + sort only — the list is short and the numbers do the talking. */
-function PeopleList({ rows, currency }: { rows: PersonRow[]; currency: string }) {
+function PeopleList({ rows, currency, obligations = [], transactions = [] }: { rows: PersonRow[]; currency: string; obligations?: readonly MoneyObligation[]; transactions?: readonly Transaction[] }) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'movement' | 'name' | 'net'>('movement');
   const needle = q.trim().toLowerCase();
@@ -3339,25 +3489,31 @@ function PeopleList({ rows, currency }: { rows: PersonRow[]; currency: string })
         {visible.length === 0 ? (
           <p className="small muted" style={{ margin: 0 }}>No people match “{q}”.</p>
         ) : (
-          visible.map(({ person, totals }) => (
-            <button key={person.id} className="person-row" onClick={() => navigate(`money/people/${person.id}`)}>
-              <span className="grow">
-                <span className="person-name">{personName(person)}</span>
-                {personSubtitle(person) && <span className="tiny muted"> · {personSubtitle(person)}</span>}
-                {!person.active && <span className="badge tiny" style={{ marginLeft: 6 }}>inactive</span>}
-                <div className="tiny muted">
-                  {totals.count} transaction{totals.count === 1 ? '' : 's'}
-                </div>
-              </span>
-              <span className="tiny muted t-num person-money">
-                Received {formatMoney(totals.received, currency)} · Paid {formatMoney(totals.paid, currency)}
-              </span>
-              <span className={`small bold t-num ${totals.net >= 0 ? 'money-pos' : ''}`} style={{ minWidth: 84, textAlign: 'right' }}>
-                Net {totals.net >= 0 ? '+' : '−'}{formatMoney(Math.abs(totals.net), currency)}
-              </span>
-              <IconArrowRight size={13} />
-            </button>
-          ))
+          visible.map(({ person, totals }) => {
+            const obTotals = personObligationTotals(person.id, obligations, transactions);
+            return (
+              <button key={person.id} className="person-row" onClick={() => navigate(`money/people/${person.id}`)}>
+                <span className="grow">
+                  <span className="person-name">{personName(person)}</span>
+                  {personSubtitle(person) && <span className="tiny muted"> · {personSubtitle(person)}</span>}
+                  {!person.active && <span className="badge tiny" style={{ marginLeft: 6 }}>inactive</span>}
+                  <div className="tiny muted">
+                    {totals.count} transaction{totals.count === 1 ? '' : 's'}
+                    {obTotals.count > 0 ? ` · ${obTotals.count} obligation${obTotals.count === 1 ? '' : 's'}` : ''}
+                  </div>
+                </span>
+                <span className="tiny muted t-num person-money">
+                  Received {formatMoney(totals.received, currency)} · Paid {formatMoney(totals.paid, currency)}
+                  {obTotals.iOwe > 0 && <span style={{ color: 'var(--neg)', marginLeft: 6 }}>· I owe {formatMoney(obTotals.iOwe, currency)}</span>}
+                  {obTotals.owedToMe > 0 && <span style={{ color: 'var(--pos)', marginLeft: 6 }}>· Owed to me {formatMoney(obTotals.owedToMe, currency)}</span>}
+                </span>
+                <span className={`small bold t-num ${totals.net >= 0 ? 'money-pos' : ''}`} style={{ minWidth: 84, textAlign: 'right' }}>
+                  Net {totals.net >= 0 ? '+' : '−'}{formatMoney(Math.abs(totals.net), currency)}
+                </span>
+                <IconArrowRight size={13} />
+              </button>
+            );
+          })
         )}
       </div>
       {rows.length === 0 && (
@@ -3375,9 +3531,11 @@ function PersonLedger({ person, crud, currency }: { person: Person; crud: Return
   const t = todayStr();
   const [editing, setEditing] = useState(false);
   const [addingSource, setAddingSource] = useState(false);
+  const [borrowModal, setBorrowModal] = useState(false);
   const txs = useMemo(() => personTransactions(person.id, data.transactions), [person.id, data.transactions]);
   const funds = useMemo(() => sourcesForPerson(person.id, crud.sources, data.transactions), [person.id, crud.sources, data.transactions]);
   const totals = useMemo(() => personTotals(person.id, txs), [person.id, txs]);
+  const obTotals = useMemo(() => personObligationTotals(person.id, data.obligations ?? [], data.transactions), [person.id, data.obligations, data.transactions]);
 
   interface LedgerRow {
     id: string;
@@ -3456,7 +3614,7 @@ function PersonLedger({ person, crud, currency }: { person: Person; crud: Return
         <button className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
       </div>
 
-      <div className="grid grid-3 mb-16 section-gap">
+      <div className="grid grid-4 mb-16 section-gap">
         <div className="panel-flat">
           <div className="stat-label">Received</div>
           <div className="stat-value money-pos">{formatMoney(totals.received, currency)}</div>
@@ -3468,18 +3626,66 @@ function PersonLedger({ person, crud, currency }: { person: Person; crud: Return
           <div className="stat-hint">money you sent</div>
         </div>
         <div className="panel-flat">
-          <div className="stat-label">Net</div>
-          <div className="stat-value" style={{ color: totals.net >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
-            {totals.net >= 0 ? '+' : '−'}{formatMoney(Math.abs(totals.net), currency)}
-          </div>
-          <div className="stat-hint">received − paid</div>
+          <div className="stat-label">I owe {personName(person)}</div>
+          <div className="stat-value">{formatMoney(obTotals.iOwe, currency)}</div>
+          <div className="stat-hint">outstanding borrowed</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">{personName(person)} owes me</div>
+          <div className="stat-value money-pos">{formatMoney(obTotals.owedToMe, currency)}</div>
+          <div className="stat-hint">outstanding lent</div>
         </div>
       </div>
 
       <div className="flex flex-wrap mb-8" style={{ gap: 6 }}>
         <button className="btn btn-sm" onClick={() => crud.openNew('income', person.id)}>+ Add income from {personName(person)}</button>
         <button className="btn btn-sm" onClick={() => crud.openNew('expense', person.id)}>+ Add expense to {personName(person)}</button>
+        <button className="btn btn-sm btn-primary" onClick={() => setBorrowModal(true)}>+ Borrow / Lend</button>
       </div>
+
+      {/* V4.5 — money owed / lent section */}
+      <section className="panel mb-16">
+        <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          <div>
+            <h3 className="panel-title" style={{ marginBottom: 2 }}>Money owed / lent</h3>
+            <p className="panel-sub" style={{ marginBottom: 0 }}>Money borrowed from or lent to {personName(person)}.</p>
+          </div>
+          <button className="btn btn-sm btn-primary" onClick={() => setBorrowModal(true)}>
+            + Borrow / Lend with {personName(person)}
+          </button>
+        </div>
+        {obTotals.obligations.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            No obligations with {personName(person)} yet.
+          </p>
+        ) : (
+          <div className="mt-8">
+            {obTotals.obligations.map((ob) => {
+              const summary = obligationTotals(ob, data.transactions);
+              return (
+                <div key={ob.id} className="person-row mb-6" onClick={() => navigate(`money/owed/${ob.id}`)} style={{ cursor: 'pointer' }}>
+                  <span className="grow">
+                    <span className="person-name">{ob.name}</span>
+                    <span className={`badge tiny ${ob.direction === 'borrowed' ? 'badge-warning' : 'badge-info'}`} style={{ marginLeft: 6 }}>
+                      {ob.direction === 'borrowed' ? 'Borrowed' : 'Lent'}
+                    </span>
+                    <span className={`badge tiny badge-${OBLIGATION_STATUS_COLOR[summary.status]}`} style={{ marginLeft: 6 }}>
+                      {OBLIGATION_STATUS_LABEL[summary.status]}
+                    </span>
+                    <div className="tiny muted mt-2">
+                      Principal {formatMoney(summary.principalAmount, currency)} · Outstanding {formatMoney(summary.outstandingAmount, currency)}
+                    </div>
+                  </span>
+                  <span className={`small bold t-num ${ob.direction === 'borrowed' ? 'money-neg' : 'money-pos'}`} style={{ minWidth: 84, textAlign: 'right' }}>
+                    {formatMoney(summary.outstandingAmount, currency)}
+                  </span>
+                  <IconArrowRight size={13} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* V4.3 — the money this person gave, split into the funds it was for:
           ₹10,000 for college, ₹5,000 for personal… each separately traceable. */}
@@ -3568,6 +3774,14 @@ function PersonLedger({ person, crud, currency }: { person: Person; crud: Return
 
       {editing && <PersonModal person={person} crud={crud} onClose={() => setEditing(false)} />}
       {addingSource && <SourceModal crud={crud} defaultPersonId={person.id} onClose={() => setAddingSource(false)} />}
+      {borrowModal && (
+        <BorrowLendModal
+          onClose={() => setBorrowModal(false)}
+          crud={crud}
+          currency={currency}
+          defaultPersonId={person.id}
+        />
+      )}
 
       {crud.modal && (
         <TxModal
@@ -5028,6 +5242,838 @@ function TrendSection() {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+// ── Obligations (V4.5) ───────────────────────────────────────────────────────
+
+function BorrowLendModal({
+  onClose,
+  crud,
+  currency,
+  defaultPersonId = '',
+  defaultDirection = 'borrowed',
+}: {
+  onClose: () => void;
+  crud: ReturnType<typeof useTxCrud>;
+  currency: string;
+  defaultPersonId?: string;
+  defaultDirection?: ObligationDirection;
+}) {
+  const { data } = crud;
+  const people = crud.activePeople;
+  const accounts = (data.accounts ?? []).filter((a) => a.active !== false && !a.archived);
+  const sources = data.sources ?? [];
+
+  const [direction, setDirection] = useState<ObligationDirection>(defaultDirection);
+  const [personId, setPersonId] = useState(defaultPersonId || (people[0]?.id ?? ''));
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
+  const [purpose, setPurpose] = useState('');
+  const [sourceId, setSourceId] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState('');
+
+  const [addingPerson, setAddingPerson] = useState(false);
+  const [newPersonName, setNewPersonName] = useState('');
+  const [newPersonRel, setNewPersonRel] = useState('');
+
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountType, setNewAccountType] = useState<MoneyAccountType>('Bank');
+
+  const selectedPerson = people.find((p) => p.id === personId);
+  const selectedAccount = accounts.find((a) => a.id === accountId);
+
+  const handleSave = () => {
+    let pid = personId;
+    if (addingPerson && newPersonName.trim()) {
+      pid = crud.createPerson(newPersonName.trim(), newPersonRel.trim());
+    }
+    const numAmount = safeAmount(Number(amount));
+
+    if (!pid) {
+      setError('Please select or create a person.');
+      return;
+    }
+
+    let accId = accountId;
+    if (addingAccount && newAccountName.trim()) {
+      accId = crud.createAccount(newAccountName.trim(), newAccountType, 0);
+    }
+
+    if (numAmount <= 0) {
+      setError('Please enter a valid positive amount.');
+      return;
+    }
+
+    crud.saveObligation({
+      personId: pid,
+      direction,
+      name: name.trim() || undefined,
+      principalAmount: numAmount,
+      accountId: accId || undefined,
+      sourceId: sourceId || undefined,
+      purpose: purpose.trim() || undefined,
+      dueDate: dueDate || undefined,
+      notes: notes.trim() || undefined,
+    });
+
+    onClose();
+  };
+
+  return (
+    <Modal title={direction === 'borrowed' ? 'Borrow money' : 'Lend money'} onClose={onClose}>
+      {error && <div className="panel-flat mb-12" style={{ color: 'var(--neg)', fontSize: 13 }}>{error}</div>}
+
+      <div className="flex mb-16" style={{ gap: 8 }}>
+        <button
+          type="button"
+          className={`btn btn-sm grow ${direction === 'borrowed' ? 'btn-primary' : ''}`}
+          onClick={() => setDirection('borrowed')}
+        >
+          Borrow money (I owe)
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm grow ${direction === 'lent' ? 'btn-primary' : ''}`}
+          onClick={() => setDirection('lent')}
+        >
+          Lend money (They owe me)
+        </button>
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">{direction === 'borrowed' ? 'Borrowed from (Person)' : 'Lent to (Person)'} *</label>
+        {!addingPerson ? (
+          <div className="flex" style={{ gap: 6 }}>
+            <select
+              value={personId}
+              onChange={(e) => setPersonId(e.target.value)}
+              className="grow"
+            >
+              {people.length === 0 && <option value="">No people available — add one below</option>}
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {personName(p)} {personSubtitle(p) ? `(${personSubtitle(p)})` : ''}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAddingPerson(true)}>+ Add person</button>
+          </div>
+        ) : (
+          <div className="panel-flat p-8 flex flex-col" style={{ gap: 6 }}>
+            <input
+              type="text"
+              placeholder="Person name (e.g. Appa, Friend)"
+              value={newPersonName}
+              onChange={(e) => setNewPersonName(e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Relationship (e.g. Family, Friend, Client)"
+              value={newPersonRel}
+              onChange={(e) => setNewPersonRel(e.target.value)}
+            />
+            <button type="button" className="btn btn-sm btn-ghost align-self-start" onClick={() => setAddingPerson(false)}>Cancel new person</button>
+          </div>
+        )}
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Principal Amount ({currency}) *</label>
+        <input
+          type="number"
+          step="any"
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Account {direction === 'borrowed' ? '(Received into)' : '(Paid from)'}</label>
+        {!addingAccount ? (
+          <div className="flex" style={{ gap: 6 }}>
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className="grow"
+            >
+              <option value="">No account linked</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.type})
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAddingAccount(true)}>+ Add account</button>
+          </div>
+        ) : (
+          <div className="panel-flat p-8 flex flex-col" style={{ gap: 6 }}>
+            <input
+              type="text"
+              placeholder="Account name (e.g. SBI Bank)"
+              value={newAccountName}
+              onChange={(e) => setNewAccountName(e.target.value)}
+            />
+            <select
+              value={newAccountType}
+              onChange={(e) => setNewAccountType(e.target.value as MoneyAccountType)}
+            >
+              {MONEY_ACCOUNT_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-sm btn-ghost align-self-start" onClick={() => setAddingAccount(false)}>Cancel new account</button>
+          </div>
+        )}
+        {selectedAccount && (
+          <div className="tiny muted mt-4">
+            {direction === 'borrowed'
+              ? `Account balance will increase by ${formatMoney(safeAmount(Number(amount)), currency)}.`
+              : `Account balance will decrease by ${formatMoney(safeAmount(Number(amount)), currency)}.`}
+          </div>
+        )}
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Obligation Name (Optional)</label>
+        <input
+          type="text"
+          placeholder={direction === 'borrowed' ? `Borrowed from ${selectedPerson ? personName(selectedPerson) : 'Person'}` : `Lent to ${selectedPerson ? personName(selectedPerson) : 'Person'}`}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Purpose (Optional)</label>
+        <input
+          type="text"
+          placeholder="e.g. Emergency, College Fees"
+          value={purpose}
+          onChange={(e) => setPurpose(e.target.value)}
+        />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Link to Source / Fund (Optional)</label>
+        <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+          <option value="">None</option>
+          {sources.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Due Date (Optional)</label>
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+        />
+      </div>
+
+      <div className="form-group mb-16">
+        <label className="label">Notes (Optional)</label>
+        <textarea
+          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Any additional context…"
+        />
+      </div>
+
+      <div className="flex" style={{ justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn btn-primary" onClick={handleSave}>
+          {direction === 'borrowed' ? 'Record Borrowed Money' : 'Record Lent Money'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function RepaymentModal({
+  obligation,
+  crud,
+  currency,
+  onClose,
+}: {
+  obligation: MoneyObligation;
+  crud: ReturnType<typeof useTxCrud>;
+  currency: string;
+  onClose: () => void;
+}) {
+  const { data } = crud;
+  const accounts = (data.accounts ?? []).filter((a) => a.active !== false && !a.archived);
+  const isBorrowed = obligation.direction === 'borrowed';
+
+  const [amount, setAmount] = useState(String(obligation.outstandingAmount));
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
+  const [date, setDate] = useState(todayStr());
+  const [interestAmount, setInterestAmount] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState('');
+
+  const selectedAccount = accounts.find((a) => a.id === accountId);
+
+  const handleSave = () => {
+    const numAmt = safeAmount(Number(amount));
+    if (numAmt <= 0) {
+      setError('Please enter a valid positive repayment amount.');
+      return;
+    }
+    crud.saveRepayment({
+      obligationId: obligation.id,
+      amount: numAmt,
+      accountId: accountId || undefined,
+      date,
+      interestAmount: safeAmount(Number(interestAmount)) || undefined,
+      notes: notes.trim() || undefined,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      title={isBorrowed ? `Repay ${obligation.name}` : `Record Repayment for ${obligation.name}`}
+      onClose={onClose}
+    >
+      {error && <div className="panel-flat mb-12" style={{ color: 'var(--neg)', fontSize: 13 }}>{error}</div>}
+
+      <div className="panel-flat mb-12">
+        <div className="tiny muted">Outstanding Principal</div>
+        <div className="bold t-num">{formatMoney(obligation.outstandingAmount, currency)}</div>
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Repayment Amount ({currency}) *</label>
+        <input
+          type="number"
+          step="any"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Account {isBorrowed ? '(Paid from)' : '(Received into)'}</label>
+        <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <option value="">No account linked</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+          ))}
+        </select>
+        {selectedAccount && (
+          <div className="tiny muted mt-4">
+            {isBorrowed
+              ? `Account balance will decrease by ${formatMoney(safeAmount(Number(amount)), currency)}.`
+              : `Account balance will increase by ${formatMoney(safeAmount(Number(amount)), currency)}.`}
+          </div>
+        )}
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Repayment Date</label>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Interest / Fee Component ({currency}) (Optional)</label>
+        <input
+          type="number"
+          step="any"
+          placeholder="0.00"
+          value={interestAmount}
+          onChange={(e) => setInterestAmount(e.target.value)}
+        />
+        <div className="tiny muted mt-4">
+          {isBorrowed
+            ? 'Interest portion will be recorded as a normal expense.'
+            : 'Interest portion will be recorded as normal income.'}
+        </div>
+      </div>
+
+      <div className="form-group mb-16">
+        <label className="label">Notes (Optional)</label>
+        <textarea
+          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+
+      <div className="flex" style={{ justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn btn-primary" onClick={handleSave}>
+          Record Repayment
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ObligationEditModal({
+  obligation,
+  crud,
+  onClose,
+}: {
+  obligation: MoneyObligation;
+  crud: ReturnType<typeof useTxCrud>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(obligation.name);
+  const [purpose, setPurpose] = useState(obligation.purpose ?? '');
+  const [dueDate, setDueDate] = useState(obligation.dueDate ?? '');
+  const [status, setStatus] = useState<ObligationStatus>(obligation.status);
+  const [notes, setNotes] = useState(obligation.notes ?? '');
+
+  const handleSave = () => {
+    crud.updateObligation(obligation.id, {
+      name: name.trim() || obligation.name,
+      purpose: purpose.trim() || undefined,
+      dueDate: dueDate || undefined,
+      status,
+      notes: notes.trim() || undefined,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal title={`Edit ${obligation.name}`} onClose={onClose}>
+      <div className="form-group mb-12">
+        <label className="label">Name</label>
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Purpose</label>
+        <input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Due Date</label>
+        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+      </div>
+
+      <div className="form-group mb-12">
+        <label className="label">Status</label>
+        <select value={status} onChange={(e) => setStatus(e.target.value as ObligationStatus)}>
+          <option value="outstanding">Outstanding</option>
+          <option value="partially-paid">Partially paid</option>
+          <option value="settled">Settled</option>
+          <option value="archived">Archived</option>
+        </select>
+      </div>
+
+      <div className="form-group mb-16">
+        <label className="label">Notes</label>
+        <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </div>
+
+      <div className="flex" style={{ justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn btn-primary" onClick={handleSave}>Save Changes</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ObligationDetail({
+  obligation,
+  crud,
+  currency,
+  onRepay,
+  onEdit,
+}: {
+  obligation: MoneyObligation;
+  crud: ReturnType<typeof useTxCrud>;
+  currency: string;
+  onRepay: () => void;
+  onEdit: () => void;
+}) {
+  const { data } = crud;
+  const person = (data.people ?? []).find((p) => p.id === obligation.personId);
+  const source = obligation.sourceId ? (data.sources ?? []).find((s) => s.id === obligation.sourceId) : null;
+  const summary = obligationTotals(obligation, data.transactions);
+  const txs = obligationTransactions(obligation, data.transactions);
+  const accountMap = new Map((data.accounts ?? []).map((a) => [a.id, a.name]));
+
+  const isBorrowed = obligation.direction === 'borrowed';
+
+  const toggleArchive = () => {
+    const nextStatus: ObligationStatus = summary.status === 'archived' ? (summary.outstandingAmount === 0 ? 'settled' : summary.totalRepaid > 0 ? 'partially-paid' : 'outstanding') : 'archived';
+    crud.updateObligation(obligation.id, { status: nextStatus });
+  };
+
+  const markSettled = () => {
+    crud.updateObligation(obligation.id, { status: 'settled' });
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap mb-16" style={{ gap: 8, alignItems: 'center' }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('money/owed')}>
+          ← All Obligations
+        </button>
+        <h2 className="panel-title" style={{ margin: 0 }}>{obligation.name}</h2>
+        <span className={`badge tiny ${isBorrowed ? 'badge-warning' : 'badge-info'}`}>
+          {isBorrowed ? 'Borrowed' : 'Lent'}
+        </span>
+        <span className={`badge tiny badge-${OBLIGATION_STATUS_COLOR[summary.status]}`}>
+          {OBLIGATION_STATUS_LABEL[summary.status]}
+        </span>
+        <span className="spacer" />
+        <button type="button" className="btn btn-sm" onClick={onEdit}>Edit</button>
+      </div>
+
+      {person && (
+        <div className="muted mb-16" style={{ fontSize: 14 }}>
+          {isBorrowed ? 'Borrowed from ' : 'Lent to '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`money/people/${person.id}`)} style={{ padding: '0 4px', textDecoration: 'underline' }}>
+            {personName(person)}
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-3 mb-16 section-gap">
+        <div className="panel-flat">
+          <div className="stat-label">Principal</div>
+          <div className="stat-value">{formatMoney(summary.principalAmount, currency)}</div>
+          <div className="stat-hint">Original amount</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Paid back</div>
+          <div className="stat-value money-pos">{formatMoney(summary.totalRepaid, currency)}</div>
+          <div className="stat-hint">{isBorrowed ? 'Repaid to lender' : 'Received from borrower'}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Outstanding</div>
+          <div className="stat-value" style={{ color: summary.outstandingAmount > 0 ? (isBorrowed ? 'var(--neg)' : 'var(--pos)') : 'var(--ink)' }}>
+            {formatMoney(summary.outstandingAmount, currency)}
+          </div>
+          <div className="stat-hint">{obligation.dueDate ? `Due ${formatDateMed(obligation.dueDate)}` : 'No due date'}</div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap mb-16" style={{ gap: 8 }}>
+        {summary.outstandingAmount > 0 && summary.status !== 'archived' && (
+          <button type="button" className="btn btn-primary btn-sm" onClick={onRepay}>
+            + Record Repayment
+          </button>
+        )}
+        {summary.status !== 'settled' && summary.status !== 'archived' && (
+          <button type="button" className="btn btn-sm" onClick={markSettled}>
+            Mark Settled
+          </button>
+        )}
+        <button type="button" className="btn btn-sm" onClick={toggleArchive}>
+          {summary.status === 'archived' ? 'Unarchive' : 'Archive'}
+        </button>
+      </div>
+
+      {(obligation.purpose || source || obligation.notes) && (
+        <div className="panel mb-16">
+          <h3 className="panel-title" style={{ fontSize: 15, marginBottom: 8 }}>Details</h3>
+          {obligation.purpose && <div className="small mb-4"><strong>Purpose:</strong> {obligation.purpose}</div>}
+          {source && <div className="small mb-4"><strong>Linked Fund:</strong> {source.name}</div>}
+          {obligation.notes && <div className="small muted mt-4"><strong>Notes:</strong> {obligation.notes}</div>}
+        </div>
+      )}
+
+      <div className="panel">
+        <h3 className="panel-title">Financial Activity</h3>
+        <p className="panel-sub">Complete history of real money movements for this obligation.</p>
+        {txs.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>No transactions recorded yet.</p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Activity</th>
+                  <th>Account</th>
+                  <th>Amount</th>
+                  <th>Interest</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txs.map((tx) => {
+                  const isIncoming = tx.type === 'income';
+                  return (
+                    <tr key={tx.id}>
+                      <td className="tiny muted">{formatDateMed(tx.date)}</td>
+                      <td>
+                        <span className="bold" style={{ fontSize: 13 }}>
+                          {tx.obligationKind === 'borrow'
+                            ? 'Borrowed'
+                            : tx.obligationKind === 'lend'
+                            ? 'Lent'
+                            : 'Repayment'}
+                        </span>
+                      </td>
+                      <td className="tiny muted">{tx.accountId ? accountMap.get(tx.accountId) || 'Account' : '—'}</td>
+                      <td className={`t-num bold ${isIncoming ? 'money-pos' : ''}`}>
+                        {isIncoming ? '+' : '−'}{formatMoney(tx.amount, currency)}
+                      </td>
+                      <td className="tiny muted t-num">{tx.interestAmount ? formatMoney(tx.interestAmount, currency) : '—'}</td>
+                      <td className="tiny muted">{tx.notes || tx.description || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface ObligationRow {
+  id: string;
+  obligation: MoneyObligation;
+  summary: ObligationSummary;
+  personName: string;
+}
+
+function ObligationsTab({ obligationId }: { obligationId?: string }) {
+  const crud = useTxCrud();
+  const { data } = crud;
+  const currency = data.settings.finance.currency;
+  const obligations = data.obligations ?? [];
+  const peopleMap = new Map((data.people ?? []).map((p) => [p.id, personName(p)]));
+
+  const targetObligation = obligationId ? obligations.find((o) => o.id === obligationId) ?? null : null;
+  const overall = summarizeObligations(obligations, data.transactions);
+
+  const rows: ObligationRow[] = obligations.map((o) => ({
+    id: o.id,
+    obligation: o,
+    summary: obligationTotals(o, data.transactions),
+    personName: peopleMap.get(o.personId) || 'Unknown',
+  }));
+
+  const [modal, setModal] = useState<null | { type: 'borrowLend'; direction?: ObligationDirection; defaultPersonId?: string } | { type: 'repay'; obligationId: string } | { type: 'edit'; obligationId: string }>(null);
+
+  const view = useRecordViewFor('money/owed', makeQuery({ defaultSort: 'newest' }));
+  const query = view.query;
+
+  const spec = useMemo<RecordViewSpec<ObligationRow>>(
+    () => ({
+      key: 'money/owed',
+      searchKeys: (r) => [r.obligation.name, r.personName, r.obligation.purpose ?? '', r.obligation.notes ?? ''],
+      quickFilters: [
+        { id: 'i-owe', label: 'I owe (Borrowed)', test: (r) => r.obligation.direction === 'borrowed' && r.summary.status !== 'archived' },
+        { id: 'owed-to-me', label: 'Others owe me (Lent)', test: (r) => r.obligation.direction === 'lent' && r.summary.status !== 'archived' },
+      ],
+      filters: [
+        {
+          id: 'direction',
+          label: 'Direction',
+          type: 'select',
+          placeholder: 'All types',
+          options: [
+            { value: 'borrowed', label: 'Borrowed (I owe)' },
+            { value: 'lent', label: 'Lent (Others owe me)' },
+          ],
+          match: (r, v) => r.obligation.direction === v,
+        },
+        {
+          id: 'status',
+          label: 'Status',
+          type: 'select',
+          placeholder: 'Active (Non-archived)',
+          options: [
+            { value: 'outstanding', label: 'Outstanding' },
+            { value: 'partially-paid', label: 'Partially paid' },
+            { value: 'settled', label: 'Settled' },
+            { value: 'archived', label: 'Archived' },
+          ],
+          match: (r, v) => r.summary.status === v,
+        },
+        {
+          id: 'person',
+          label: 'Person',
+          type: 'select',
+          placeholder: 'Any person',
+          optionsFrom: (records) => distinctOptions(records, (r) => r.personName),
+          match: (r, v) => r.personName === v,
+        },
+      ],
+      sortOptions: [
+        { id: 'newest', label: 'Newest', compare: (a, b) => b.obligation.createdAt.localeCompare(a.obligation.createdAt) },
+        { id: 'oldest', label: 'Oldest', compare: (a, b) => a.obligation.createdAt.localeCompare(b.obligation.createdAt) },
+        { id: 'amount-desc', label: 'Outstanding: high → low', compare: (a, b) => b.summary.outstandingAmount - a.summary.outstandingAmount },
+        { id: 'amount-asc', label: 'Outstanding: low → high', compare: (a, b) => a.summary.outstandingAmount - b.summary.outstandingAmount },
+        { id: 'due-date', label: 'Due date', compare: (a, b) => (a.obligation.dueDate || '9999').localeCompare(b.obligation.dueDate || '9999') },
+      ],
+      defaultSort: 'newest',
+    }),
+    [],
+  );
+
+  const result = useMemo(() => runQuery(rows, spec, query), [rows, spec, query]);
+
+  if (targetObligation) {
+    return (
+      <>
+        <ObligationDetail
+          obligation={targetObligation}
+          crud={crud}
+          currency={currency}
+          onRepay={() => setModal({ type: 'repay', obligationId: targetObligation.id })}
+          onEdit={() => setModal({ type: 'edit', obligationId: targetObligation.id })}
+        />
+        {modal?.type === 'repay' && (
+          <RepaymentModal
+            obligation={targetObligation}
+            crud={crud}
+            currency={currency}
+            onClose={() => setModal(null)}
+          />
+        )}
+        {modal?.type === 'edit' && (
+          <ObligationEditModal
+            obligation={targetObligation}
+            crud={crud}
+            onClose={() => setModal(null)}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap mb-16" style={{ gap: 8, alignItems: 'center' }}>
+        <div>
+          <h2 className="panel-title" style={{ marginBottom: 0 }}>Money Owed / Borrowed / Lent</h2>
+          <p className="panel-sub" style={{ marginBottom: 0 }}>Track borrowed money and money lent to contacts without altering normal cash flow.</p>
+        </div>
+        <span className="spacer" />
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({ type: 'borrowLend' })}>
+          <IconPlus size={13} /> Borrow / Lend
+        </button>
+      </div>
+
+      <div className="grid grid-3 mb-16 section-gap">
+        <div className="panel-flat">
+          <div className="stat-label">I owe</div>
+          <div className="stat-value">{formatMoney(overall.iOweTotal, currency)}</div>
+          <div className="stat-hint">{overall.borrowedCount} active borrowed obligation{overall.borrowedCount === 1 ? '' : 's'}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Owed to me</div>
+          <div className="stat-value money-pos">{formatMoney(overall.owedToMeTotal, currency)}</div>
+          <div className="stat-hint">{overall.lentCount} active lent obligation{overall.lentCount === 1 ? '' : 's'}</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Net position</div>
+          <div className="stat-value" style={{ color: overall.netPosition >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+            {overall.netPosition >= 0 ? '+' : '−'}{formatMoney(Math.abs(overall.netPosition), currency)}
+          </div>
+          <div className="stat-hint">Informational only</div>
+        </div>
+      </div>
+
+      {obligations.length === 0 ? (
+        <div className="panel">
+          <EmptyState
+            icon="🤝"
+            title="Track money owed or lent"
+            text="Keep track of money you borrowed or lent to friends and family. Account balances update automatically without polluting your income or expenses."
+            action={
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({ type: 'borrowLend' })}>
+                + Record borrowed or lent money
+              </button>
+            }
+          />
+        </div>
+      ) : (
+        <div className="panel">
+          <RecordToolbar<ObligationRow>
+            label="obligations"
+            query={query}
+            onChange={(patch) => view.patch(patch)}
+            onReplace={(next) => view.replace(next)}
+            records={rows}
+            result={result}
+            searchPlaceholder="Search obligations…"
+            quickFilters={spec.quickFilters}
+            filters={spec.filters}
+            sortOptions={spec.sortOptions}
+            defaultSort="newest"
+          />
+
+          <div className="mt-12">
+            {result.rows.length === 0 ? (
+              <FilteredEmptyState noun="obligations" onClear={() => view.replace(clearFilters(query))} />
+            ) : (
+              result.rows.map(({ obligation: ob, summary, personName }) => (
+                <div key={ob.id} className="person-row mb-8" onClick={() => navigate(`money/owed/${ob.id}`)} style={{ cursor: 'pointer' }}>
+                  <span className="grow">
+                    <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+                      <span className="person-name">{ob.name}</span>
+                      <span className={`badge tiny ${ob.direction === 'borrowed' ? 'badge-warning' : 'badge-info'}`}>
+                        {ob.direction === 'borrowed' ? 'Borrowed' : 'Lent'}
+                      </span>
+                      <span className={`badge tiny badge-${OBLIGATION_STATUS_COLOR[summary.status]}`}>
+                        {OBLIGATION_STATUS_LABEL[summary.status]}
+                      </span>
+                    </div>
+                    <div className="tiny muted mt-2">
+                      {ob.direction === 'borrowed' ? 'From' : 'To'}: <strong>{personName}</strong>
+                      {ob.purpose ? ` · ${ob.purpose}` : ''}
+                      {ob.dueDate ? ` · Due ${formatDateMed(ob.dueDate)}` : ''}
+                    </div>
+                  </span>
+                  <span className="tiny muted t-num mr-12" style={{ textAlign: 'right' }}>
+                    Principal {formatMoney(summary.principalAmount, currency)}
+                  </span>
+                  <span className={`bold t-num ${ob.direction === 'borrowed' ? 'money-neg' : 'money-pos'}`} style={{ minWidth: 90, textAlign: 'right' }}>
+                    {formatMoney(summary.outstandingAmount, currency)}
+                  </span>
+                  <IconArrowRight size={13} />
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {modal?.type === 'borrowLend' && (
+        <BorrowLendModal
+          onClose={() => setModal(null)}
+          crud={crud}
+          currency={currency}
+          defaultPersonId={modal.defaultPersonId}
+        />
+      )}
+      {modal?.type === 'repay' && (
+        <RepaymentModal
+          obligation={obligations.find((o) => o.id === modal.obligationId)!}
+          crud={crud}
+          currency={currency}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.type === 'edit' && (
+        <ObligationEditModal
+          obligation={obligations.find((o) => o.id === modal.obligationId)!}
+          crud={crud}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }

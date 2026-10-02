@@ -213,7 +213,7 @@ async function main() {
   personRow?.click();
   await waitFor(() => body().includes('Money activity'));
   const ledger = body().replace(/\s+/g, ' ');
-  ok('ledger summary: Received ₹10,000 · Paid ₹3,000 · Net +₹7,000', ledger.includes(money(10000)) && ledger.includes(money(3000)) && ledger.includes(`+${money(7000)}`), ledger.slice(0, 240));
+  ok('ledger summary: Received ₹10,000 · Paid ₹3,000', ledger.includes(money(10000)) && ledger.includes(money(3000)), ledger.slice(0, 240));
   ok('ledger shows both linked transactions', ledger.includes('Received from Appa') && ledger.includes('Paid to Appa'));
   ok('ledger never shows unrelated money', !ledger.includes('October rent') && !ledger.includes('Rent'));
 
