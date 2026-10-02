@@ -258,11 +258,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     setQ('');
                   }
                 }}
-                placeholder="Search or ⌘K…"
+                placeholder="Search…"
                 aria-label="Search your data"
                 aria-controls="search-results"
                 aria-activedescendant={activeIdx >= 0 ? `sr-${results[activeIdx]?.kind}-${results[activeIdx]?.id}` : undefined}
               />
+              <kbd className="search-kbd" style={{ fontSize: 10, padding: '2px 5px', borderRadius: 4, background: 'var(--surface-2)', border: '1px solid var(--line)', color: 'var(--ink-2)', pointerEvents: 'none' }}>⌘K</kbd>
               {focused && q.trim().length >= 1 && (
                 <div className="search-results" id="search-results">
                   {results.length === 0 && (
