@@ -31,8 +31,18 @@ import {
   sumContributionsInMonth,
   type BudgetStatus,
 } from '../lib/finance';
-import type { CardPayment, CreditCard, MoneyAccount, MoneyAccountType, MoneyObligation, MoneySource, MoneySourceStatus, ObligationDirection, ObligationStatus, ObligationTxKind, Person, Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
+import type { CardPayment, CreditCard, MoneyAccount, MoneyAccountType, MoneyObligation, MoneySource, MoneySourceStatus, ObligationDirection, ObligationStatus, ObligationTxKind, Person, Transaction, TxType, SavingsGoal, Recurrence, Budget, MoneyCommitment, CommitmentItem, CommitmentType, CommitmentDirection } from '../lib/types';
 import { MONEY_ACCOUNT_TYPES } from '../lib/types';
+import {
+  deriveCommitments,
+  summarizeCommitments,
+  summarizeCommitmentsByAccount,
+  filterCommitmentsByPeriod,
+  groupCommitmentsByBucket,
+  commitmentStatusBadge,
+  commitmentTypeLabel,
+  type CommitmentPeriodFilter,
+} from '../lib/commitments';
 import {
   makeObligation,
   makeObligationTx,
@@ -98,6 +108,7 @@ import {
   runQuery,
   setFilterValue,
   type FilterField,
+  type FilterValue,
   type RecordViewSpec,
   type SortOption,
 } from '../lib/recordQuery';
@@ -122,10 +133,11 @@ import {
   Line,
 } from 'recharts';
 
-type Tab = 'overview' | 'transactions' | 'accounts' | 'owed' | 'income' | 'expenses' | 'creditcards' | 'savings' | 'budgets' | 'recurring' | 'history' | 'people' | 'sources';
+type Tab = 'overview' | 'upcoming' | 'transactions' | 'accounts' | 'owed' | 'income' | 'expenses' | 'creditcards' | 'savings' | 'budgets' | 'recurring' | 'history' | 'people' | 'sources';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'upcoming', label: 'Upcoming' },
   { id: 'transactions', label: 'Transactions' },
   { id: 'accounts', label: 'Accounts' },
   { id: 'owed', label: 'Owed' },
@@ -173,6 +185,7 @@ export function MoneyPage() {
         </div>
         <div className="spacer" />
         <div className="flex flex-wrap" style={{ gap: 6 }}>
+          <button className="btn btn-sm" onClick={() => navigate('money/upcoming')}>Upcoming</button>
           <button className="btn btn-sm" onClick={() => navigate('money/transactions')}>View transactions</button>
           <button className="btn btn-sm" onClick={() => navigate('money/accounts')}>Accounts</button>
           <button className="btn btn-sm" onClick={() => navigate('money/owed')}>Owed</button>
@@ -191,6 +204,7 @@ export function MoneyPage() {
       </div>
 
       {tab === 'overview' && <OverviewTab />}
+      {tab === 'upcoming' && <UpcomingTab />}
       {tab === 'transactions' && <TransactionsTab />}
       {tab === 'accounts' && <AccountsTab accountId={route[2]} />}
       {tab === 'owed' && <ObligationsTab obligationId={route[2]} />}
@@ -1160,6 +1174,11 @@ function OverviewTab() {
     [data.obligations, data.transactions],
   );
 
+  const topUpcoming = useMemo(
+    () => deriveCommitments(data, t).filter((c) => c.status !== 'completed' && c.status !== 'cancelled').slice(0, 3),
+    [data, t],
+  );
+
   return (
     <div>
       {/* MONEY — a personal money dashboard: balance, flow, then people. */}
@@ -1302,6 +1321,48 @@ function OverviewTab() {
             <div className="stat-hint">Informational only</div>
           </div>
         </div>
+      </div>
+
+      {/* Coming up — compact dashboard widget (V4.6) */}
+      <div className="panel section-gap">
+        <div className="flex flex-wrap mb-8" style={{ alignItems: 'center' }}>
+          <div>
+            <h2 className="panel-title" style={{ marginBottom: 0 }}>Coming up</h2>
+            <p className="panel-sub" style={{ marginBottom: 0 }}>
+              Upcoming bills, repayments, credit card payments, and expected money.
+            </p>
+          </div>
+          <span className="spacer" />
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('money/upcoming')}>
+            View all <IconArrowRight size={13} />
+          </button>
+        </div>
+        {topUpcoming.length === 0 ? (
+          <div className="tiny muted py-8">No upcoming commitments in the next 30 days.</div>
+        ) : (
+          <div className="grid grid-3" style={{ gap: 10 }}>
+            {topUpcoming.map((item) => {
+              const badge = commitmentStatusBadge(item.status);
+              return (
+                <div
+                  key={item.id}
+                  className="panel-flat flex"
+                  style={{ flexDirection: 'column', gap: 4, cursor: 'pointer' }}
+                  onClick={() => navigate('money/upcoming')}
+                >
+                  <div className="flex" style={{ gap: 6, alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="tiny bold muted">{formatDateMed(item.dueDate)}</span>
+                    <span className={`badge tiny badge-${badge.tone}`}>{badge.label}</span>
+                  </div>
+                  <div className="small bold truncate">{item.name}</div>
+                  <div className={`small bold t-num ${item.direction === 'inflow' ? 'money-pos' : ''}`}>
+                    {item.direction === 'inflow' ? '+' : '−'}{formatMoney(item.amount, currency)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Money flow — the trend, using the same chart language as History */}
@@ -6075,5 +6136,495 @@ function ObligationsTab({ obligationId }: { obligationId?: string }) {
         />
       )}
     </div>
+  );
+}
+
+// ── Upcoming / Commitments Tab (V4.6) ────────────────────────────────────────
+
+function UpcomingTab() {
+  const { data, update } = useApp();
+  const t = todayStr();
+  const currency = data.settings.finance.currency;
+  const [period, setPeriod] = useState<CommitmentPeriodFilter>('30-days');
+  const [modal, setModal] = useState<null | { type: 'add' | 'edit'; commitment?: MoneyCommitment }>(null);
+
+  const rawCommitments = useMemo(() => deriveCommitments(data, t), [data, t]);
+  const periodCommitments = useMemo(
+    () => filterCommitmentsByPeriod(rawCommitments, period, t),
+    [rawCommitments, period, t],
+  );
+  const summary = useMemo(() => summarizeCommitments(rawCommitments, t), [rawCommitments, t]);
+  const accountSummaries = useMemo(
+    () => summarizeCommitmentsByAccount(rawCommitments, data.accounts ?? [], t),
+    [rawCommitments, data.accounts, t],
+  );
+
+  const peopleMap = useMemo(() => new Map((data.people ?? []).map((p) => [p.id, p.name])), [data.people]);
+  const sourceMap = useMemo(() => new Map((data.sources ?? []).map((s) => [s.id, s.name])), [data.sources]);
+  const accountMap = useMemo(() => new Map((data.accounts ?? []).map((a) => [a.id, a.name])), [data.accounts]);
+
+  const view = useRecordViewFor('money-upcoming', makeQuery({ defaultSort: 'due-date' }));
+  const query = view.query;
+
+  const spec = useMemo<RecordViewSpec<CommitmentItem>>(
+    () => ({
+      key: 'money-upcoming',
+      searchKeys: (r) => [r.name, r.notes ?? '', r.accountId ? accountMap.get(r.accountId) ?? '' : '', r.personId ? peopleMap.get(r.personId) ?? '' : '', r.sourceId ? sourceMap.get(r.sourceId) ?? '' : ''],
+      quickFilters: [
+        { id: 'all', label: 'All', test: () => true },
+        { id: 'outflow', label: 'Outflows', test: (r: CommitmentItem) => r.direction === 'outflow' },
+        { id: 'inflow', label: 'Inflows', test: (r: CommitmentItem) => r.direction === 'inflow' },
+        { id: 'overdue', label: 'Overdue', test: (r: CommitmentItem) => r.status === 'overdue' },
+        { id: 'due-soon', label: 'Due Soon', test: (r: CommitmentItem) => r.status === 'due-soon' },
+      ],
+      filters: [
+        {
+          id: 'type',
+          label: 'Type',
+          type: 'select' as const,
+          placeholder: 'Any type',
+          options: [
+            { value: 'bill', label: 'Bill' },
+            { value: 'repayment', label: 'Repayment' },
+            { value: 'subscription', label: 'Subscription' },
+            { value: 'savings', label: 'Savings' },
+            { value: 'expected-income', label: 'Expected Income' },
+            { value: 'other', label: 'Other' },
+          ],
+          match: (r: CommitmentItem, v: FilterValue) => typeof v === 'string' && r.type === v,
+        },
+        {
+          id: 'account',
+          label: 'Account',
+          type: 'select' as const,
+          placeholder: 'Any account',
+          optionsFrom: (records: readonly CommitmentItem[]) => distinctOptions(records, (r) => (r.accountId ? accountMap.get(r.accountId) ?? '' : '')),
+          match: (r: CommitmentItem, v: FilterValue) => typeof v === 'string' && (r.accountId ? accountMap.get(r.accountId) === v : false),
+        },
+        {
+          id: 'person',
+          label: 'Person',
+          type: 'select' as const,
+          placeholder: 'Any person',
+          optionsFrom: (records: readonly CommitmentItem[]) => distinctOptions(records, (r) => (r.personId ? peopleMap.get(r.personId) ?? '' : '')),
+          match: (r: CommitmentItem, v: FilterValue) => typeof v === 'string' && (r.personId ? peopleMap.get(r.personId) === v : false),
+        },
+        {
+          id: 'source',
+          label: 'Source',
+          type: 'select' as const,
+          placeholder: 'Any source',
+          optionsFrom: (records: readonly CommitmentItem[]) => distinctOptions(records, (r) => (r.sourceId ? sourceMap.get(r.sourceId) ?? '' : '')),
+          match: (r: CommitmentItem, v: FilterValue) => typeof v === 'string' && (r.sourceId ? sourceMap.get(r.sourceId) === v : false),
+        },
+      ],
+      sortOptions: [
+        { id: 'due-date', label: 'Due date', compare: (a: CommitmentItem, b: CommitmentItem) => a.dueDate.localeCompare(b.dueDate) },
+        { id: 'amount-desc', label: 'Amount: high → low', compare: (a: CommitmentItem, b: CommitmentItem) => b.amount - a.amount },
+        { id: 'amount-asc', label: 'Amount: low → high', compare: (a: CommitmentItem, b: CommitmentItem) => a.amount - b.amount },
+        { id: 'name', label: 'Name', compare: (a: CommitmentItem, b: CommitmentItem) => a.name.localeCompare(b.name) },
+      ],
+      defaultSort: 'due-date',
+    }),
+    [accountMap, peopleMap, sourceMap],
+  );
+
+  const result = useMemo(() => runQuery(periodCommitments, spec, query), [periodCommitments, spec, query]);
+  const buckets = useMemo(() => groupCommitmentsByBucket(result.rows, t), [result.rows, t]);
+
+  const handleStandaloneSave = (cmt: MoneyCommitment) => {
+    const list = [...(data.standaloneCommitments ?? [])];
+    const idx = list.findIndex((c) => c.id === cmt.id);
+    if (idx >= 0) list[idx] = cmt;
+    else list.push(cmt);
+    update((d) => {
+      d.standaloneCommitments = list;
+      return { ...d };
+    });
+    setModal(null);
+  };
+
+  const handleStandaloneDelete = (id: string) => {
+    const list = (data.standaloneCommitments ?? []).filter((c) => c.id !== id);
+    update((d) => {
+      d.standaloneCommitments = list;
+      return { ...d };
+    });
+    setModal(null);
+  };
+
+  const handleAction = (item: CommitmentItem) => {
+    if (item.obligationId) {
+      navigate(`money/owed/${item.obligationId}`);
+    } else if (item.cardId) {
+      navigate('money/creditcards');
+    } else if (item.recurringTxId) {
+      navigate('money/recurring');
+    } else if (item.savingsGoalId) {
+      navigate('money/savings');
+    } else if (item.standaloneId) {
+      const found = (data.standaloneCommitments ?? []).find((c) => c.id === item.standaloneId);
+      if (found) setModal({ type: 'edit', commitment: found });
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap mb-16" style={{ gap: 8, alignItems: 'center' }}>
+        <div>
+          <h2 className="panel-title" style={{ marginBottom: 0 }}>Upcoming & Commitments</h2>
+          <p className="panel-sub" style={{ marginBottom: 0 }}>
+            Unified forecast of bills, repayments, recurring commitments, and expected income.
+          </p>
+        </div>
+        <span className="spacer" />
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({ type: 'add' })}>
+          <IconPlus size={13} /> Add commitment
+        </button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-4 mb-16 section-gap">
+        <div className="panel-flat">
+          <div className="stat-label">Due in next 7 days</div>
+          <div className="stat-value money-neg">{formatMoney(summary.dueIn7Days, currency)}</div>
+          <div className="stat-hint">Includes overdue + 7-day outflows</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Due in next 30 days</div>
+          <div className="stat-value">{formatMoney(summary.dueIn30Days, currency)}</div>
+          <div className="stat-hint">Total 30-day outflows</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Expected in 30 days</div>
+          <div className="stat-value money-pos">{formatMoney(summary.expectedIn30Days, currency)}</div>
+          <div className="stat-hint">Total 30-day inflows</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Net expected movement</div>
+          <div className="stat-value" style={{ color: summary.netExpected30Days >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+            {summary.netExpected30Days >= 0 ? '+' : '−'}{formatMoney(Math.abs(summary.netExpected30Days), currency)}
+          </div>
+          <div className="stat-hint">Forecast only · not expense</div>
+        </div>
+      </div>
+
+      {/* Gentle Informational Warning Banner */}
+      {(summary.dueIn7Days > 0 || summary.netExpected30Days < 0) && (
+        <div className="panel-flat mb-16" style={{ borderLeft: '4px solid var(--warning)', background: 'var(--surface)' }}>
+          <div className="flex" style={{ gap: 10, alignItems: 'center' }}>
+            <span style={{ fontSize: 16 }}>💡</span>
+            <div className="small">
+              {summary.dueIn7Days > 0 && (
+                <span><b>{formatMoney(summary.dueIn7Days, currency)}</b> is due in the next 7 days. </span>
+              )}
+              {summary.netExpected30Days < 0 && (
+                <span>Upcoming commitments exceed expected inflows by <b>{formatMoney(Math.abs(summary.netExpected30Days), currency)}</b> in the next 30 days.</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account Breakdown */}
+      {accountSummaries.length > 0 && (
+        <div className="panel section-gap">
+          <h2 className="panel-title" style={{ marginBottom: 4 }}>Upcoming Money by Account</h2>
+          <p className="panel-sub" style={{ marginBottom: 10 }}>Expected 30-day cash movements per account.</p>
+          <div className="grid grid-3" style={{ gap: 10 }}>
+            {accountSummaries.map(({ account, upcomingOutflows, upcomingInflows, expectedNet }) => (
+              <div key={account.id} className="panel-flat flex" style={{ flexDirection: 'column', gap: 6 }}>
+                <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="bold small">{account.name}</span>
+                  <span className="tiny muted">{account.type}</span>
+                </div>
+                <div className="tiny flex" style={{ justifyContent: 'space-between' }}>
+                  <span className="muted">Upcoming Outflows:</span>
+                  <span className="money-neg t-num">{formatMoney(upcomingOutflows, currency)}</span>
+                </div>
+                <div className="tiny flex" style={{ justifyContent: 'space-between' }}>
+                  <span className="muted">Upcoming Inflows:</span>
+                  <span className="money-pos t-num">{formatMoney(upcomingInflows, currency)}</span>
+                </div>
+                <div className="tiny flex bold" style={{ justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: 4 }}>
+                  <span>Expected Net:</span>
+                  <span className="t-num" style={{ color: expectedNet >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                    {expectedNet >= 0 ? '+' : '−'}{formatMoney(Math.abs(expectedNet), currency)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Timeline Controls & List */}
+      <div className="panel">
+        <div className="flex flex-wrap mb-12" style={{ gap: 8, alignItems: 'center' }}>
+          <span className="small bold">Period:</span>
+          {(['today', '7-days', '30-days', 'this-month', 'all'] as CommitmentPeriodFilter[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`btn btn-sm ${period === p ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setPeriod(p)}
+            >
+              {p === 'today' ? 'Today' : p === '7-days' ? 'Next 7 days' : p === '30-days' ? 'Next 30 days' : p === 'this-month' ? 'This month' : 'All upcoming'}
+            </button>
+          ))}
+        </div>
+
+        <RecordToolbar<CommitmentItem>
+          label="commitments"
+          query={query}
+          onChange={(patch) => view.patch(patch)}
+          onReplace={(next) => view.replace(next)}
+          records={periodCommitments}
+          result={result}
+          searchPlaceholder="Search commitments by name, person, source, account…"
+          quickFilters={spec.quickFilters}
+          filters={spec.filters}
+          sortOptions={spec.sortOptions}
+          defaultSort="due-date"
+        />
+
+        <div className="mt-12">
+          {result.rows.length === 0 ? (
+            <FilteredEmptyState noun="commitments" onClear={() => view.replace(clearFilters(query))} />
+          ) : (
+            buckets.map((bucket) => (
+              <div key={bucket.key} className="mb-16">
+                <div className="section-header small bold muted mb-8">{bucket.label}</div>
+                {bucket.items.map((item) => {
+                  const badge = commitmentStatusBadge(item.status);
+                  const typeLabel = commitmentTypeLabel(item.type);
+                  const person = item.personId ? peopleMap.get(item.personId) : undefined;
+                  const source = item.sourceId ? sourceMap.get(item.sourceId) : undefined;
+                  const account = item.accountId ? accountMap.get(item.accountId) : undefined;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="person-row mb-8"
+                      onClick={() => handleAction(item)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <span className="grow">
+                        <div className="flex" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span className="bold">{item.name}</span>
+                          <span className={`badge tiny badge-${item.direction === 'inflow' ? 'info' : 'warning'}`}>
+                            {typeLabel}
+                          </span>
+                          <span className={`badge tiny badge-${badge.tone}`}>{badge.label}</span>
+                        </div>
+                        <div className="tiny muted mt-2 flex flex-wrap" style={{ gap: 8 }}>
+                          <span>Due {formatDateMed(item.dueDate)}</span>
+                          {account && <span>· Account: <strong>{account}</strong></span>}
+                          {person && <span>· Person: <strong>{person}</strong></span>}
+                          {source && <span>· Source: <strong>{source}</strong></span>}
+                        </div>
+                      </span>
+
+                      <span
+                        className={`bold t-num mr-12 ${item.direction === 'inflow' ? 'money-pos' : ''}`}
+                        style={{ minWidth: 90, textAlign: 'right' }}
+                      >
+                        {item.direction === 'inflow' ? '+' : '−'}{formatMoney(item.amount, currency)}
+                      </span>
+                      <IconArrowRight size={13} />
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {modal && (
+        <CommitmentEditModal
+          commitment={modal.commitment}
+          onSave={handleStandaloneSave}
+          onDelete={modal.commitment ? () => handleStandaloneDelete(modal.commitment!.id) : undefined}
+          onClose={() => setModal(null)}
+          currency={currency}
+          accounts={data.accounts ?? []}
+          people={data.people ?? []}
+          sources={data.sources ?? []}
+        />
+      )}
+    </div>
+  );
+}
+
+function CommitmentEditModal({
+  commitment,
+  onSave,
+  onDelete,
+  onClose,
+  currency,
+  accounts,
+  people,
+  sources,
+}: {
+  commitment?: MoneyCommitment;
+  onSave: (cmt: MoneyCommitment) => void;
+  onDelete?: () => void;
+  onClose: () => void;
+  currency: string;
+  accounts: MoneyAccount[];
+  people: Person[];
+  sources: MoneySource[];
+}) {
+  const [name, setName] = useState(commitment?.name ?? '');
+  const [type, setType] = useState<CommitmentType>(commitment?.type ?? 'other');
+  const [amount, setAmount] = useState(commitment?.amount ? String(commitment.amount) : '');
+  const [direction, setDirection] = useState<CommitmentDirection>(commitment?.direction ?? 'outflow');
+  const [dueDate, setDueDate] = useState(commitment?.dueDate ?? todayStr());
+  const [accountId, setAccountId] = useState(commitment?.accountId ?? '');
+  const [personId, setPersonId] = useState(commitment?.personId ?? '');
+  const [sourceId, setSourceId] = useState(commitment?.sourceId ?? '');
+  const [notes, setNotes] = useState(commitment?.notes ?? '');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedAmount = safeAmount(amount);
+    if (!name.trim() || parsedAmount <= 0) return;
+
+    onSave({
+      id: commitment?.id ?? `cmt-${Math.random().toString(36).slice(2, 10)}`,
+      name: name.trim(),
+      type,
+      amount: parsedAmount,
+      direction,
+      dueDate,
+      accountId: accountId || undefined,
+      personId: personId || undefined,
+      sourceId: sourceId || undefined,
+      status: commitment?.status ?? 'upcoming',
+      notes: notes.trim() || undefined,
+      createdAt: commitment?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <Modal title={commitment ? 'Edit commitment' : 'Add commitment'} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="form">
+        <div className="field">
+          <label className="label">Name</label>
+          <input
+            type="text"
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Annual Insurance, Freelance Inflow..."
+            required
+          />
+        </div>
+
+        <div className="grid grid-2" style={{ gap: 10 }}>
+          <div className="field">
+            <label className="label">Direction</label>
+            <select className="select" value={direction} onChange={(e) => setDirection(e.target.value as any)}>
+              <option value="outflow">Outflow (Expected payment)</option>
+              <option value="inflow">Inflow (Expected receipt)</option>
+            </select>
+          </div>
+          <div className="field">
+            <label className="label">Type</label>
+            <select className="select" value={type} onChange={(e) => setType(e.target.value as any)}>
+              <option value="bill">Bill</option>
+              <option value="repayment">Repayment</option>
+              <option value="subscription">Subscription</option>
+              <option value="savings">Savings</option>
+              <option value="expected-income">Expected Income</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-2" style={{ gap: 10 }}>
+          <div className="field">
+            <label className="label">Amount ({currency})</label>
+            <input
+              type="number"
+              className="input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              min="0"
+              step="any"
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="label">Due Date</label>
+            <input
+              type="date"
+              className="input"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-3" style={{ gap: 10 }}>
+          <div className="field">
+            <label className="label">Account (Optional)</label>
+            <select className="select" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              <option value="">No account</option>
+              {accounts.filter((a) => !a.archived).map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="label">Person (Optional)</label>
+            <select className="select" value={personId} onChange={(e) => setPersonId(e.target.value)}>
+              <option value="">No person</option>
+              {people.filter((p) => p.active !== false).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="label">Source / Fund (Optional)</label>
+            <select className="select" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+              <option value="">No source</option>
+              {sources.filter((s) => s.status === 'active').map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="label">Notes (Optional)</label>
+          <textarea
+            className="textarea"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Add details..."
+            rows={2}
+          />
+        </div>
+
+        <div className="flex" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          {onDelete && (
+            <button type="button" className="btn btn-danger btn-sm" onClick={onDelete}>
+              Delete
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary btn-sm">
+            Save commitment
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

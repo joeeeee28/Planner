@@ -612,8 +612,54 @@ function normalizeObligations(list: unknown): AppData['obligations'] {
       principalAmount,
       outstandingAmount,
       sourceId: str(r.sourceId),
+      accountId: str(r.accountId),
       purpose: str(r.purpose),
       dueDate: str(r.dueDate),
+      status,
+      notes: str(r.notes),
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: str(r.updatedAt),
+    });
+  }
+  return out;
+}
+
+/** Normalize standalone commitments (V4.6). */
+function normalizeStandaloneCommitments(list: unknown): AppData['standaloneCommitments'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['standaloneCommitments']> = [];
+  const validTypes = new Set(['bill', 'repayment', 'subscription', 'savings', 'expected-income', 'other']);
+  const validStatuses = new Set(['upcoming', 'due-soon', 'overdue', 'completed', 'cancelled']);
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const name = typeof r.name === 'string' ? r.name.trim() : '';
+    if (!name) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `cmt-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const amount = Number.isFinite(Number(r.amount)) ? Math.abs(Number(r.amount)) : 0;
+    const direction = r.direction === 'inflow' ? 'inflow' : 'outflow';
+    const rawType = typeof r.type === 'string' ? r.type : 'other';
+    const type = (validTypes.has(rawType) ? rawType : 'other') as import('./types').CommitmentType;
+    const rawStatus = typeof r.status === 'string' ? r.status : 'upcoming';
+    const status = (validStatuses.has(rawStatus) ? rawStatus : 'upcoming') as import('./types').CommitmentStatus;
+    const dueDate = typeof r.dueDate === 'string' && D.test(r.dueDate) ? r.dueDate : new Date().toISOString().slice(0, 10);
+    out.push({
+      id,
+      name,
+      type,
+      amount,
+      direction,
+      dueDate,
+      accountId: str(r.accountId),
+      personId: str(r.personId),
+      sourceId: str(r.sourceId),
+      obligationId: str(r.obligationId),
+      recurringId: str(r.recurringId),
       status,
       notes: str(r.notes),
       createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
@@ -633,6 +679,7 @@ export function normalizeData(cached: AppData): AppData {
   cached.sources = normalizeSources(cached.sources);
   cached.accounts = normalizeAccounts(cached.accounts);
   cached.obligations = normalizeObligations(cached.obligations);
+  cached.standaloneCommitments = normalizeStandaloneCommitments(cached.standaloneCommitments);
   if (cached.reminders) cached.reminders = normalizeReminders(cached.reminders);
   cached.tasks = normalizePlannedTasks(cached.tasks);
   cached.inbox = normalizeInbox(cached.inbox);

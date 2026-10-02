@@ -595,12 +595,61 @@ export interface MoneyObligation {
   principalAmount: number;
   outstandingAmount: number;
   sourceId?: ID;
+  accountId?: ID;
   purpose?: string;
   dueDate?: DateStr;
   status: ObligationStatus;
   notes?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+/**
+ * Money Commitment / Forecast Item (V4.6).
+ *
+ * Repayments, recurring bills, credit card payments, savings targets, and custom upcoming events.
+ */
+export type CommitmentType = 'bill' | 'repayment' | 'subscription' | 'savings' | 'expected-income' | 'other';
+export type CommitmentDirection = 'outflow' | 'inflow';
+export type CommitmentStatus = 'upcoming' | 'due-soon' | 'overdue' | 'completed' | 'cancelled';
+
+export interface MoneyCommitment {
+  id: ID;
+  name: string;
+  type: CommitmentType;
+  amount: number;
+  direction: CommitmentDirection;
+  dueDate: DateStr;
+  accountId?: ID;
+  personId?: ID;
+  sourceId?: ID;
+  obligationId?: ID;
+  recurringId?: ID;
+  status: CommitmentStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** Virtual unified commitment item aggregated for UI display & metrics */
+export interface CommitmentItem {
+  id: ID;
+  name: string;
+  type: CommitmentType;
+  amount: number;
+  direction: CommitmentDirection;
+  dueDate: DateStr;
+  accountId?: ID;
+  personId?: ID;
+  sourceId?: ID;
+  obligationId?: ID;
+  cardId?: ID;
+  recurringTxId?: ID;
+  savingsGoalId?: ID;
+  standaloneId?: ID;
+  status: CommitmentStatus;
+  isDerived: boolean;
+  notes?: string;
 }
 
 /**
@@ -821,6 +870,10 @@ export interface AppData {
    * Obligations (V4.5) — money owed / borrowed / lent. Optional and additive.
    */
   obligations?: MoneyObligation[];
+  /**
+   * Standalone commitments (V4.6) — explicit upcoming financial events. Optional and additive.
+   */
+  standaloneCommitments?: MoneyCommitment[];
   reminders: Reminder[];
   /** Optional planned tasks (V4) — additive; absent in older documents. */
   tasks?: PlannedTask[];
