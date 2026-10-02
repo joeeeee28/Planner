@@ -636,9 +636,19 @@ async function main() {
       'S3-D3 Money multi-goal savings + recurring sections',
       [
         ['home renders', () => waitFor(() => /, Jothika\./.test(s.body()))],
-        ['Money overview shows THIS MONTH tiles + cash flow + savings goals list', async () => {
+        ['Money overview shows the dashboard: tiles, cash flow, sources and savings goals', async () => {
           s.clickByText('Money');
-          return waitFor(() => s.body().includes('Savings goals') && s.body().includes('Spending categories') && s.body().includes('Cash flow'));
+          // V4.2 renamed “Spending categories” into the richer
+          // “Where my money went” breakdown (categories + people).
+          return waitFor(
+            () =>
+              s.body().includes('Savings goals') &&
+              s.body().includes('Where my money went') &&
+              s.body().includes('Where my money came from') &&
+              s.body().includes('Money from people') &&
+              s.body().includes('Cash flow') &&
+              s.body().includes('Money flow'),
+          );
         }],
         ['overview lists both savings goals with required/actual pace', () => s.body().includes('Emergency fund') && s.body().includes('MacBook fund') && s.body().includes('Required') && s.body().includes('Actual')],
         ['Savings tab shows multi-goal cards with deadline + required + actual', async () => {

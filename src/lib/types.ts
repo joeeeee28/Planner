@@ -409,6 +409,28 @@ export interface Transaction {
   category: string;
   description?: string;
   paymentType?: string;
+  /**
+   * Optional credit-card link (V4.1). A linked *expense* is a card purchase —
+   * it counts as spending exactly once. Paying the card is never a Transaction:
+   * see `CardPayment`, which never becomes an expense.
+   */
+  cardId?: ID;
+  /**
+   * Optional person this money came from / went to (V4.2): “Received from
+   * Appa”, “Paid to Appa”. Additional context only — it never changes the
+   * amount, the type or any total, and it is never inferred.
+   */
+  personId?: ID;
+  /**
+   * Optional money source / fund this transaction belongs to (V4.3): the
+   * ₹10,000 Appa gave *for college*, the client payment for a project.
+   *
+   * A source is context, never a second record: income linked to a source is
+   * still income (counted once), and an expense linked to a source is still an
+   * expense (counted once). `sourceId` only answers “which money was this?” —
+   * it changes no amount, type or total, and it is never inferred.
+   */
+  sourceId?: ID;
   notes?: string;
   /** Optional recurrence: e.g. 'monthly'. Only one transaction is generated per occurrence. */
   recurrence?: Recurrence;
@@ -452,6 +474,115 @@ export interface Budget {
   limit: number; // positive amount
   /** Optional: roll unused limit into next month (default false). */
   rollover?: boolean;
+  createdAt: string;
+}
+
+// ── People / money sources (V4.2) ────────────────────────────────────────────
+
+/**
+ * A person connected to your money — the friend who sends you ₹2,000, the
+ * family member you send money to, a client, a roommate.
+ *
+ * Deliberately minimal: `name` is the only required field, nothing sensitive is
+ * required (phone is optional), and a person is only ever linked to a
+ * transaction by explicit user action — never inferred from a category,
+ * description or note.
+ */
+export interface Person {
+  id: ID;
+  name: string;
+  /** How you actually think of them (“Appa”, “Roomie”). */
+  nickname?: string;
+  /** Free text — Family, Friend, Client, Roommate… never a fixed list. */
+  relationship?: string;
+  phone?: string;
+  notes?: string;
+  /** Inactive people keep their history but drop out of pickers. */
+  active: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/**
+ * A money source / fund (V4.3) — a pot of money with a reason.
+ *
+ * WHERE DID IT COME FROM?  → `personId` (Appa), when it came from someone
+ * WHY WAS IT GIVEN?        → `purpose` (“College Fees”)
+ * HOW MUCH CAME IN?        → `receivedAmount` (linked income transactions win)
+ * WHAT IS LEFT?            → derived: received − linked expenses
+ *
+ * A source is never a transaction: it holds no spendable balance of its own and
+ * never adds to income, expenses or the overall balance. `purpose` is *why* the
+ * money was given; a transaction's `category` stays *what type* it was
+ * (“Education”). Status is manual, but a source whose remaining reaches ₹0
+ * becomes eligible for “Completed” — it is never changed behind your back.
+ */
+export type MoneySourceStatus = 'active' | 'completed' | 'archived';
+
+export interface MoneySource {
+  id: ID;
+  /** Display name, e.g. “Appa - College Fees”, “Salary - October”. */
+  name: string;
+  /** Who the money came from (optional) — links to a Person. */
+  personId?: ID;
+  /** Why the money was given (optional) — never a fixed list. */
+  purpose?: string;
+  /**
+   * The amount recorded/allocated when the source was created. When income
+   * transactions are linked to this source, *their* sum is the received amount
+   * (so editing an income updates the fund automatically) — this stored value
+   * is the fallback for a fund tracked before the money arrives.
+   */
+  receivedAmount: number;
+  receivedDate?: DateStr;
+  status: MoneySourceStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/**
+ * A credit card the user wants to track (V4.1).
+ *
+ * Privacy by design: Growth OS stores the *last four digits only* — never a
+ * full PAN, expiry, CVV, PIN or OTP. `dueDay`/`creditLimit`/`billingCycleDay`
+ * are optional and only ever shown while creating or editing the card.
+ */
+export interface CreditCard {
+  id: ID;
+  /** Display name, e.g. "HDFC Credit Card". */
+  name: string;
+  /** Exactly the last four digits. Never a full card number. */
+  last4: string;
+  /** Optional issuer label (HDFC, ICICI, Amex…). */
+  issuer?: string;
+  /** Day of month the payment is due (1–31). */
+  dueDay?: number;
+  /** Optional credit limit — advanced, never shown on the card itself. */
+  creditLimit?: number;
+  /** Optional statement/billing-cycle day (1–31). */
+  billingCycleDay?: number;
+  notes?: string;
+  archived?: boolean;
+  createdAt: DateStr;
+}
+
+/**
+ * A payment *to* a credit card — the counterpart of a purchase.
+ *
+ * It moves money from a bank/account to the card, settles part of the card
+ * balance, and is deliberately stored outside `transactions` so it can never
+ * be counted as another expense (no double counting).
+ */
+export interface CardPayment {
+  id: ID;
+  cardId: ID;
+  /** Positive amount. */
+  amount: number;
+  date: DateStr;
+  /** Where the money came from, e.g. "Bank", "UPI". */
+  fromAccount?: string;
+  note?: string;
   createdAt: string;
 }
 
@@ -605,6 +736,21 @@ export interface AppData {
   transactions: Transaction[];
   savingsGoals: SavingsGoal[];
   budgets: Budget[];
+  /** Tracked credit cards (V4.1) — optional, additive, last-4 only. */
+  creditCards?: CreditCard[];
+  /** Payments made to credit cards (V4.1) — never expenses. */
+  cardPayments?: CardPayment[];
+  /**
+   * People connected to your money (V4.2) — optional and additive. Older
+   * documents simply have no `people`, and no historical transaction is ever
+   * assigned one automatically.
+   */
+  people?: Person[];
+  /**
+   * Money sources / funds (V4.3) — optional and additive. Older documents have
+   * no `sources`, and no historical transaction is ever assigned one.
+   */
+  sources?: MoneySource[];
   reminders: Reminder[];
   /** Optional planned tasks (V4) — additive; absent in older documents. */
   tasks?: PlannedTask[];

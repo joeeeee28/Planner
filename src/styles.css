@@ -3504,3 +3504,602 @@ textarea {
     font-size: 22px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V4.1 — RecordToolbar: one calm filter / sort experience
+   Level 1 = search + quick filters + Filter/Sort. Level 2 = drawer/bottom sheet.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.rt {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.rt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rt-leading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── search ─────────────────────────────────────────────────────────────── */
+.rt-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 200px;
+  max-width: 320px;
+  flex: 1 1 220px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 10px 0 12px;
+  color: var(--ink-3);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.rt-search:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.rt-search-input {
+  border: none !important;
+  background: transparent !important;
+  padding: 7px 0 !important;
+  font-size: 13.5px;
+  color: var(--ink);
+  width: 100%;
+  outline: none;
+  box-shadow: none !important;
+}
+.rt-search-input::placeholder {
+  color: var(--ink-3);
+}
+.rt-search-clear {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 999px;
+}
+.rt-search-clear:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.rt-search-mobile {
+  max-width: none;
+}
+.rt-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.rt-icon-btn:hover {
+  border-color: var(--accent-line);
+  color: var(--accent-ink);
+}
+
+/* ── quick filter pills ─────────────────────────────────────────────────── */
+.rt-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rt-pill {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.rt-pill:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.rt-pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-ink);
+}
+.rt-pill:focus-visible,
+.rt-filter-btn:focus-visible,
+.rt-sort-btn:focus-visible,
+.rt-icon-btn:focus-visible,
+.rt-chip-x:focus-visible,
+.rt-clear:focus-visible,
+.rt-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── actions ────────────────────────────────────────────────────────────── */
+.rt-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.rt-sort-wrap {
+  position: relative;
+}
+.rt-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ── sort menu ──────────────────────────────────────────────────────────── */
+.rt-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+.rt-menu-title {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 6px 10px 4px;
+}
+.rt-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--ink);
+}
+.rt-menu-item:hover {
+  background: var(--surface-2);
+}
+.rt-menu-item.active {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+.rt-radio {
+  font-size: 10px;
+  color: var(--accent-ink);
+}
+
+/* ── active chips ───────────────────────────────────────────────────────── */
+.rt-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.rt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  padding: 3px 6px 3px 11px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.rt-chip-x {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 999px;
+  opacity: 0.75;
+}
+.rt-chip-x:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+.rt-clear {
+  border: none;
+  background: none;
+  color: var(--ink-2);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 3px 6px;
+}
+.rt-clear:hover {
+  color: var(--ink);
+}
+.rt-count {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ── drawer (side panel on desktop, bottom sheet on phones) ─────────────── */
+.rt-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(36, 33, 26, 0.28);
+  display: flex;
+  justify-content: flex-end;
+  animation: rt-fade 0.14s ease;
+}
+.rt-drawer {
+  width: min(400px, 100%);
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: rt-slide-in 0.18s ease;
+}
+.rt-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.rt-drawer-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+.rt-drawer-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.rt-drawer-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.rt-field {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.rt-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+  padding: 0;
+}
+.rt-field select,
+.rt-field input[type='number'] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  padding: 8px 10px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.rt-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rt-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  background: var(--surface);
+}
+.rt-option input {
+  accent-color: var(--accent);
+  width: 13px;
+  height: 13px;
+  margin: 0;
+}
+.rt-option.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.rt-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rt-range-sep {
+  color: var(--ink-3);
+}
+.rt-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+@keyframes rt-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rt-slide-in {
+  from { transform: translateX(14px); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (max-width: 760px) {
+  .rt-row {
+    gap: 6px;
+  }
+  .rt-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .rt-quick {
+    flex: 1 1 100%;
+  }
+  .rt-pill {
+    padding: 5px 11px;
+  }
+  .rt-actions {
+    margin-left: 0;
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+  .rt-drawer-backdrop {
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .rt-drawer {
+    width: 100%;
+    height: auto;
+    max-height: 88vh;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    animation: rt-sheet-up 0.2s ease;
+  }
+  .rt-drawer-body {
+    gap: 16px;
+  }
+  .rt-menu {
+    right: 0;
+    min-width: 190px;
+  }
+}
+@keyframes rt-sheet-up {
+  from { transform: translateY(18px); opacity: 0.7; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rt-drawer,
+  .rt-drawer-backdrop {
+    animation: none;
+  }
+}
+
+/* ── V4.1 credit cards ─────────────────────────────────────────────────────── */
+.tx-dot.payment {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.tx-row-payment .tx-amount.money-neutral {
+  color: var(--ink-2);
+  font-weight: 550;
+}
+.card-tile {
+  position: relative;
+}
+.card-more {
+  position: absolute;
+  right: 14px;
+  top: 62px;
+  z-index: 30;
+  min-width: 190px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+}
+.card-more button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--ink);
+}
+.card-more button:hover {
+  background: var(--surface-2);
+}
+.card-more button.danger {
+  color: var(--neg);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Notification tabs (V4.1) — simple, never a filter system */
+.notif-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 4px;
+}
+.notif-tabs + .notif-tabs {
+  padding-top: 0;
+}
+
+/* ── View switcher (Automation: exactly one view at a time) ───────────────── */
+.rt-views .rt-pill {
+  cursor: pointer;
+  user-select: none;
+}
+.rt-views .rt-pill:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+}
+
+/* ── People (V4.2) — the person is context, the amount stays the headline ─── */
+.tx-person {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.5;
+  vertical-align: 1px;
+}
+.rt-person-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.person-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  color: inherit;
+}
+.person-row:last-child { border-bottom: 0; }
+.person-row:hover { background: var(--surface-2); }
+.person-name { font-weight: 600; }
+.person-money { font-variant-numeric: tabular-nums; }
+.person-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+}
+.person-stat .stat-label { margin: 0; }
+@media (max-width: 640px) {
+  .person-row { align-items: flex-start; }
+  .person-stat { min-width: 72px; }
+}
+
+/* ── Money sources / funds (V4.3) ────────────────────────────────────────────
+   A fund is quiet context: the amount stays the loudest thing on a row, the
+   source is a small chip next to the person. */
+.tx-source {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.5;
+  vertical-align: 1px;
+}
+.tx-source::before { content: '◆ '; color: var(--accent-strong); font-size: 9px; vertical-align: 1px; }
+.source-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.source-row:last-child { border-bottom: 0; }
+.source-row:hover { background: var(--surface-2); }
+.source-name { font-weight: 600; }
+@media (max-width: 640px) {
+  .source-row { align-items: flex-start; }
+}
+
+/* V4.3.1 — “spending more than a fund holds” is a decision, not an error:
+   a calm warning with two clear choices. */
+.form-warn {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn, #b8860b);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}

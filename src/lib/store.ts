@@ -14,6 +14,8 @@ import type {
 } from './types';
 import { SCHEMA_VERSION, STORAGE_KEY, createInitialData } from './defaults';
 import { mergeDeep } from './merge';
+import { safeAmount } from './finance';
+import { isValidLast4, last4FromInput } from './cards';
 
 let cached: AppData | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -83,6 +85,14 @@ function normalizeTransactions(list: unknown): Transaction[] {
       category: typeof t.category === 'string' && t.category ? t.category : 'Other',
       description: typeof t.description === 'string' ? t.description : undefined,
       paymentType: typeof t.paymentType === 'string' ? t.paymentType : undefined,
+      // V4.1 — a card-linked purchase keeps its card across reloads. Only the
+      // card id is stored here; the card itself holds nothing but last-4.
+      cardId: typeof t.cardId === 'string' && t.cardId ? t.cardId : undefined,
+      // V4.2 — an explicit person link survives reloads. Historical records
+      // without a link stay null: nobody is ever guessed.
+      personId: typeof t.personId === 'string' && t.personId ? t.personId : undefined,
+      // V4.3 — the same rule for an explicit money-source link.
+      sourceId: typeof t.sourceId === 'string' && t.sourceId ? t.sourceId : undefined,
       notes: typeof t.notes === 'string' ? t.notes : undefined,
       recurrence: (t.recurrence === 'weekly' || t.recurrence === 'monthly' || t.recurrence === 'quarterly' || t.recurrence === 'yearly') ? t.recurrence : undefined,
       lastGenerated: typeof t.lastGenerated === 'string' ? t.lastGenerated : undefined,
@@ -404,10 +414,144 @@ function normalizeNotifications(list: unknown): AppData['notifications'] {
   return out;
 }
 
+
+/** Normalize credit cards (V4.1) — last-4 only, never a full card number. */
+function normalizeCreditCards(list: unknown): AppData['creditCards'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['creditCards']> = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.name !== 'string' || !r.name.trim()) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `card-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    // Privacy: any pasted PAN is reduced to its last four digits right here.
+    const last4 = last4FromInput(typeof r.last4 === 'string' ? r.last4 : '');
+    if (!isValidLast4(last4)) continue;
+    const clampDay = (v: unknown): number | undefined =>
+      typeof v === 'number' && v >= 1 && v <= 31 ? Math.round(v) : undefined;
+    out.push({
+      id,
+      name: r.name.trim(),
+      last4,
+      issuer: typeof r.issuer === 'string' && r.issuer.trim() ? r.issuer.trim() : undefined,
+      dueDay: clampDay(r.dueDay),
+      creditLimit: typeof r.creditLimit === 'number' && r.creditLimit > 0 ? safeAmount(r.creditLimit) : undefined,
+      billingCycleDay: clampDay(r.billingCycleDay),
+      notes: typeof r.notes === 'string' && r.notes ? r.notes : undefined,
+      archived: r.archived === true,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
+/**
+ * Normalize people (V4.2). Names are trimmed, required, and duplicate names
+ * are allowed (two people really can share a name) — only ids are unique.
+ */
+function normalizePeople(list: unknown): AppData['people'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['people']> = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const name = typeof r.name === 'string' ? r.name.trim() : '';
+    if (!name) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `person-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    out.push({
+      id,
+      name,
+      nickname: str(r.nickname),
+      relationship: str(r.relationship),
+      phone: str(r.phone),
+      notes: str(r.notes),
+      active: r.active !== false,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: str(r.updatedAt),
+    });
+  }
+  return out;
+}
+
+/**
+ * Normalize money sources (V4.3). A source needs a name; everything else is
+ * optional. Unknown statuses fall back to 'active' and a source is never
+ * dropped for a missing amount — the amount simply starts at 0.
+ */
+function normalizeSources(list: unknown): AppData['sources'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['sources']> = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const name = typeof r.name === 'string' ? r.name.trim() : '';
+    if (!name) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `source-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const amount = Number(r.receivedAmount);
+    const status = r.status === 'completed' || r.status === 'archived' ? r.status : 'active';
+    out.push({
+      id,
+      name,
+      personId: str(r.personId),
+      purpose: str(r.purpose),
+      receivedAmount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+      receivedDate: str(r.receivedDate),
+      status,
+      notes: str(r.notes),
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: str(r.updatedAt),
+    });
+  }
+  return out;
+}
+
+/** Normalize card payments (V4.1) — always outside `transactions`. */
+function normalizeCardPayments(list: unknown): AppData['cardPayments'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['cardPayments']> = [];
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.cardId !== 'string' || !r.cardId) continue;
+    const amount = safeAmount(r.amount);
+    if (amount <= 0) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `cpay-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      cardId: r.cardId,
+      amount,
+      date: typeof r.date === 'string' && D.test(r.date) ? r.date : new Date().toISOString().slice(0, 10),
+      fromAccount: typeof r.fromAccount === 'string' && r.fromAccount.trim() ? r.fromAccount.trim() : undefined,
+      note: typeof r.note === 'string' && r.note ? r.note : undefined,
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
 export function normalizeData(cached: AppData): AppData {
   if (cached.transactions) cached.transactions = normalizeTransactions(cached.transactions);
   if (cached.savingsGoals) cached.savingsGoals = normalizeSavingsGoals(cached.savingsGoals);
   if (cached.budgets) cached.budgets = normalizeBudgets(cached.budgets);
+  cached.creditCards = normalizeCreditCards(cached.creditCards);
+  cached.cardPayments = normalizeCardPayments(cached.cardPayments);
+  cached.people = normalizePeople(cached.people);
+  cached.sources = normalizeSources(cached.sources);
   if (cached.reminders) cached.reminders = normalizeReminders(cached.reminders);
   cached.tasks = normalizePlannedTasks(cached.tasks);
   cached.inbox = normalizeInbox(cached.inbox);

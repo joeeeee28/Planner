@@ -5,8 +5,22 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { todayStr } from '../lib/dates';
 import { navigate } from '../lib/router';
 import { unreadCount, groupNotifications, markNotification, dismissNotification, markAllRead, type NotificationGroup } from '../lib/automation/notify';
+import type { AppNotification, NotifyCategory } from '../lib/types';
+
+/** Simple tabs — All · Unread · Today. Notifications are never sorted by hand. */
+type NotifTab = 'all' | 'unread' | 'today';
+
+const CATEGORY_LABELS: Record<NotifyCategory, string> = {
+  tasks: 'Tasks',
+  goals: 'Goals',
+  money: 'Money',
+  reviews: 'Reviews',
+  routines: 'Routines',
+  habits: 'Habits',
+};
 
 function BellIcon({ size = 16 }: { size?: number }) {
   return (
@@ -95,7 +109,16 @@ export function NotificationBell() {
     };
   }, [open]);
 
-  const groups = groupNotifications(list);
+  // V4.1 — tabs first, category as a secondary chip. Sort is always Newest.
+  const [tab, setTab] = useState<NotifTab>('all');
+  const [cat, setCat] = useState<NotifyCategory | 'all'>('all');
+  const categories = [...new Set(list.filter((n) => !n.dismissed).map((n) => n.cat))];
+  const visible: AppNotification[] = list
+    .filter((n) => !n.dismissed)
+    .filter((n) => (tab === 'unread' ? !n.read : tab === 'today' ? n.date === todayStr() : true))
+    .filter((n) => (cat === 'all' ? true : n.cat === cat))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const groups = groupNotifications(visible);
   const total = list.filter((n) => !n.dismissed).length;
   const clear = () => {
     if (unread === 0) return;
@@ -132,9 +155,38 @@ export function NotificationBell() {
               )}
             </div>
           </div>
+          <div className="notif-tabs" role="tablist" aria-label="Notification filters">
+            {(['all', 'unread', 'today'] as NotifTab[]).map((id) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={tab === id}
+                className={`rt-pill ${tab === id ? 'active' : ''}`}
+                onClick={() => setTab(id)}
+              >
+                {id === 'all' ? 'All' : id === 'unread' ? 'Unread' : 'Today'}
+              </button>
+            ))}
+          </div>
+          {categories.length > 1 && (
+            <div className="notif-tabs" role="group" aria-label="Filter by category">
+              <button className={`rt-pill ${cat === 'all' ? 'active' : ''}`} aria-pressed={cat === 'all'} onClick={() => setCat('all')}>
+                All types
+              </button>
+              {categories.map((c) => (
+                <button key={c} className={`rt-pill ${cat === c ? 'active' : ''}`} aria-pressed={cat === c} onClick={() => setCat(cat === c ? 'all' : c)}>
+                  {CATEGORY_LABELS[c]}
+                </button>
+              ))}
+            </div>
+          )}
           {total === 0 ? (
             <p className="small muted" style={{ margin: 0, padding: '18px 16px' }}>
               Nothing scheduled, due, or happening — that's a calm kind of quiet.
+            </p>
+          ) : visible.length === 0 ? (
+            <p className="small muted" style={{ margin: 0, padding: '18px 16px' }}>
+              No notifications here. <button className="rt-clear" onClick={() => { setTab('all'); setCat('all'); }}>Show all</button>
             </p>
           ) : (
             <div className="notif-groups">

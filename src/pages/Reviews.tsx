@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import {
@@ -15,6 +15,9 @@ import { cycleSummary, dayHabitInfo, habitStats, monthKeyCompletion, windowCompl
 import { MONTH_GOAL_CATEGORIES, DEFAULT_REVIEW_QUESTIONS } from '../lib/defaults';
 import { formatMoney } from '../lib/finance';
 import { Modal, ProgressBar, Pct, Stars, EmptyState } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import { clearFilters, makeQuery, runQuery, type RecordViewSpec } from '../lib/recordQuery';
 import { uid } from '../lib/uid';
 import { staleRows } from '../lib/stale';
 import { weekLookBack, monthSummary, weekCapacitySummary, quarterAutoRows, yearAutoRows } from '../lib/reviewIntel';
@@ -53,6 +56,82 @@ function ReviewsIndex() {
   const t = todayStr();
   const weekKeys = Object.keys(data.weekly).sort().reverse().slice(0, 12);
   const monthKeys = Object.keys(data.monthly).sort().reverse().slice(0, 12);
+
+  // V4.1 — Pending · Completed quick views; period lives behind Filter.
+  interface ReviewRow {
+    key: string;
+    kind: 'week' | 'month' | 'quarter' | 'year';
+    label: string;
+    sortKey: string;
+    completed: boolean;
+    filled: number;
+    route: string;
+  }
+
+  const periodKey = (kind: ReviewRow['kind'], base: string): string => {
+    if (kind === 'week') return weekStartOf(base, data.settings.weekStartsOn);
+    if (kind === 'month') return base.slice(0, 7);
+    if (kind === 'quarter') return `${base.slice(0, 4)}-Q${Math.floor((Number(base.slice(5, 7)) - 1) / 3) + 1}`;
+    return base.slice(0, 4);
+  };
+
+  const reviewRows: ReviewRow[] = useMemo(() => {
+    const rows: ReviewRow[] = [];
+    for (const ws of weekKeys) {
+      const w = data.weekly[ws];
+      const filled = Object.values(w).filter((v) => v && v.trim()).length;
+      rows.push({ key: `week:${ws}`, kind: 'week', label: `Week of ${formatDateMed(ws)}`, sortKey: ws, completed: filled > 0, filled, route: `reviews/week/${ws}` });
+    }
+    for (const mk of monthKeys) {
+      const m = data.monthly[mk];
+      const filled = [m.focus, ...m.goals.map((g) => g.text), ...Object.values(m.review)].filter((v) => v && v.trim()).length;
+      rows.push({ key: `month:${mk}`, kind: 'month', label: monthLabel(mk), sortKey: `${mk}-01`, completed: filled > 0, filled, route: `reviews/month/${mk}` });
+    }
+    for (const p of ['week', 'month', 'quarter', 'year'] as ReviewRow['kind'][]) {
+      const key = periodKey(p, t);
+      const exists = rows.some((r) => r.kind === p && (p === 'week' ? r.sortKey === key : r.sortKey.startsWith(key)));
+      if (!exists) {
+        const route = p === 'week' ? `reviews/week/${key}` : `reviews/${p}/${key}`;
+        const label = p === 'week' ? `Week of ${formatDateMed(key)}` : p === 'month' ? monthLabel(key) : p === 'quarter' ? key.replace('-', ' ') : key;
+        rows.push({ key: `${p}:${key}`, kind: p, label, sortKey: key.length === 4 ? `${key}-01-01` : key.length === 7 ? `${key}-01` : key, completed: false, filled: 0, route });
+      }
+    }
+    return rows;
+  }, [data.weekly, data.monthly, data.settings.weekStartsOn, t, weekKeys.join(','), monthKeys.join(',')]);
+
+  const view = useRecordViewFor('reviews', makeQuery({ defaultSort: 'newest' }));
+  const query = view.query;
+  const spec = useMemo<RecordViewSpec<ReviewRow>>(
+    () => ({
+      key: 'reviews',
+      searchKeys: (r) => [r.label, r.kind],
+      quickFilters: [
+        { id: 'pending', label: 'Pending', test: (r) => !r.completed },
+        { id: 'completed', label: 'Completed', test: (r) => r.completed },
+      ],
+      filters: [
+        {
+          id: 'period',
+          label: 'Period',
+          type: 'radio',
+          options: [
+            { value: 'week', label: 'Week' },
+            { value: 'month', label: 'Month' },
+            { value: 'quarter', label: 'Quarter' },
+            { value: 'year', label: 'Year' },
+          ],
+          match: (r, v) => r.kind === v,
+        },
+      ],
+      sortOptions: [
+        { id: 'newest', label: 'Newest', compare: (a, b) => b.sortKey.localeCompare(a.sortKey) },
+        { id: 'oldest', label: 'Oldest', compare: (a, b) => a.sortKey.localeCompare(b.sortKey) },
+      ],
+      defaultSort: 'newest',
+    }),
+    [],
+  );
+  const result = useMemo(() => runQuery(reviewRows, spec, query), [reviewRows, spec, query]);
 
   return (
     <div>
@@ -115,41 +194,37 @@ function ReviewsIndex() {
         </div>
       </div>
 
-      <div className="grid grid-2">
-        <div className="card">
-          <h2 className="card-title">Recent weekly reviews</h2>
-          {weekKeys.length === 0 ? (
-            <p className="small muted">No weekly reviews yet.</p>
-          ) : (
-            weekKeys.map((ws) => {
-              const w = data.weekly[ws];
-              const filled = Object.values(w).filter((v) => v && v.trim()).length;
-              return (
-                <button key={ws} className="nav-item" style={{ padding: '10px 8px' }} onClick={() => navigate(`reviews/week/${ws}`)}>
-                  <span className="grow">Week of {formatDateMed(ws)}</span>
-                  <span className="badge tiny">{filled}/9 fields</span>
-                </button>
-              );
-            })
-          )}
-        </div>
-        <div className="card">
-          <h2 className="card-title">Recent months</h2>
-          {monthKeys.length === 0 ? (
-            <p className="small muted">No monthly workspaces used yet. Open this month to start.</p>
-          ) : (
-            monthKeys.map((mk) => {
-              const m = data.monthly[mk];
-              const filled = [m.focus, ...m.goals.map((g) => g.text), ...Object.values(m.review)].filter((v) => v && v.trim()).length;
-              return (
-                <button key={mk} className="nav-item" style={{ padding: '10px 8px' }} onClick={() => navigate(`reviews/month/${mk}`)}>
-                  <span className="grow">{monthLabel(mk)}</span>
-                  <span className="badge tiny">{filled} fields</span>
-                </button>
-              );
-            })
-          )}
-        </div>
+      <div className="card mb-16">
+        <RecordToolbar<ReviewRow>
+          label="reviews"
+          query={query}
+          onChange={(patch) => view.patch(patch)}
+          onReplace={(next) => view.replace(next)}
+          records={reviewRows}
+          result={result}
+          searchPlaceholder="Search reviews…"
+          quickFilters={spec.quickFilters}
+          filters={spec.filters}
+          sortOptions={spec.sortOptions}
+          defaultSort="newest"
+          resultLabel={(shown, total) => `${shown} of ${total} reviews`}
+        />
+        {result.rows.length === 0 ? (
+          <FilteredEmptyState noun="reviews" onClear={() => view.replace(clearFilters(query))} />
+        ) : (
+          result.rows.map((r) => (
+            <button key={r.key} className="nav-item" style={{ padding: '10px 8px' }} onClick={() => navigate(r.route)}>
+              <span className="grow">
+                {r.label} <span className="tiny muted">· {r.kind}</span>
+              </span>
+              {r.completed ? (
+                <span className="badge tiny badge-success">{r.filled || '✓'} filled</span>
+              ) : (
+                <span className="badge tiny badge-warning">Pending</span>
+              )}
+            </button>
+          ))
+        )}
       </div>
 
       <div className="card mt-16">

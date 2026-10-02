@@ -281,3 +281,23 @@ export const IconLock = ({ size = 18 }: IconProps) => (
     <circle cx="12" cy="15" r="1.2" />
   </svg>
 );
+
+export const IconSort = ({ size = 15 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M7 4v16M4 17l3 3 3-3" />
+    <path d="M17 20V4M14 7l3-3 3 3" />
+  </svg>
+);
+
+export const IconFilter = ({ size = 15 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M3 5h18M6 12h12M10 19h4" />
+  </svg>
+);
+
+export const IconCard = ({ size = 15 }: IconProps) => (
+  <svg {...base(size)}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M2 10h20" />
+  </svg>
+);

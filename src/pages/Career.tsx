@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
-import { formatDateMed, todayStr } from '../lib/dates';
+import { addDays, formatDateMed, todayStr } from '../lib/dates';
 import type { Achievement, Project, ProjectStatus, RoadmapMilestone, Skill } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import { clearFilters, makeQuery, runQuery, type RecordViewSpec } from '../lib/recordQuery';
 import { ScheduleSheet } from '../components/ScheduleSheet';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
@@ -85,7 +88,43 @@ function SkillsTab() {
     });
   };
 
-  const skills = [...data.skills].sort((a, b) => (b.targetLevel > 0 ? b.currentLevel / b.targetLevel : 0) - (a.targetLevel > 0 ? a.currentLevel / a.targetLevel : 0));
+  // V4.1 — All · Developing · Strong quick views instead of generic controls.
+  const view = useRecordViewFor('career/skills', makeQuery({ defaultSort: 'progress' }));
+  const query = view.query;
+  const skillRatio = (s: Skill) => (s.targetLevel > 0 ? s.currentLevel / s.targetLevel : 0);
+  const spec = useMemo<RecordViewSpec<Skill>>(() => ({
+    key: 'career/skills',
+    searchKeys: (s) => [s.name, s.notes],
+    quickFilters: [
+      { id: 'developing', label: 'Developing', test: (s) => skillRatio(s) < 0.7 },
+      { id: 'strong', label: 'Strong', test: (s) => skillRatio(s) >= 0.7 },
+    ],
+    filters: [
+      {
+        id: 'area',
+        label: 'Area',
+        type: 'select',
+        placeholder: 'Any area',
+        options: data.growthAreas.map((a) => ({ value: a.id, label: `${a.icon} ${a.name}` })),
+        match: (s, v) => s.categoryId === v,
+      },
+      {
+        id: 'goal',
+        label: 'Goal',
+        type: 'select',
+        placeholder: 'Any goal',
+        options: data.goals.map((g) => ({ value: g.id, label: g.title })),
+        match: (s, v) => s.goalId === v,
+      },
+    ],
+    sortOptions: [
+      { id: 'progress', label: 'Progress', compare: (a, b) => skillRatio(b) - skillRatio(a) },
+      { id: 'name', label: 'Name', compare: (a, b) => a.name.localeCompare(b.name) },
+    ],
+    defaultSort: 'progress',
+  }), [data.growthAreas, data.goals]);
+  const result = useMemo(() => runQuery(data.skills, spec, query), [data.skills, spec, query]);
+  const skills = result.rows;
 
   return (
     <div>
@@ -98,22 +137,41 @@ function SkillsTab() {
         </button>
       </div>
 
+      <RecordToolbar<Skill>
+        label="skills"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={data.skills}
+        result={result}
+        searchPlaceholder="Search skills…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="progress"
+        resultLabel={(shown, total) => `${shown} of ${total} skills`}
+      />
+
       {skills.length === 0 ? (
         <div className="card">
-          <EmptyState
-            icon="💼"
-            title="No skills tracked yet"
-            text="Add skills like 'Public speaking', 'System design' or 'Data analysis' with a current and target level."
-            action={
-              <button className="btn btn-primary btn-sm" onClick={openNew}>
-                Add your first skill
-              </button>
-            }
-          />
+          {result.emptyByFilter ? (
+            <FilteredEmptyState noun="skills" onClear={() => view.replace(clearFilters(query))} />
+          ) : (
+            <EmptyState
+              icon="💼"
+              title="No skills tracked yet"
+              text="Add skills like 'Public speaking', 'System design' or 'Data analysis' with a current and target level."
+              action={
+                <button className="btn btn-primary btn-sm" onClick={openNew}>
+                  Add your first skill
+                </button>
+              }
+            />
+          )}
         </div>
       ) : (
         <div className="grid" style={{ gap: 10 }}>
-          {skills.map((s) => {
+          {skills.map((s: Skill) => {
             const pct = s.targetLevel > 0 ? Math.round((s.currentLevel / s.targetLevel) * 100) : 0;
             return (
               <div className="card" key={s.id} style={{ padding: 14 }}>
@@ -253,7 +311,33 @@ function ProjectsTab() {
     });
   };
 
-  const projects = [...data.projects].sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
+  const view = useRecordViewFor('career/projects', makeQuery({ defaultSort: 'recent' }));
+  const query = view.query;
+  const spec = useMemo<RecordViewSpec<Project>>(() => ({
+    key: 'career/projects',
+    searchKeys: (p) => [p.name, p.description, p.role, p.outcomes],
+    quickFilters: [
+      { id: 'active', label: 'Active', test: (p) => p.status !== 'completed' },
+      { id: 'completed', label: 'Completed', test: (p) => p.status === 'completed' },
+    ],
+    filters: [
+      {
+        id: 'goal',
+        label: 'Goal',
+        type: 'select',
+        placeholder: 'Any goal',
+        options: data.goals.map((g) => ({ value: g.id, label: g.title })),
+        match: (p, v) => p.goalId === v,
+      },
+    ],
+    sortOptions: [
+      { id: 'recent', label: 'Recent', compare: (a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? '') },
+      { id: 'name', label: 'Name', compare: (a, b) => a.name.localeCompare(b.name) },
+    ],
+    defaultSort: 'recent',
+  }), [data.goals]);
+  const result = useMemo(() => runQuery(data.projects, spec, query), [data.projects, spec, query]);
+  const projects = result.rows;
 
   return (
     <div>
@@ -266,22 +350,41 @@ function ProjectsTab() {
         </button>
       </div>
 
+      <RecordToolbar<Project>
+        label="projects"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={data.projects}
+        result={result}
+        searchPlaceholder="Search projects…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="recent"
+        resultLabel={(shown, total) => `${shown} of ${total} projects`}
+      />
+
       {projects.length === 0 ? (
         <div className="card">
-          <EmptyState
-            icon="🛠️"
-            title="No projects yet"
-            text="Add work or personal projects. They stay available forever — useful for future resumes and reviews."
-            action={
-              <button className="btn btn-primary btn-sm" onClick={openNew}>
-                Add your first project
-              </button>
-            }
-          />
+          {result.emptyByFilter ? (
+            <FilteredEmptyState noun="projects" onClear={() => view.replace(clearFilters(query))} />
+          ) : (
+            <EmptyState
+              icon="🛠️"
+              title="No projects yet"
+              text="Add work or personal projects. They stay available forever — useful for future resumes and reviews."
+              action={
+                <button className="btn btn-primary btn-sm" onClick={openNew}>
+                  Add your first project
+                </button>
+              }
+            />
+          )}
         </div>
       ) : (
         <div className="grid grid-2">
-          {projects.map((p) => (
+          {projects.map((p: Project) => (
             <div className="goal-card" key={p.id}>
               <div className="goal-title-row">
                 <div>
@@ -499,7 +602,42 @@ function AchievementsTab() {
     });
   };
 
-  const achievements = [...data.achievements].sort((a, b) => b.date.localeCompare(a.date));
+  const view = useRecordViewFor('career/achievements', makeQuery({ defaultSort: 'newest' }));
+  const query = view.query;
+  const spec = useMemo<RecordViewSpec<Achievement>>(() => ({
+    key: 'career/achievements',
+    searchKeys: (a) => [a.description, a.impact, a.notes],
+    quickFilters: [
+      { id: 'recent', label: 'Recent', test: (a) => a.date >= addDays(todayStr(), -90) },
+      { id: 'by-skill', label: 'By skill', test: (a) => a.skillIds.length > 0 },
+      { id: 'by-project', label: 'By project', test: (a) => !!a.projectId },
+    ],
+    filters: [
+      {
+        id: 'skill',
+        label: 'Skill',
+        type: 'select',
+        placeholder: 'Any skill',
+        options: data.skills.map((s) => ({ value: s.id, label: s.name })),
+        match: (a, v) => a.skillIds.includes(String(v)),
+      },
+      {
+        id: 'project',
+        label: 'Project',
+        type: 'select',
+        placeholder: 'Any project',
+        options: data.projects.map((p) => ({ value: p.id, label: p.name })),
+        match: (a, v) => a.projectId === v,
+      },
+    ],
+    sortOptions: [
+      { id: 'newest', label: 'Newest', compare: (a, b) => b.date.localeCompare(a.date) },
+      { id: 'oldest', label: 'Oldest', compare: (a, b) => a.date.localeCompare(b.date) },
+    ],
+    defaultSort: 'newest',
+  }), [data.skills, data.projects]);
+  const result = useMemo(() => runQuery(data.achievements, spec, query), [data.achievements, spec, query]);
+  const achievements = result.rows;
   const skillById = (id: string) => data.skills.find((s) => s.id === id);
 
   return (
@@ -513,22 +651,41 @@ function AchievementsTab() {
         </button>
       </div>
 
+      <RecordToolbar<Achievement>
+        label="achievements"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={data.achievements}
+        result={result}
+        searchPlaceholder="Search achievements…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="newest"
+        resultLabel={(shown, total) => `${shown} of ${total} achievements`}
+      />
+
       {achievements.length === 0 ? (
         <div className="card">
-          <EmptyState
-            icon="🏆"
-            title="No achievements recorded"
-            text="Record wins as they happen — a promotion, a shipped product, a hard conversation handled well."
-            action={
-              <button className="btn btn-primary btn-sm" onClick={openNew}>
-                Record your first achievement
-              </button>
-            }
-          />
+          {result.emptyByFilter ? (
+            <FilteredEmptyState noun="achievements" onClear={() => view.replace(clearFilters(query))} />
+          ) : (
+            <EmptyState
+              icon="🏆"
+              title="No achievements recorded"
+              text="Record wins as they happen — a promotion, a shipped product, a hard conversation handled well."
+              action={
+                <button className="btn btn-primary btn-sm" onClick={openNew}>
+                  Record your first achievement
+                </button>
+              }
+            />
+          )}
         </div>
       ) : (
         <div className="grid" style={{ gap: 10 }}>
-          {achievements.map((a) => {
+          {achievements.map((a: Achievement) => {
             const proj = data.projects.find((p) => p.id === a.projectId);
             return (
               <div className="card" key={a.id} style={{ padding: 16 }}>

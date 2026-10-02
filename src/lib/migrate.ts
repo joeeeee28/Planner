@@ -69,6 +69,12 @@ export function hasMeaningfulData(d: AppData | null | undefined): boolean {
     d.weekly ? Object.keys(d.weekly).length : 0,
     d.periodReviews ? Object.keys(d.periodReviews).length : 0,
     d.cycleReviews ? Object.keys(d.cycleReviews).length : 0,
+    // V4.1/V4.2 records are data too — a document holding only cards or people
+    // must not be treated as “empty” during the local → cloud migration.
+    d.creditCards?.length ?? 0,
+    d.cardPayments?.length ?? 0,
+    d.people?.length ?? 0,
+    d.sources?.length ?? 0,
   ];
   return counts.some((n) => n > 0);
 }

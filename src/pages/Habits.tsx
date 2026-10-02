@@ -4,6 +4,14 @@ import { addDays, daysInMonth, formatDateMed, monthLabel, monthMatrix, parseDate
 import { habitMonthlySeries, habitScheduledOn, habitStats, type HabitStats } from '../lib/analytics';
 import type { Habit } from '../lib/types';
 import { Modal, ProgressBar, EmptyState, cx } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import {
+  clearFilters,
+  makeQuery,
+  runQuery,
+  type RecordViewSpec,
+} from '../lib/recordQuery';
 import { IconEdit, IconFlame, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
 
@@ -20,7 +28,60 @@ export function HabitsTab() {
   const selected = data.habits.find((h) => h.id === selectedId) ?? null;
 
   const activeHabits = data.habits.filter((h) => h.active);
-  const allHabits = data.habits;
+
+  // V4.1 — quick views (Today · Active · Paused); advanced filters stay closed.
+  const view = useRecordViewFor('growth/habits', makeQuery({ defaultSort: 'name' }));
+  const query = view.query;
+  const statsById = useMemo(() => {
+    const m = new Map<string, { pct: number; last?: string }>();
+    for (const h of data.habits) {
+      const pct = habitStats(h, data.habitCompletions, addDays(t, -30), t).pct;
+      const days = Object.keys(data.habitCompletions[h.id] ?? {}).sort();
+      m.set(h.id, { pct, last: days[days.length - 1] });
+    }
+    return m;
+  }, [data.habits, data.habitCompletions, t]);
+
+  const spec = useMemo<RecordViewSpec<Habit>>(() => ({
+    key: 'growth/habits',
+    searchKeys: (h) => [h.name],
+    quickFilters: [
+      { id: 'today', label: 'Today', test: (h) => h.active && habitScheduledOn(h, t) },
+      { id: 'active', label: 'Active', test: (h) => h.active },
+      { id: 'paused', label: 'Paused', test: (h) => !h.active },
+    ],
+    filters: [
+      {
+        id: 'frequency',
+        label: 'Frequency',
+        type: 'radio',
+        options: [
+          { value: 'daily', label: 'Every day' },
+          { value: 'chosen', label: 'Chosen days' },
+        ],
+        match: (h, v) => (v === 'daily' ? h.daysOfWeek.length === 0 : h.daysOfWeek.length > 0),
+      },
+      {
+        id: 'time',
+        label: 'Time of day',
+        type: 'radio',
+        options: [
+          { value: 'morning', label: 'Morning' },
+          { value: 'afternoon', label: 'Afternoon' },
+          { value: 'evening', label: 'Evening' },
+        ],
+        advanced: true,
+        match: (h, v) => (h.preferredTime ?? '') === v,
+      },
+    ],
+    sortOptions: [
+      { id: 'name', label: 'Name', compare: (a, b) => a.name.localeCompare(b.name) },
+      { id: 'consistency', label: 'Consistency', compare: (a, b) => (statsById.get(b.id)?.pct ?? 0) - (statsById.get(a.id)?.pct ?? 0) },
+      { id: 'recent', label: 'Recent activity', compare: (a, b) => (statsById.get(b.id)?.last ?? '').localeCompare(statsById.get(a.id)?.last ?? '') },
+    ],
+    defaultSort: 'name',
+  }), [t, statsById]);
+  const result = useMemo(() => runQuery(data.habits, spec, query), [data.habits, spec, query]);
 
   const toggle = (habitId: string, date: string) =>
     update((d) => {
@@ -84,8 +145,29 @@ export function HabitsTab() {
         </div>
       )}
 
+      <RecordToolbar<Habit>
+        label="habits"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={data.habits}
+        result={result}
+        searchPlaceholder="Search habits…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="name"
+        resultLabel={(shown, total) => `${shown} of ${total} habits`}
+      />
+
+      {result.emptyByFilter && (
+        <div className="card mb-16">
+          <FilteredEmptyState noun="habits" onClear={() => view.replace(clearFilters(query))} />
+        </div>
+      )}
+
       <div className="habit-grid mb-16">
-        {activeHabits.map((h) => {
+        {result.rows.map((h) => {
           const comps = data.habitCompletions[h.id] ?? {};
           const doneToday = !!comps[t];
           const monthStats = habitStats(h, data.habitCompletions, addDays(t, -30), t);
@@ -131,31 +213,6 @@ export function HabitsTab() {
           );
         })}
       </div>
-
-      {allHabits.length > 0 && (
-        <>
-          <h2 className="card-title mb-16" style={{ fontSize: 18 }}>
-            All habits {data.habits.some((h) => !h.active) && <span className="tiny muted">(inactive included)</span>}
-          </h2>
-          <div className="card mb-16">
-            <div className="flex flex-wrap" style={{ gap: 8 }}>
-              {allHabits.map((h) => {
-                const stats = habitStats(h, data.habitCompletions, addDays(t, -30), t);
-                return (
-                  <button
-                    key={h.id}
-                    className={`btn btn-sm ${h.active ? '' : 'btn-ghost'}`}
-                    style={h.active ? undefined : { opacity: 0.6 }}
-                    onClick={() => setSelectedId(h.id)}
-                  >
-                    {h.icon} {h.name} · {stats.pct}%
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
 
       {modal && (
         <HabitModal

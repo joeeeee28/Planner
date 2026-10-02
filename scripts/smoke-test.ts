@@ -178,12 +178,18 @@ async function main() {
   // Test 4 — income edit flow (the reported bug): open Edit on income row,
   // change amount, save → same ID, no duplicate, persists.
   {
+    // Dates are relative to "now" — the Transactions tab opens on the current
+    // month, so hard-coded months make this scenario rot as the clock moves.
+    const nowD = new Date();
+    const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = isoDay(nowD);
+    const yesterday = isoDay(new Date(nowD.getTime() - 86400000));
     const stored = JSON.stringify({
       onboarded: true,
       settings: { name: 'T', finance: { incomeCategories: ['Salary','Freelance','Business','Interest','Investment','Bonus','Gift','Other'], expenseCategories: ['Food','Transport'], currency: 'INR' } },
       transactions: [
-        { id: 'tx-1', type: 'income', amount: 50000, date: '2026-09-01', category: 'Salary', description: 'September salary', paymentType: 'Bank', createdAt: '2026-09-01T10:00:00Z' },
-        { id: 'tx-2', type: 'expense', amount: 12000, date: '2026-09-02', category: 'Food', createdAt: '2026-09-02T10:00:00Z' },
+        { id: 'tx-1', type: 'income', amount: 50000, date: today, category: 'Salary', description: 'September salary', paymentType: 'Bank', createdAt: `${today}T10:00:00Z` },
+        { id: 'tx-2', type: 'expense', amount: 12000, date: yesterday, category: 'Food', createdAt: `${yesterday}T10:00:00Z` },
       ],
     });
     const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {

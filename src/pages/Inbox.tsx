@@ -2,13 +2,21 @@
 // Unscheduled tasks + notes/ideas/future actions, each with
 // schedule · convert · link goal · edit · archive · delete.
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { staleRows } from '../lib/stale';
 import { navigate } from '../lib/router';
 import { todayStr, formatDateMed } from '../lib/dates';
 import { inboxTasks, tasksOf, noteReschedule } from '../lib/plan';
 import { EmptyState } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import {
+  clearFilters,
+  makeQuery,
+  runQuery,
+  type RecordViewSpec,
+} from '../lib/recordQuery';
 import { TaskRow } from '../components/TaskRow';
 import { QuickAddModal } from '../components/QuickAdd';
 import { uid } from '../lib/uid';
@@ -20,9 +28,24 @@ const KIND_META: Record<InboxItem['kind'], { icon: string; label: string }> = {
   future: { icon: '🗓', label: 'Future action' },
 };
 
+/**
+ * One row shape for the whole Inbox so search / quick filters / sort apply to
+ * tasks and notes alike. Capture-first: nothing is filtered by default.
+ */
+interface InboxRow {
+  key: string;
+  kind: 'task' | 'note';
+  text: string;
+  createdAt: string;
+  archived: boolean;
+  itemKind?: InboxItem['kind'];
+  goalId?: string;
+  task?: PlannedTask;
+  item?: InboxItem;
+}
+
 export function InboxPage() {
   const { data, update } = useApp();
-  const [showArchived, setShowArchived] = useState(false);
   const [capture, setCapture] = useState(false);
   const t = todayStr();
 
@@ -30,7 +53,73 @@ export function InboxPage() {
   const unscheduled = inboxTasks(tasks);
   const openNotes = (data.inbox ?? []).filter((i) => !i.archived);
   const archived = (data.inbox ?? []).filter((i) => i.archived);
-  const notes = showArchived ? [...openNotes, ...archived] : openNotes;
+
+  const rows: InboxRow[] = [
+    ...unscheduled.map((task) => ({
+      key: `t:${task.id}`,
+      kind: 'task' as const,
+      text: task.text,
+      createdAt: task.createdAt,
+      archived: false,
+      goalId: task.goalId,
+      task,
+    })),
+    ...[...openNotes, ...archived].map((item) => ({
+      key: `n:${item.id}`,
+      kind: 'note' as const,
+      text: item.text,
+      createdAt: item.createdAt,
+      archived: !!item.archived,
+      itemKind: item.kind,
+      goalId: item.goalId,
+      item,
+    })),
+  ];
+
+  // V4.1 — All · Unscheduled · Notes · Archived. Nothing else.
+  const view = useRecordViewFor('inbox', makeQuery({ defaultSort: 'newest' }));
+  const query = view.query;
+  const spec = useMemo<RecordViewSpec<InboxRow>>(() => ({
+    key: 'inbox',
+    searchKeys: (r) => [r.text],
+    quickFilters: [
+      { id: 'unscheduled', label: 'Unscheduled', test: (r) => r.kind === 'task' },
+      { id: 'notes', label: 'Notes', test: (r) => r.kind === 'note' && !r.archived },
+      { id: 'archived', label: 'Archived', test: (r) => r.archived },
+    ],
+    filters: [
+      {
+        id: 'kind',
+        label: 'Type',
+        type: 'select',
+        placeholder: 'Any type',
+        options: [
+          { value: 'task', label: 'Unscheduled task' },
+          { value: 'note', label: 'Note' },
+          { value: 'idea', label: 'Idea' },
+          { value: 'future', label: 'Future action' },
+        ],
+        match: (r, v) => (v === 'task' ? r.kind === 'task' : r.kind === 'note' && r.itemKind === v),
+      },
+      {
+        id: 'goal',
+        label: 'Goal',
+        type: 'select',
+        placeholder: 'Any goal',
+        options: data.goals.map((g) => ({ value: g.id, label: g.title })),
+        match: (r, v) => r.goalId === v,
+      },
+    ],
+    sortOptions: [
+      { id: 'newest', label: 'Newest', compare: (a, b) => b.createdAt.localeCompare(a.createdAt) },
+      { id: 'oldest', label: 'Oldest', compare: (a, b) => a.createdAt.localeCompare(b.createdAt) },
+      { id: 'name', label: 'Name', compare: (a, b) => a.text.localeCompare(b.text) },
+    ],
+    defaultSort: 'newest',
+  }), [data.goals]);
+  const result = useMemo(() => runQuery(rows, spec, query), [rows, spec, query]);
+  const visibleTasks = result.rows.filter((r) => r.kind === 'task');
+  const visibleNotes = result.rows.filter((r) => r.kind === 'note');
 
   const patchTask = (id: string, patch: Partial<PlannedTask>) =>
     update((d) => {
@@ -95,7 +184,6 @@ export function InboxPage() {
     });
   };
 
-  const empty = unscheduled.length === 0 && openNotes.length === 0;
 
   return (
     <div className="page">
@@ -111,6 +199,21 @@ export function InboxPage() {
       </div>
 
       {capture && <QuickAddModal initialKind="note" onClose={() => setCapture(false)} />}
+
+      <RecordToolbar<InboxRow>
+        label="inbox"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={rows}
+        result={result}
+        searchPlaceholder="Search inbox…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="newest"
+        resultLabel={(shown, total) => `${shown} of ${total} items`}
+      />
 
       {/* needs a decision — stale items (aged > 7 days) get a gentle nudge */}
       {(() => {
@@ -139,15 +242,17 @@ export function InboxPage() {
       <section className="panel section-gap">
         <h2 className="panel-title">Tasks</h2>
         <p className="panel-sub">Tasks without a day. Schedule one and it moves to your plan.</p>
-        {unscheduled.length === 0 ? (
-          <EmptyState
-            icon="☑"
-            title="No unscheduled tasks"
-            text="Quick-add a Task and leave “When” on Inbox — it will wait here until you give it a day."
-          />
+        {visibleTasks.length === 0 ? (
+          unscheduled.length === 0 ? (
+            <EmptyState
+              icon="☑"
+              title="No unscheduled tasks"
+              text="Quick-add a Task and leave “When” on Inbox — it will wait here until you give it a day."
+            />
+          ) : null
         ) : (
           <div className="mt-8">
-            {unscheduled.map((task) => (
+            {visibleTasks.map(({ task }) => task && (
               <InboxTaskRow
                 key={task.id}
                 task={task}
@@ -165,27 +270,29 @@ export function InboxPage() {
       <section className="panel section-gap">
         <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
           <h2 className="panel-title">Notes & ideas</h2>
-          {archived.length > 0 && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowArchived((v) => !v)}>
-              {showArchived ? 'Hide archived' : `Archived (${archived.length})`}
+          {archived.length > 0 && query.quick !== 'archived' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => view.patch({ quick: 'archived' })}>
+              Archived ({archived.length})
             </button>
           )}
         </div>
         <p className="panel-sub">No decision needed yet — schedule it, convert it, or let it wait.</p>
-        {notes.length === 0 ? (
-          <EmptyState
-            icon="✦"
-            title="Inbox is empty"
-            text="Ideas, notes and future actions you capture will wait here — calm, open, and unscheduled."
-          />
+        {visibleNotes.length === 0 ? (
+          openNotes.length === 0 ? (
+            <EmptyState
+              icon="✦"
+              title="Inbox is empty"
+              text="Ideas, notes and future actions you capture will wait here — calm, open, and unscheduled."
+            />
+          ) : null
         ) : (
           <div className="mt-8 flex flex-col" style={{ gap: 6 }}>
-            {notes.map((item) => (
+            {visibleNotes.map(({ item }) => item && (
               <InboxNoteRow
                 key={item.id}
                 item={item}
                 goalTitles={data.goals.map((g) => ({ id: g.id, title: g.title }))}
-                archivedView={showArchived && !!item.archived}
+                archivedView={query.quick === 'archived'}
                 onPatch={(p) => patchItem(item.id, p)}
                 onDelete={() => deleteItem(item.id)}
                 onConvert={() => convertToTask(item)}
@@ -196,8 +303,14 @@ export function InboxPage() {
         )}
       </section>
 
+      {result.emptyByFilter && (
+        <div className="card mt-16">
+          <FilteredEmptyState noun="inbox items" onClear={() => view.replace(clearFilters(query))} />
+        </div>
+      )}
+
       {/* empty whole-inbox state */}
-      {empty && (
+      {unscheduled.length === 0 && openNotes.length === 0 && (
         <div className="panel-flat mt-16" style={{ textAlign: 'center', padding: '28px 16px' }}>
           <p className="small muted" style={{ margin: 0 }}>
             Everything is decided. ✨ When thoughts arrive mid-day, capture them with <b>Quick add</b> → <b>Note</b> or <b>Task</b> — the Inbox holds them without pressure.

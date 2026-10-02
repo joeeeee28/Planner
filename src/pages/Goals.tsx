@@ -4,6 +4,17 @@ import { formatDateMed, todayStr } from '../lib/dates';
 import { goalDeadlineInfo, goalEffectiveProgress } from '../lib/analytics';
 import { GOAL_LEVELS, GOAL_LEVEL_LABELS, type Goal, type GoalLevel, type GoalStatus, type GoalTargetType } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import {
+  clearFilters,
+  makeQuery,
+  runQuery,
+  type FilterField,
+  type QuickFilter,
+  type RecordViewSpec,
+  type SortOption,
+} from '../lib/recordQuery';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { QuickAddModal } from '../components/QuickAdd';
 import { GoalDetailPage } from './GoalDetail';
@@ -114,8 +125,6 @@ function GoalsList() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
   const [draft, setDraft] = useState<GoalDraft>(emptyDraft());
-  const [filterLevel, setFilterLevel] = useState<GoalLevel | 'all'>('all');
-  const [filterStatus, setFilterStatus] = useState<GoalStatus | 'all'>('all');
 
   const openCreate = (level?: GoalLevel, parentId?: string) => {
     setEditing(null);
@@ -240,14 +249,101 @@ function GoalsList() {
     });
   };
 
-  const filtered = useMemo(
-    () =>
-      data.goals
-        .filter((g) => (filterLevel === 'all' ? true : g.level === filterLevel))
-        .filter((g) => (filterStatus === 'all' ? true : g.status === filterStatus))
-        .sort((a, b) => a.startDate.localeCompare(b.startDate)),
-    [data.goals, filterLevel, filterStatus],
-  );
+  // V4.1 — one calm toolbar: quick views first, advanced filters in the drawer.
+  const view = useRecordViewFor('goals', makeQuery({ defaultSort: 'priority' }));
+  const query = view.query;
+  const healthById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of data.goals) map.set(g.id, healthForGoal(g, data).state);
+    return map;
+  }, [data]);
+
+  const spec = useMemo<RecordViewSpec<Goal>>(() => ({
+    key: 'goals',
+    searchKeys: (g) => [g.title, g.description, g.notes],
+    quickFilters: [
+      { id: 'active', label: 'Active', test: (g) => g.status === 'in-progress' || g.status === 'not-started' },
+      {
+        id: 'at-risk',
+        label: 'At risk',
+        test: (g) => {
+          const h = healthById.get(g.id);
+          return g.status !== 'completed' && (h === 'at-risk' || h === 'overdue' || h === 'needs-attention');
+        },
+      },
+      { id: 'completed', label: 'Completed', test: (g) => g.status === 'completed' },
+      { id: 'priority', label: 'High priority', test: (g) => (g.priority ?? 0) >= 2 },
+    ] as QuickFilter<Goal>[],
+    filters: [
+      {
+        id: 'level',
+        label: 'Level',
+        type: 'select',
+        placeholder: 'Any level',
+        options: GOAL_LEVELS.map((l) => ({ value: l, label: GOAL_LEVEL_LABELS[l] })),
+        match: (g, v) => g.level === v,
+      },
+      {
+        id: 'area',
+        label: 'Area',
+        type: 'select',
+        placeholder: 'Any area',
+        options: data.growthAreas.map((a) => ({ value: a.id, label: `${a.icon} ${a.name}` })),
+        match: (g, v) => g.categoryId === v,
+      },
+      {
+        id: 'priority',
+        label: 'Priority',
+        type: 'radio',
+        options: [
+          { value: 'high', label: 'High' },
+          { value: 'medium', label: 'Medium' },
+          { value: 'low', label: 'Low' },
+        ],
+        match: (g, v) => {
+          const pr = g.priority ?? 0;
+          if (v === 'high') return pr >= 3;
+          if (v === 'medium') return pr === 2;
+          return pr <= 1;
+        },
+      },
+      {
+        id: 'status',
+        label: 'Status',
+        type: 'select',
+        placeholder: 'Any status',
+        options: (['not-started', 'in-progress', 'completed', 'paused', 'abandoned'] as GoalStatus[]).map((st) => ({ value: st, label: STATUS_LABELS[st] })),
+        match: (g, v) => g.status === v,
+      },
+      {
+        id: 'deadline',
+        label: 'Deadline',
+        type: 'radio',
+        options: [
+          { value: 'overdue', label: 'Overdue' },
+          { value: 'soon', label: 'Due in 30 days' },
+          { value: 'none', label: 'No deadline' },
+        ],
+        advanced: true,
+        match: (g, v) => {
+          const dl = goalDeadlineInfo(g);
+          if (v === 'overdue') return dl.status === 'overdue';
+          if (v === 'soon') return dl.status === 'due-soon';
+          return !g.targetDate;
+        },
+      },
+    ] as FilterField<Goal>[],
+    sortOptions: [
+      { id: 'priority', label: 'Priority', compare: (a, b) => (b.priority ?? 0) - (a.priority ?? 0) || (a.targetDate ?? '9999').localeCompare(b.targetDate ?? '9999') },
+      { id: 'deadline', label: 'Deadline', compare: (a, b) => (a.targetDate ?? '9999').localeCompare(b.targetDate ?? '9999') },
+      { id: 'progress', label: 'Progress', compare: (a, b) => goalEffectiveProgress(b) - goalEffectiveProgress(a) },
+      { id: 'newest', label: 'Newest', compare: (a, b) => b.createdAt.localeCompare(a.createdAt) },
+      { id: 'name', label: 'Name', compare: (a, b) => a.title.localeCompare(b.title) },
+    ] as SortOption<Goal>[],
+    defaultSort: 'priority',
+  }), [data.growthAreas, healthById]);
+  const result = useMemo(() => runQuery(data.goals, spec, query), [data.goals, spec, query]);
+  const filtered = result.rows;
 
   // V4: one clearly visible next action per active goal (linked task first)
   const [quickGoal, setQuickGoal] = useState<string | null>(null);
@@ -256,12 +352,6 @@ function GoalsList() {
 
   const goalById = (id?: string) => data.goals.find((g) => g.id === id);
   const habitsById = (ids: string[]) => data.habits.filter((h) => ids.includes(h.id));
-
-  const counts = useMemo(() => {
-    const c: Record<GoalLevel, number> = { 'long-term': 0, yearly: 0, quarterly: 0, monthly: 0, weekly: 0, 'daily-action': 0 };
-    for (const g of data.goals) c[g.level]++;
-    return c;
-  }, [data.goals]);
 
   return (
     <div>
@@ -278,44 +368,37 @@ function GoalsList() {
         </button>
       </div>
 
-      {/* hierarchy strip */}
-      <div className="flex flex-wrap mb-16" style={{ gap: 6 }}>
-        {GOAL_LEVELS.map((lvl) => (
-          <button
-            key={lvl}
-            className={`btn btn-sm ${filterLevel === lvl ? 'btn-primary' : ''}`}
-            onClick={() => setFilterLevel(filterLevel === lvl ? 'all' : lvl)}
-            title={GOAL_LEVEL_LABELS[lvl]}
-          >
-            {GOAL_LEVEL_LABELS[lvl].replace(' goal', '').replace(' action', '')} · {counts[lvl]}
-          </button>
-        ))}
-        <span style={{ width: 8 }} />
-        {(['all', 'in-progress', 'completed', 'paused', 'not-started', 'abandoned'] as (GoalStatus | 'all')[]).map(
-          (st) => (
-            <button
-              key={st}
-              className={`btn btn-sm btn-ghost ${filterStatus === st ? 'btn-primary' : ''}`}
-              onClick={() => setFilterStatus(filterStatus === st ? 'all' : st)}
-            >
-              {st === 'all' ? 'All statuses' : STATUS_LABELS[st]}
-            </button>
-          ),
-        )}
-      </div>
+      <RecordToolbar<Goal>
+        label="goals"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={data.goals}
+        result={result}
+        searchPlaceholder="Search goals…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="priority"
+        resultLabel={(shown, total) => `${shown} of ${total} goals`}
+      />
 
       {filtered.length === 0 ? (
         <div className="card">
-          <EmptyState
-            icon="🎯"
-            title="No goals here yet"
-            text="Start with a long-term goal, then break it down into yearly, quarterly, monthly, weekly and daily actions."
-            action={
-              <button className="btn btn-primary btn-sm" onClick={() => openCreate('long-term')}>
-                Create a long-term goal
-              </button>
-            }
-          />
+          {result.emptyByFilter ? (
+            <FilteredEmptyState noun="goals" onClear={() => view.replace(clearFilters(query))} />
+          ) : (
+            <EmptyState
+              icon="🎯"
+              title="No goals here yet"
+              text="Start with a long-term goal, then break it down into yearly, quarterly, monthly, weekly and daily actions."
+              action={
+                <button className="btn btn-primary btn-sm" onClick={() => openCreate('long-term')}>
+                  Create a long-term goal
+                </button>
+              }
+            />
+          )}
         </div>
       ) : (
         <div className="grid grid-2">
@@ -337,6 +420,9 @@ function GoalsList() {
                     <div className="flex mt-8" style={{ gap: 6, flexWrap: 'wrap' }}>
                       <span className={`badge ${STATUS_CLASS[g.status]}`}>{STATUS_LABELS[g.status]}</span>
                       <span className="badge">{GOAL_LEVEL_LABELS[g.level]}</span>
+                      {(g.priority ?? 0) >= 3 && <span className="badge badge-warning">High priority</span>}
+                      {healthById.get(g.id) === 'at-risk' && <span className="badge badge-warning">At risk</span>}
+                      {healthById.get(g.id) === 'overdue' && <span className="badge badge-danger">Overdue</span>}
                       {area && (
                         <span className="badge">
                           {area.icon} {area.name}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import {
@@ -14,6 +14,9 @@ import {
 } from '../lib/dates';
 import { dayActive } from '../lib/analytics';
 import { Stars } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import { clearFilters, makeQuery, runQuery, type RecordViewSpec } from '../lib/recordQuery';
 import { IconChevronLeft, IconChevronRight } from '../components/icons';
 
 const PROMPTS: { key: keyof import('../lib/types').DayJournal; label: string; placeholder: string }[] = [
@@ -77,6 +80,90 @@ export function JournalPage() {
   const activeCount = Object.values(data.daily).filter(
     (e) => e.journal && Object.values(e.journal).some((v) => v?.trim()),
   ).length;
+
+  // V4.1 — a calm entry list for the visible month. Search touches tags only:
+  // journal body text is deliberately never indexed by the filter engine.
+  interface JournalRow {
+    date: string;
+    rating: number;
+    tags: string[];
+    hasEntry: boolean;
+  }
+  const entries: JournalRow[] = useMemo(
+    () =>
+      Object.keys(data.daily)
+        .filter((d) => d.slice(0, 7) === mk)
+        .sort((a, b) => b.localeCompare(a))
+        .map((d) => {
+          const e = data.daily[d];
+          return {
+            date: d,
+            rating: e.rating ?? 0,
+            tags: e.tags ?? [],
+            hasEntry: !!e.journal && Object.values(e.journal).some((v) => v?.trim()),
+          };
+        }),
+    [data.daily, mk],
+  );
+
+  const view = useRecordViewFor('journal', makeQuery({ defaultSort: 'newest' }));
+  const query = view.query;
+  const spec = useMemo<RecordViewSpec<JournalRow>>(
+    () => ({
+      key: 'journal',
+      // tags only — never the journal body
+      searchKeys: (r) => [...r.tags, r.date],
+      quickFilters: [
+        { id: 'written', label: 'Has entry', test: (r) => r.hasEntry },
+        { id: 'rated', label: 'Rated', test: (r) => r.rating > 0 },
+      ],
+      filters: [
+        {
+          id: 'rating',
+          label: 'Rating',
+          type: 'radio',
+          options: [
+            { value: '5', label: '★ 5' },
+            { value: '4', label: '★ 4' },
+            { value: '3', label: '★ 3' },
+            { value: 'low', label: '★ 1–2' },
+          ],
+          match: (r, v) => (v === 'low' ? r.rating > 0 && r.rating <= 2 : r.rating === Number(v)),
+        },
+        {
+          id: 'tag',
+          label: 'Tag',
+          type: 'select',
+          placeholder: 'Any tag',
+          optionsFrom: (records) => {
+            const tags = new Set<string>();
+            for (const r of records) for (const tag of r.tags) tags.add(tag);
+            return [...tags].sort().map((tag) => ({ value: tag, label: tag }));
+          },
+          match: (r, v) => r.tags.includes(String(v)),
+        },
+        {
+          id: 'entry',
+          label: 'Entry',
+          type: 'radio',
+          options: [
+            { value: 'with', label: 'Has an entry' },
+            { value: 'without', label: 'Empty day' },
+          ],
+          advanced: true,
+          match: (r, v) => (v === 'with' ? r.hasEntry : !r.hasEntry),
+        },
+      ],
+      sortOptions: [
+        { id: 'newest', label: 'Newest', compare: (a, b) => b.date.localeCompare(a.date) },
+        { id: 'oldest', label: 'Oldest', compare: (a, b) => a.date.localeCompare(b.date) },
+        { id: 'rating', label: 'Rating', compare: (a, b) => b.rating - a.rating || b.date.localeCompare(a.date) },
+      ],
+      defaultSort: 'newest',
+    }),
+    [],
+  );
+  const result = useMemo(() => runQuery(entries, spec, query), [entries, spec, query]);
 
   return (
     <div>
@@ -195,6 +282,46 @@ export function JournalPage() {
                 );
               })}
             </div>
+          </div>
+
+          <div className="card mb-16">
+            <RecordToolbar<JournalRow>
+              label="journal"
+              query={query}
+              onChange={(patch) => view.patch(patch)}
+              onReplace={(next) => view.replace(next)}
+              records={entries}
+              result={result}
+              searchStyle="icon"
+              searchPlaceholder="Search tags…"
+              quickFilters={spec.quickFilters}
+              filters={spec.filters}
+              sortOptions={spec.sortOptions}
+              defaultSort="newest"
+              resultLabel={(shown, total) => `${shown} of ${total} days`}
+            />
+            {result.rows.length === 0 ? (
+              result.emptyByFilter ? (
+                <FilteredEmptyState noun="journal days" onClear={() => view.replace(clearFilters(query))} />
+              ) : (
+                <p className="small muted" style={{ margin: 0 }}>
+                  No entries in {monthLabel(mk)} yet — write one on the left, or move to another month.
+                </p>
+              )
+            ) : (
+              <div className="flex flex-col" style={{ gap: 2 }}>
+                {result.rows.map((r) => (
+                  <button key={r.date} className="recent-row" onClick={() => navigate(`journal/${r.date}`)}>
+                    <span className="grow small">{formatDateLong(r.date)}</span>
+                    {r.rating > 0 && <span className="tiny muted t-num">{'★'.repeat(r.rating)}</span>}
+                    {r.tags.slice(0, 3).map((tag) => (
+                      <span className="badge tiny" key={tag}>#{tag}</span>
+                    ))}
+                    {!r.hasEntry && <span className="tiny muted">empty</span>}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="card">

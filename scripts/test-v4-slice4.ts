@@ -392,7 +392,9 @@ function mkData(over: Partial<AppData>): AppData {
     createdAt: daysFromNow(-200),
     contributions: [
       { id: 'k1', amount: 30000, date: daysFromNow(-30), createdAt: '' },
-      { id: 'k2', amount: 30000, date: daysFromNow(-1), createdAt: '' },
+      // “This month” contribution — today, so it stays in the current month
+      // even when the suite runs on the 1st.
+      { id: 'k2', amount: 30000, date: daysFromNow(0), createdAt: '' },
     ],
   };
   assert(contributedInMonth(goal, mk) === 30000, 'month contribution sums records exactly once');
@@ -443,7 +445,7 @@ function mkData(over: Partial<AppData>): AppData {
   }
   const cap = weekCapacitySummary(data, now);
   assert(cap.plannedMin >= 60 && ['Open', 'Light', 'Comfortable', 'Full', 'Overloaded'].includes(cap.label), 'week capacity summary label');
-  const ms = monthSummary(mkData({ goals: [goalFixture({ id: 'mg1', title: 'Done goal', completedDate: daysFromNow(-1), status: 'completed' })], tasks: [] }), now.slice(0, 7));
+  const ms = monthSummary(mkData({ goals: [goalFixture({ id: 'mg1', title: 'Done goal', completedDate: now, status: 'completed' })], tasks: [] }), now.slice(0, 7));
   assert(ms.improved.some((l) => l.text.includes('goal')), 'month summary: improved includes completed goals');
   const qRows = quarterAutoRows(data, daysFromNow(-90), now);
   assert(qRows.some((r) => r.label === 'Goals completed'), 'quarter auto rows cover goals');
@@ -805,9 +807,11 @@ async function main() {
         habits: [{ id: 'ibh', name: 'Run', icon: '🏃', color: '#0f766e', daysOfWeek: [], active: true, createdAt: daysFromNow(-60) }],
         habitCompletions: { ibh: { [daysFromNow(-1)]: true, [t]: true } },
         transactions: [
-          { id: 'ix1', type: 'income', amount: 55000, date: daysFromNow(-1), category: 'Salary', createdAt: '' },
+          // “This month” must not depend on the calendar day: on the 1st,
+          // “yesterday” is already last month and the comparison flips.
+          { id: 'ix1', type: 'income', amount: 55000, date: t, category: 'Salary', createdAt: '' },
           { id: 'ix2', type: 'income', amount: 50000, date: daysFromNow(-35), category: 'Salary', createdAt: '' },
-          { id: 'ix3', type: 'expense', amount: 9000, date: daysFromNow(-2), category: 'Food', createdAt: '' },
+          { id: 'ix3', type: 'expense', amount: 9000, date: t, category: 'Food', createdAt: '' },
           { id: 'ix4', type: 'expense', amount: 14000, date: daysFromNow(-33), category: 'Food', createdAt: '' },
         ],
         savingsGoals: [{ id: 'isg', name: 'Trip fund', targetAmount: 80000, currentAmount: 40000, targetDate: daysFromNow(60), createdAt: daysFromNow(-100), contributions: [{ id: 'ic1', amount: 8000, date: daysFromNow(-2), createdAt: '' }] }],

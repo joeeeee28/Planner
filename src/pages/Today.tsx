@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { addDays, formatDateLong, formatDateMed, isToday, todayStr, cycleDayNumber, currentCycle, weekdayName } from '../lib/dates';
 import { dayProgress, habitScheduledOn, goalEffectiveProgress } from '../lib/analytics';
 import { formatMoney, todaySpending, todayIncome, nextOccurrence } from '../lib/finance';
 import { ProgressBar, TaskList, EmptyState, Stars } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import { clearFilters, makeQuery, runQuery, type RecordViewSpec } from '../lib/recordQuery';
 import { TaskRow } from '../components/TaskRow';
 import { QuickAddModal } from '../components/QuickAdd';
 import { IconChevronLeft, IconChevronRight, IconArrowRight } from '../components/icons';
@@ -118,6 +121,67 @@ export function TodayPage() {
       d.tasks = (d.tasks ?? []).filter((x) => x.id !== id);
       return { ...d };
     });
+
+  // V4.1 — Tasks: quick views first (All · Today · Upcoming · Overdue), sort by
+  // Priority/Time/Deadline, advanced filtering behind a single Filter button.
+  const taskView = useRecordViewFor('today/tasks', makeQuery({ defaultSort: 'priority', quick: 'today' }));
+  const taskQuery = taskView.query;
+  const taskSpec = useMemo<RecordViewSpec<PlannedTask>>(
+    () => ({
+      key: 'today/tasks',
+      searchKeys: (x) => [x.text, x.notes],
+      quickFilters: [
+        { id: 'today', label: 'Today', test: (x) => !x.done && x.date === date },
+        { id: 'upcoming', label: 'Upcoming', test: (x) => !x.done && !!x.date && x.date > date },
+        { id: 'overdue', label: 'Overdue', test: (x) => !x.done && ((!!x.due && x.due < t) || (!!x.date && x.date < t)) },
+        { id: 'completed', label: 'Completed', test: (x) => x.done },
+      ],
+      filters: [
+        {
+          id: 'goal',
+          label: 'Goal',
+          type: 'select',
+          placeholder: 'Any goal',
+          options: data.goals.map((g) => ({ value: g.id, label: g.title })),
+          match: (x, v) => x.goalId === v,
+        },
+        {
+          id: 'type',
+          label: 'Type',
+          type: 'radio',
+          options: [
+            { value: 'timed', label: 'Timed' },
+            { value: 'anytime', label: 'Anytime' },
+          ],
+          match: (x, v) => (v === 'timed' ? !!x.start : !x.start),
+        },
+        {
+          id: 'priority',
+          label: 'Priority',
+          type: 'radio',
+          options: [
+            { value: 'high', label: 'High' },
+            { value: 'normal', label: 'Normal' },
+          ],
+          advanced: true,
+          match: (x, v) => (v === 'high' ? (x.priority ?? 0) >= 2 : (x.priority ?? 0) < 2),
+        },
+      ],
+      sortOptions: [
+        { id: 'priority', label: 'Priority', compare: (a, b) => (b.priority ?? 0) - (a.priority ?? 0) || (a.start ?? '99:99').localeCompare(b.start ?? '99:99') },
+        { id: 'time', label: 'Time', compare: (a, b) => (a.start ?? '99:99').localeCompare(b.start ?? '99:99') },
+        { id: 'deadline', label: 'Deadline', compare: (a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999') || (a.date ?? '9999').localeCompare(b.date ?? '9999') },
+      ],
+      defaultSort: 'priority',
+    }),
+    [data.goals, date, t],
+  );
+  const taskResult = useMemo(() => runQuery(tasks, taskSpec, taskQuery), [tasks, taskSpec, taskQuery]);
+  const dayViewActive =
+    taskQuery.quick === 'today' &&
+    taskQuery.sort === 'priority' &&
+    taskQuery.q.trim() === '' &&
+    Object.values(taskQuery.filters).every((v) => v === undefined || v === '');
 
   const work = dayWorkload(data, date);
   const loadChipLevel = work.totalMin === 0 ? null : work.level;
@@ -357,10 +421,10 @@ export function TodayPage() {
         <RoutinesCard />
       )}
 
-      {/* DO NOW / UP NEXT */}
+      {/* TASKS — do now / up next by default; quick views + sort when you need them */}
       <section className="panel section-gap">
         <div className="flex" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
-          <h2 className="panel-title">Do now</h2>
+          <h2 className="panel-title">Tasks</h2>
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => {
@@ -371,56 +435,92 @@ export function TodayPage() {
             + Task <IconArrowRight size={13} />
           </button>
         </div>
-        {now.length === 0 && next.length === 0 ? (
-          <EmptyState
-            icon="☑"
-            title={isFuture ? 'Nothing planned for this day yet' : 'A clear day'}
-            text={
-              isFuture
-                ? 'Scheduled tasks will appear here — add one now or let the day arrive empty.'
-                : 'Capture tasks from anywhere with Quick add, or pull something in from the Inbox.'
-            }
-            action={
-              inboxCount > 0 ? (
-                <button className="btn btn-sm" onClick={() => navigate('inbox')}>
-                  Inbox has {inboxCount} unscheduled {inboxCount === 1 ? 'task' : 'tasks'}
-                </button>
-              ) : undefined
-            }
-          />
+        <p className="panel-sub">Top priorities first. Narrow the list only when you need to.</p>
+
+        <RecordToolbar<PlannedTask>
+          label="tasks"
+          query={taskQuery}
+          onChange={(patch) => taskView.patch(patch)}
+          onReplace={(next) => taskView.replace(next)}
+          records={tasks}
+          result={taskResult}
+          searchPlaceholder="Search tasks…"
+          searchStyle="icon"
+          quickFilters={taskSpec.quickFilters}
+          filters={taskSpec.filters}
+          sortOptions={taskSpec.sortOptions}
+          defaultSort="priority"
+          defaultQuick="today"
+          resultLabel={(shown, total) => `${shown} of ${total} tasks`}
+        />
+
+        {dayViewActive ? (
+          now.length === 0 && next.length === 0 ? (
+            <EmptyState
+              icon="☑"
+              title={isFuture ? 'Nothing planned for this day yet' : 'A clear day'}
+              text={
+                isFuture
+                  ? 'Scheduled tasks will appear here — add one now or let the day arrive empty.'
+                  : 'Capture tasks from anywhere with Quick add, or pull something in from the Inbox.'
+              }
+              action={
+                inboxCount > 0 ? (
+                  <button className="btn btn-sm" onClick={() => navigate('inbox')}>
+                    Inbox has {inboxCount} unscheduled {inboxCount === 1 ? 'task' : 'tasks'}
+                  </button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <div className="mt-8 flex flex-col" style={{ gap: 4 }}>
+              {now.length > 0 && (
+                <>
+                  <div className="bucket-label">Do now</div>
+                  {now.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      data={data}
+                      goalTitle={goalTitle(task.goalId)}
+                      onPatch={(p) => patchTask(task.id, p)}
+                      onDelete={() => deleteTask(task.id)}
+                    />
+                  ))}
+                </>
+              )}
+              {now.length > 0 && next.length > 0 && <div className="divider" style={{ margin: '8px 0' }} />}
+              {next.length > 0 && (
+                <>
+                  <div className="bucket-label">Up next</div>
+                  {next.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      data={data}
+                      goalTitle={goalTitle(task.goalId)}
+                      onPatch={(p) => patchTask(task.id, p)}
+                      onDelete={() => deleteTask(task.id)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )
+        ) : taskResult.rows.length === 0 ? (
+          <FilteredEmptyState noun="open tasks" onClear={() => taskView.replace(clearFilters(taskQuery))} />
         ) : (
           <div className="mt-8 flex flex-col" style={{ gap: 4 }}>
-            {now.length > 0 && (
-              <>
-                <div className="bucket-label">Do now</div>
-                {now.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    data={data}
-                    goalTitle={goalTitle(task.goalId)}
-                    onPatch={(p) => patchTask(task.id, p)}
-                    onDelete={() => deleteTask(task.id)}
-                  />
-                ))}
-              </>
-            )}
-            {now.length > 0 && next.length > 0 && <div className="divider" style={{ margin: '8px 0' }} />}
-            {next.length > 0 && (
-              <>
-                <div className="bucket-label">Up next</div>
-                {next.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    data={data}
-                    goalTitle={goalTitle(task.goalId)}
-                    onPatch={(p) => patchTask(task.id, p)}
-                    onDelete={() => deleteTask(task.id)}
-                  />
-                ))}
-              </>
-            )}
+            {taskResult.rows.map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                data={data}
+                goalTitle={goalTitle(task.goalId)}
+                onPatch={(p) => patchTask(task.id, p)}
+                onDelete={() => deleteTask(task.id)}
+              />
+            ))}
           </div>
         )}
 

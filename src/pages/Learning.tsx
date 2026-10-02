@@ -1,8 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { formatDateMed, todayStr } from '../lib/dates';
+import { addDays, formatDateMed, todayStr } from '../lib/dates';
 import { LEARNING_TYPES, type LearningItem, type LearningStatus, type LearningType } from '../lib/types';
 import { Modal, ProgressBar, Pct, EmptyState } from '../components/ui';
+import { FilteredEmptyState, RecordToolbar } from '../components/RecordToolbar';
+import { useRecordViewFor } from '../lib/recordView';
+import {
+  clearFilters,
+  makeQuery,
+  runQuery,
+  type RecordViewSpec,
+} from '../lib/recordQuery';
 import { ScheduleSheet } from '../components/ScheduleSheet';
 import { IconEdit, IconPlus, IconTrash } from '../components/icons';
 import { uid } from '../lib/uid';
@@ -65,9 +73,10 @@ export function LearningTab() {
   const [schedItemId, setSchedItemId] = useState<string | null>(null);
   const [appliedSched, setAppliedSched] = useState<Record<string, { date: string; start?: string }>>({});
   const [draft, setDraft] = useState<Draft>(emptyDraft());
-  const [filterType, setFilterType] = useState<LearningType | 'all'>('all');
-  const [filterStatus, setFilterStatus] = useState<LearningStatus | 'all'>('all');
-  const [learnedFilter, setLearnedFilter] = useState(false);
+  const t = todayStr();
+  // V4.1 — quick views (In Progress · Completed · Stalled) replace two chip walls.
+  const view = useRecordViewFor('growth/learning', makeQuery({ defaultSort: 'recent' }));
+  const query = view.query;
 
   const openNew = () => {
     setDraft(emptyDraft());
@@ -138,11 +147,61 @@ export function LearningTab() {
       return { ...d };
     });
 
-  const items = data.learning
-    .filter((l) => (filterType === 'all' ? true : l.type === filterType))
-    .filter((l) => (filterStatus === 'all' ? true : l.status === filterStatus))
-    .filter((l) => (learnedFilter ? l.whatILearned.trim().length > 0 : true))
-    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  const spec = useMemo<RecordViewSpec<LearningItem>>(() => ({
+    key: 'growth/learning',
+    searchKeys: (l) => [l.title, l.notes, l.whatILearned],
+    quickFilters: [
+      { id: 'current', label: 'In Progress', test: (l) => l.status === 'in-progress' || l.status === 'planned' },
+      { id: 'completed', label: 'Completed', test: (l) => l.status === 'completed' },
+      {
+        id: 'stalled',
+        label: 'Stalled',
+        test: (l) => (l.status === 'in-progress' || l.status === 'planned') && !!l.startDate && l.startDate < addDays(t, -60) && l.progress < 50,
+      },
+    ],
+    filters: [
+      {
+        id: 'type',
+        label: 'Type',
+        type: 'select',
+        placeholder: 'Any type',
+        options: LEARNING_TYPES.map((x) => ({ value: x, label: `${TYPE_ICON[x]} ${x[0].toUpperCase() + x.slice(1)}` })),
+        match: (l, v) => l.type === v,
+      },
+      {
+        id: 'goal',
+        label: 'Goal',
+        type: 'select',
+        placeholder: 'Any goal',
+        options: data.goals.map((g) => ({ value: g.id, label: g.title })),
+        match: (l, v) => l.goalId === v,
+      },
+      {
+        id: 'area',
+        label: 'Area',
+        type: 'select',
+        placeholder: 'Any area',
+        options: data.growthAreas.map((a) => ({ value: a.id, label: `${a.icon} ${a.name}` })),
+        match: (l, v) => l.categoryId === v,
+      },
+      {
+        id: 'learned',
+        label: 'Notes',
+        type: 'radio',
+        options: [{ value: 'has', label: 'Has “what I learned”' }],
+        advanced: true,
+        match: (l, v) => (v === 'has' ? l.whatILearned.trim().length > 0 : true),
+      },
+    ],
+    sortOptions: [
+      { id: 'recent', label: 'Recent', compare: (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') },
+      { id: 'progress', label: 'Progress', compare: (a, b) => b.progress - a.progress },
+      { id: 'name', label: 'Name', compare: (a, b) => a.title.localeCompare(b.title) },
+    ],
+    defaultSort: 'recent',
+  }), [data.goals, data.growthAreas, t]);
+  const result = useMemo(() => runQuery(data.learning, spec, query), [data.learning, spec, query]);
+  const items = result.rows;
 
   const inProgress = data.learning.filter((l) => l.status === 'in-progress').length;
   const completed = data.learning.filter((l) => l.status === 'completed').length;
@@ -181,32 +240,26 @@ export function LearningTab() {
         </div>
       </div>
 
-      <div className="flex flex-wrap mb-16" style={{ gap: 6 }}>
-        <button className={`btn btn-sm ${filterType === 'all' ? 'btn-primary' : ''}`} onClick={() => setFilterType('all')}>
-          All types
-        </button>
-        {LEARNING_TYPES.map((t) => (
-          <button key={t} className={`btn btn-sm ${filterType === t ? 'btn-primary' : ''}`} onClick={() => setFilterType(filterType === t ? 'all' : t)}>
-            {TYPE_ICON[t]} {t[0].toUpperCase() + t.slice(1)}s
-          </button>
-        ))}
-        <span style={{ width: 6 }} />
-        {(['all', 'in-progress', 'completed', 'planned', 'paused'] as (LearningStatus | 'all')[]).map((st) => (
-          <button key={st} className={`btn btn-sm btn-ghost ${filterStatus === st ? 'btn-primary' : ''}`} onClick={() => setFilterStatus(filterStatus === st ? 'all' : st)}>
-            {st === 'all' ? 'All statuses' : STATUS_LABELS[st]}
-          </button>
-        ))}
-        <button
-          className={`btn btn-sm btn-ghost ${learnedFilter ? 'btn-primary' : ''}`}
-          onClick={() => setLearnedFilter(!learnedFilter)}
-          title="Only items with a 'What I learned' note"
-        >
-          💡 Has learnings
-        </button>
-      </div>
+      <RecordToolbar<LearningItem>
+        label="learning"
+        query={query}
+        onChange={(patch) => view.patch(patch)}
+        onReplace={(next) => view.replace(next)}
+        records={data.learning}
+        result={result}
+        searchPlaceholder="Search learning…"
+        quickFilters={spec.quickFilters}
+        filters={spec.filters}
+        sortOptions={spec.sortOptions}
+        defaultSort="recent"
+        resultLabel={(shown, total) => `${shown} of ${total} learning items`}
+      />
 
       {items.length === 0 ? (
         <div className="card">
+          {result.emptyByFilter ? (
+            <FilteredEmptyState noun="learning items" onClear={() => view.replace(clearFilters(query))} />
+          ) : (
           <EmptyState
             icon="🧠"
             title="Nothing here yet"
@@ -217,10 +270,11 @@ export function LearningTab() {
               </button>
             }
           />
+          )}
         </div>
       ) : (
         <div className="grid" style={{ gap: 12 }}>
-          {items.map((l) => {
+          {items.map((l: LearningItem) => {
             const area = data.growthAreas.find((a) => a.id === l.categoryId);
             return (
               <div className="card" key={l.id} style={{ padding: 16 }}>

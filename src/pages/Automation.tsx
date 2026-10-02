@@ -9,6 +9,8 @@ import { useApp } from '../context/AppContext';
 import { todayStr, formatDateMed, addDays } from '../lib/dates';
 import type { PlannedTask, RecurrenceKind, RecurringTask, Routine, RoutineStep, TaskRecurrence } from '../lib/types';
 import { Modal, EmptyState } from '../components/ui';
+import { QuickViews } from '../components/RecordToolbar';
+import type { QuickFilter } from '../lib/recordQuery';
 import { IconPlus, IconTrash, IconEdit } from '../components/icons';
 import { uid } from '../lib/uid';
 import {
@@ -24,8 +26,22 @@ export function AutomationPage() {
   const { data } = useApp();
   const [recModal, setRecModal] = useState<null | { id?: string }>(null);
   const [rtModal, setRtModal] = useState<null | { id?: string }>(null);
-  const recs = data.recurringTasks ?? [];
-  const routines = data.routines ?? [];
+  const allRecs = data.recurringTasks ?? [];
+  const allRoutines = data.routines ?? [];
+
+  // V4.1 — each automation area keeps its own simple Active · Paused view.
+  const [recView, setRecView] = useState<string>('all');
+  const [rtView, setRtView] = useState<string>('all');
+  const recFilters: QuickFilter<(typeof allRecs)[number]>[] = [
+    { id: 'active', label: 'Active', test: (r) => r.active },
+    { id: 'paused', label: 'Paused', test: (r) => !r.active },
+  ];
+  const rtFilters: QuickFilter<(typeof allRoutines)[number]>[] = [
+    { id: 'active', label: 'Active', test: (r) => r.active },
+    { id: 'paused', label: 'Paused', test: (r) => !r.active },
+  ];
+  const recs = allRecs.filter((r) => (recView === 'all' ? true : recView === 'active' ? r.active : !r.active));
+  const routines = allRoutines.filter((r) => (rtView === 'all' ? true : rtView === 'active' ? r.active : !r.active));
 
   return (
     <div>
@@ -50,6 +66,16 @@ export function AutomationPage() {
             <IconPlus size={14} /> New recurring task
           </button>
         </div>
+        {allRecs.length > 0 && (
+          <div className="mt-8">
+            <QuickViews views={recFilters} active={recView} onSelect={setRecView} label="Recurring task view" />
+          </div>
+        )}
+        {allRecs.length > 0 && recView !== 'all' && (
+          <p className="tiny muted mt-8" style={{ marginBottom: 0 }} role="status">
+            {recs.length} of {allRecs.length} recurring tasks
+          </p>
+        )}
         <div className="mt-8">
           {recs.length === 0 ? (
             <EmptyState
@@ -77,6 +103,16 @@ export function AutomationPage() {
             <IconPlus size={14} /> New routine
           </button>
         </div>
+        {allRoutines.length > 0 && (
+          <div className="mt-8">
+            <QuickViews views={rtFilters} active={rtView} onSelect={setRtView} label="Routine view" />
+          </div>
+        )}
+        {allRoutines.length > 0 && rtView !== 'all' && (
+          <p className="tiny muted mt-8" style={{ marginBottom: 0 }} role="status">
+            {routines.length} of {allRoutines.length} routines
+          </p>
+        )}
         <div className="mt-8">
           {routines.length === 0 ? (
             <EmptyState
