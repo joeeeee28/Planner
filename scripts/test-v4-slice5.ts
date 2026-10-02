@@ -430,7 +430,7 @@ async function main() {
 
   // ── S5-7 Learning → Schedule a session ──
   {
-    const s = await boot(base + 'learning', async (w, fake) => {
+    const s = await boot(base + 'growth/learning', async (w, fake) => {
       const u = fake.seedUser(EMAIL, 'x', 'Jothika', UID);
       fake.createSession(u.id, EMAIL, 'Jothika');
       await pushUserDocument(fake, u.id, fixture('Jothika') as never);
