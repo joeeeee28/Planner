@@ -5,7 +5,7 @@ import { useLock } from '../context/LockContext';
 import { navigate } from '../lib/router';
 import { formatDateMed } from '../lib/dates';
 import { Modal } from '../components/ui';
-import { IconDownload, IconUpload, IconTrash, IconLock } from '../components/icons';
+import { IconDownload, IconUpload, IconTrash, IconLock, IconUser, IconInfo, IconHelp } from '../components/icons';
 import { uid } from '../lib/uid';
 import { validateImport } from '../lib/store';
 import { readMeta } from '../lib/cloudData';
@@ -373,7 +373,7 @@ export function SettingsPage() {
 
       <div className="grid grid-2">
         <div className="card">
-          <h2 className="card-title">👤 Profile</h2>
+          <h2 className="card-title"><IconUser size={18} /> Profile</h2>
           <div className="form-row">
             <label className="form-label">Your name</label>
             <input
@@ -711,7 +711,7 @@ export function SettingsPage() {
         </div>
 
         <div className="card">
-          <h2 className="card-title">ℹ️ About & System Status</h2>
+          <h2 className="card-title"><IconInfo size={18} /> About & System Status</h2>
           <div className="small muted" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px', fontSize: 13, marginTop: 8 }}>
             <span className="bold">Version:</span>
             <span>Growth OS {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'V4.6'}</span>
@@ -725,7 +725,7 @@ export function SettingsPage() {
         </div>
 
         <div className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2 className="card-title">❓ Review questions</h2>
+          <h2 className="card-title"><IconHelp size={18} /> Review questions</h2>
           <p className="card-sub">Customize the prompts used in weekly and monthly reviews. Changes apply immediately.</p>
           <div className="grid grid-2">
             <div>

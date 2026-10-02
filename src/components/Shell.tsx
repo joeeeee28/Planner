@@ -258,7 +258,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     setQ('');
                   }
                 }}
-                placeholder="Search…"
+                placeholder="Search or ⌘K…"
                 aria-label="Search your data"
                 aria-controls="search-results"
                 aria-activedescendant={activeIdx >= 0 ? `sr-${results[activeIdx]?.kind}-${results[activeIdx]?.id}` : undefined}
