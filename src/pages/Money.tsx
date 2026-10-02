@@ -1235,6 +1235,44 @@ function OverviewTab() {
         </div>
       </div>
 
+      {/* V5 Money Flow Visualization */}
+      <div className="money-flow-container">
+        <div className="flex flex-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <div className="bold small" style={{ textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)' }}>
+            Money Flow Pipeline ({scope})
+          </div>
+          <span className="tiny muted">Single Source of Truth · No Double Counting</span>
+        </div>
+        <div className="money-flow-pipeline">
+          <div className="money-flow-step">
+            <div className="step-label">1. Inflow</div>
+            <div className="step-val money-pos">{formatMoney(mm.income, currency)}</div>
+          </div>
+          <div className="money-flow-arrow">→</div>
+          <div className="money-flow-step">
+            <div className="step-label">2. Funds & People</div>
+            <div className="step-val">{formatMoney(split.trackedIn, currency)}</div>
+          </div>
+          <div className="money-flow-arrow">→</div>
+          <div className="money-flow-step">
+            <div className="step-label">3. Accounts</div>
+            <div className="step-val">{formatMoney(availTotal, currency)}</div>
+          </div>
+          <div className="money-flow-arrow">→</div>
+          <div className="money-flow-step">
+            <div className="step-label">4. Outflow</div>
+            <div className="step-val">{formatMoney(mm.expense, currency)}</div>
+          </div>
+          <div className="money-flow-arrow">→</div>
+          <div className="money-flow-step">
+            <div className="step-label">5. Net Saved</div>
+            <div className="step-val" style={{ color: mm.saved >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+              {formatMoney(mm.saved, currency)}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Accounts — V4.4 */}
       <div className="panel section-gap">
         <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>

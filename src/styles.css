@@ -4103,3 +4103,157 @@ textarea {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROWTH OS V5 — ENHANCED COMPONENT & LAYOUT STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Numeric typography for tabular alignment */
+.num, .tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Money Flow Diagram Pipeline */
+.money-flow-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-bottom: 24px;
+}
+
+.money-flow-pipeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: center;
+}
+
+.money-flow-step {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  text-align: center;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.money-flow-step:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-line);
+}
+
+.money-flow-step .step-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.money-flow-step .step-val {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.money-flow-arrow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--ink-3);
+}
+
+/* V5 Elevated Card */
+.v5-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.v5-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.v5-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.v5-card-title {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+/* Attention Center Highlights */
+.attention-card {
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attention-card.urgent {
+  border-left-color: var(--neg);
+  background: var(--neg-soft);
+}
+
+.attention-card.warning {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+/* Tab Pill Nav V5 */
+.v5-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.v5-tab {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.v5-tab:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.v5-tab.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
