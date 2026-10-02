@@ -31,7 +31,17 @@ import {
   sumContributionsInMonth,
   type BudgetStatus,
 } from '../lib/finance';
-import type { CardPayment, CreditCard, MoneySource, MoneySourceStatus, Person, Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
+import type { CardPayment, CreditCard, MoneyAccount, MoneyAccountType, MoneySource, MoneySourceStatus, Person, Transaction, TxType, SavingsGoal, Recurrence, Budget } from '../lib/types';
+import { MONEY_ACCOUNT_TYPES } from '../lib/types';
+import {
+  accountTotals,
+  accountTransactions,
+  makeAccount,
+  makeTransfer,
+  summarizeAccounts,
+  totalAvailableBalance,
+  type AccountTotals,
+} from '../lib/accounts';
 import {
   deriveSourceName,
   findSourceByName,
@@ -101,11 +111,12 @@ import {
   Line,
 } from 'recharts';
 
-type Tab = 'overview' | 'transactions' | 'income' | 'expenses' | 'creditcards' | 'savings' | 'budgets' | 'recurring' | 'history' | 'people' | 'sources';
+type Tab = 'overview' | 'transactions' | 'accounts' | 'income' | 'expenses' | 'creditcards' | 'savings' | 'budgets' | 'recurring' | 'history' | 'people' | 'sources';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'transactions', label: 'Transactions' },
+  { id: 'accounts', label: 'Accounts' },
   { id: 'income', label: 'Income' },
   { id: 'expenses', label: 'Expenses' },
   { id: 'creditcards', label: 'Credit Cards' },
@@ -149,6 +160,7 @@ export function MoneyPage() {
         <div className="spacer" />
         <div className="flex flex-wrap" style={{ gap: 6 }}>
           <button className="btn btn-sm" onClick={() => navigate('money/transactions')}>View transactions</button>
+          <button className="btn btn-sm" onClick={() => navigate('money/accounts')}>Accounts</button>
           <button className="btn btn-sm" onClick={() => navigate('money/people')}>People</button>
           <button className="btn btn-sm" onClick={() => navigate('money/sources')}>Sources</button>
         </div>
@@ -164,6 +176,7 @@ export function MoneyPage() {
 
       {tab === 'overview' && <OverviewTab />}
       {tab === 'transactions' && <TransactionsTab />}
+      {tab === 'accounts' && <AccountsTab accountId={route[2]} />}
       {tab === 'income' && <IncomeTab />}
       {tab === 'expenses' && <ExpensesTab />}
       {tab === 'creditcards' && <CreditCardsTab />}
@@ -193,6 +206,10 @@ interface TxDraft {
   purpose: string;
   /** V4.3 — which fund this money belongs to: '', NEW_SOURCE or a source id. */
   sourceId: string;
+  /** V4.4 — account linked to this transaction: paid from or received into. */
+  accountId: string;
+  /** V4.4 — destination account for transfers. */
+  transferAccountId: string;
   notes: string;
   recurrence: '' | Recurrence;
 }
@@ -207,6 +224,8 @@ const emptyDraft = (): TxDraft => ({
   personId: '',
   purpose: '',
   sourceId: '',
+  accountId: '',
+  transferAccountId: '',
   notes: '',
   recurrence: '',
 });
@@ -227,8 +246,10 @@ function TxModal({
   cards,
   people,
   sources,
+  accounts = [],
   transactions,
   onCreatePerson,
+  onCreateAccount,
 }: {
   modal: { type: TxType; tx?: Transaction };
   draft: TxDraft;
@@ -241,25 +262,36 @@ function TxModal({
   people: Person[];
   /** V4.3 — every fund; archived ones stay out of the picker unless already linked. */
   sources: MoneySource[];
+  /** V4.4 — money accounts */
+  accounts?: MoneyAccount[];
   /** V4.3.1 — needed to know how much is left in a fund before an expense. */
   transactions: Transaction[];
   /** Creates a person without leaving the transaction flow. Returns the new id. */
   onCreatePerson: (name: string, relationship: string) => string;
+  /** Creates an account without leaving the transaction flow. Returns the new id. */
+  onCreateAccount?: (name: string, type: MoneyAccountType, openingBalance: number) => string;
 }) {
   const [error, setError] = useState('');
   const [addingPerson, setAddingPerson] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
   const [newPersonRel, setNewPersonRel] = useState('');
+
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountType, setNewAccountType] = useState<MoneyAccountType>('Bank');
+  const [newAccountOpen, setNewAccountOpen] = useState('0');
+
   const [overConfirmed, setOverConfirmed] = useState(false);
   const [showOver, setShowOver] = useState(false);
   const sourceRef = useRef<HTMLSelectElement | null>(null);
   const isIncome = modal.type === 'income';
+  const isTransferTx = modal.type === 'transfer';
   const isCardExpense = modal.type === 'expense' && draft.paymentType === CREDIT_CARD_METHOD && cards.length > 0;
   // V4.3.1 — spending more than a source holds is allowed, but never silent.
   const linkedSource = draft.sourceId && draft.sourceId !== NEW_SOURCE ? sources.find((x) => x.id === draft.sourceId) : undefined;
   const draftAmount = safeAmount(Number(draft.amount)) || 0;
   const overspend =
-    !isIncome && linkedSource && draftAmount > 0
+    !isIncome && !isTransferTx && linkedSource && draftAmount > 0
       ? overspendBy(linkedSource, transactions, draftAmount, modal.tx?.id)
       : 0;
   const isOverspend = overspend > 0;
@@ -273,6 +305,16 @@ function TxModal({
     if (!draft.date || !safeDate(draft.date)) {
       setError('Enter a valid date.');
       return;
+    }
+    if (isTransferTx) {
+      if (!draft.accountId || !draft.transferAccountId) {
+        setError('Select both source (Paid from) and destination (Received into) accounts.');
+        return;
+      }
+      if (draft.accountId === draft.transferAccountId) {
+        setError('Source and destination accounts must be different.');
+        return;
+      }
     }
     // Ask once — “Continue anyway” or “Choose another source”. No duplicate
     // record is ever created: the transaction is still written exactly once.
@@ -288,14 +330,15 @@ function TxModal({
   return (
     <Modal
       key={modal.tx ? `edit-${modal.tx.id}` : `new-${modal.type}`}
-      title={modal.tx ? `Edit ${modal.type}` : modal.type === 'income' ? 'Add income' : 'Add expense'}
+      title={modal.tx ? `Edit ${modal.type}` : isTransferTx ? 'Transfer between accounts' : isIncome ? 'Add income' : 'Add expense'}
       onClose={onClose}
     >
+      {error && <div className="banner banner-error mb-12">{error}</div>}
       <div className="form-row">
         <label className="form-label">Type</label>
         <div className="flex" style={{ gap: 8 }}>
-          <span className={`badge ${modal.type === 'income' ? 'badge-pos' : ''}`}>
-            {modal.type === 'income' ? '+ Income' : '− Expense'}
+          <span className={`badge ${isIncome ? 'badge-pos' : isTransferTx ? '' : ''}`}>
+            {isIncome ? '+ Income' : isTransferTx ? '⇄ Transfer' : '− Expense'}
           </span>
           {modal.tx && <span className="tiny muted">Type is preserved when editing.</span>}
         </div>
@@ -313,6 +356,121 @@ function TxModal({
           autoFocus
         />
       </div>
+
+      {/* V4.4 — Account selection */}
+      {!isTransferTx ? (
+        <div className="form-row">
+          <label className="form-label" htmlFor="tx-account">
+            {isIncome ? 'Received into' : 'Paid from'}
+            <span className="tiny muted" style={{ fontWeight: 400 }}> · optional account</span>
+          </label>
+          {!addingAccount ? (
+            <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+              <select
+                id="tx-account"
+                value={draft.accountId}
+                onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+                style={{ flex: 1 }}
+              >
+                <option value="">— Unspecified account —</option>
+                {accounts.filter((a) => !a.archived || a.id === draft.accountId).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.type})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  setAddingAccount(true);
+                  setNewAccountName('');
+                  setNewAccountType('Bank');
+                  setNewAccountOpen('0');
+                }}
+              >
+                + Add account
+              </button>
+            </div>
+          ) : (
+            <div className="rt-person-new">
+              <input
+                value={newAccountName}
+                onChange={(e) => setNewAccountName(e.target.value)}
+                placeholder="Account name, e.g. SBI, Cash"
+                aria-label="New account name"
+                autoFocus
+              />
+              <select
+                value={newAccountType}
+                onChange={(e) => setNewAccountType(e.target.value as MoneyAccountType)}
+                aria-label="New account type"
+              >
+                {MONEY_ACCOUNT_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                value={newAccountOpen}
+                onChange={(e) => setNewAccountOpen(e.target.value)}
+                placeholder="Starting balance"
+                aria-label="Starting balance"
+              />
+              <div className="flex" style={{ gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={!newAccountName.trim()}
+                  onClick={() => {
+                    if (onCreateAccount) {
+                      const id = onCreateAccount(newAccountName.trim(), newAccountType, Number(newAccountOpen) || 0);
+                      setDraft({ ...draft, accountId: id });
+                    }
+                    setAddingAccount(false);
+                  }}
+                >
+                  Add &amp; select
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setAddingAccount(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="form-row">
+            <label className="form-label" htmlFor="tx-xfer-from">Paid from (Source Account)</label>
+            <select
+              id="tx-xfer-from"
+              value={draft.accountId}
+              onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+              required
+            >
+              <option value="">— Select source account —</option>
+              {accounts.filter((a) => !a.archived || a.id === draft.accountId).map((a) => (
+                <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label" htmlFor="tx-xfer-to">Received into (Destination Account)</label>
+            <select
+              id="tx-xfer-to"
+              value={draft.transferAccountId}
+              onChange={(e) => setDraft({ ...draft, transferAccountId: e.target.value })}
+              required
+            >
+              <option value="">— Select destination account —</option>
+              {accounts.filter((a) => (!a.archived || a.id === draft.transferAccountId) && a.id !== draft.accountId).map((a) => (
+                <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
       {/* V4.2 — who this money came from / went to. Optional, context-aware,
           and creatable inline: “Received from → Appa” in one place. */}
       <div className="form-row">
@@ -569,14 +727,16 @@ function useTxCrud() {
   const currency = data.settings.finance.currency;
   const people = data.people ?? [];
   const sources = data.sources ?? [];
+  const accounts = data.accounts ?? [];
 
-  const openNew = (type: TxType, personId = '', sourceId = '') => {
+  const openNew = (type: TxType, personId = '', sourceId = '', accountId = '') => {
     setDraft({
       ...emptyDraft(),
-      category: type === 'income' ? data.settings.finance.incomeCategories[0] ?? '' : data.settings.finance.expenseCategories[0] ?? '',
+      category: type === 'income' ? data.settings.finance.incomeCategories[0] ?? '' : type === 'transfer' ? 'Transfer' : data.settings.finance.expenseCategories[0] ?? '',
       cardId: '',
       personId,
       sourceId,
+      accountId,
     });
     setModal({ type });
   };
@@ -591,12 +751,13 @@ function useTxCrud() {
       personId: tx.personId ?? '',
       purpose: tx.sourceId ? (data.sources ?? []).find((x) => x.id === tx.sourceId)?.purpose ?? '' : '',
       sourceId: tx.sourceId ?? '',
+      accountId: tx.accountId ?? '',
+      transferAccountId: tx.transferAccountId ?? '',
       notes: tx.notes ?? '',
       recurrence: tx.recurrence ?? '',
     });
     setModal({ type: tx.type, tx });
   };
-  /** V4.2 — create a person without leaving the transaction flow. */
   const createPerson = (name: string, relationship: string, extra: Partial<Person> = {}): string => {
     const id = uid('person');
     update((d) => {
@@ -606,16 +767,50 @@ function useTxCrud() {
     });
     return id;
   };
+  const createAccount = (name: string, type: MoneyAccountType = 'Bank', openingBalance = 0): string => {
+    const id = uid('acc');
+    update((d) => {
+      const clean: MoneyAccount = {
+        id,
+        name: name.trim(),
+        type,
+        openingBalance: safeAmount(openingBalance),
+        active: true,
+        createdAt: new Date().toISOString(),
+      };
+      d.accounts = [...(d.accounts ?? []), clean];
+      return { ...d };
+    });
+    return id;
+  };
+
+  const saveTransfer = (input: { fromAccountId: string; toAccountId: string; amount: number; date: string; notes?: string }) => {
+    const tx = makeTransfer({
+      fromAccountId: input.fromAccountId,
+      toAccountId: input.toAccountId,
+      amount: input.amount,
+      date: input.date,
+      notes: input.notes,
+    });
+    update((d) => {
+      d.transactions = [tx, ...(d.transactions ?? [])];
+      return { ...d };
+    });
+  };
+
   const save = () => {
     const amt = safeAmount(Number(draft.amount));
     if (amt <= 0) return;
     const date = safeDate(draft.date);
+    const isTransferTx = modal?.type === 'transfer';
     const base = {
       amount: amt,
-      category: draft.category.trim() || 'Other',
+      category: isTransferTx ? (draft.category.trim() || 'Transfer') : (draft.category.trim() || 'Other'),
       description: draft.description.trim() || undefined,
       date,
       paymentType: draft.paymentType.trim() || undefined,
+      accountId: draft.accountId || undefined,
+      transferAccountId: isTransferTx ? (draft.transferAccountId || undefined) : undefined,
       // Only an expense may sit on a card; income never links to one.
       cardId: modal?.type === 'expense' ? draft.cardId || undefined : undefined,
       // Person is optional context — the money math never depends on it.
@@ -629,8 +824,6 @@ function useTxCrud() {
     const now = new Date().toISOString();
     update((d) => {
       let sources = d.sources ?? [];
-      // A fund is opened only when the user said why the money was given
-      // (“₹10,000 for College Fees”) — never guessed, never automatic.
       let sourceId = draft.sourceId && draft.sourceId !== NEW_SOURCE ? draft.sourceId : undefined;
       if (isIncome && purpose && (!draft.sourceId || draft.sourceId === NEW_SOURCE)) {
         const personLabel = base.personId ? personName((d.people ?? []).find((p) => p.id === base.personId) ?? ({ name: '' } as Person)) : '';
@@ -647,9 +840,6 @@ function useTxCrud() {
         sources = [...sources, clean];
         sourceId = clean.id;
       }
-      // Editing the income that opened a fund keeps the recorded amount in
-      // step (only when it is that fund's single receipt — extra receipts are
-      // summed from the transactions themselves).
       if (modal?.tx && isIncome && sourceId) {
         const others = d.transactions.filter((t) => t.id !== modal.tx!.id && t.sourceId === sourceId && t.type === 'income');
         if (others.length === 0) {
@@ -658,8 +848,6 @@ function useTxCrud() {
       }
       d.sources = sources;
       const linked = { ...base, sourceId };
-      // Always produce a NEW array: memoized list views key off its identity,
-      // so pushing in place would leave the visible list stale.
       if (modal?.tx) {
         d.transactions = d.transactions.map((x) => (x.id === modal.tx!.id ? { ...x, ...linked } : x));
       } else {
@@ -752,6 +940,7 @@ function useTxCrud() {
     openNew,
     openEdit,
     save,
+    saveTransfer,
     remove,
     duplicate,
     cats,
@@ -759,6 +948,8 @@ function useTxCrud() {
     data,
     update,
     cards,
+    accounts,
+    createAccount,
     /** V4.2 — people helpers shared by every Money surface. */
     people,
     activePeople: people.filter((p) => p.active),
@@ -841,6 +1032,19 @@ function OverviewTab() {
     .filter((r) => r.next <= addDays(t, 30))
     .sort((a, b) => a.next.localeCompare(b.next));
 
+  const accSummaries = useMemo(
+    () => summarizeAccounts(data.accounts ?? [], data.transactions, data.cardPayments ?? []),
+    [data.accounts, data.transactions, data.cardPayments],
+  );
+  const activeAccSummaries = useMemo(
+    () => accSummaries.filter((s) => s.account.active !== false && !s.account.archived),
+    [accSummaries],
+  );
+  const availTotal = useMemo(
+    () => totalAvailableBalance(data.accounts ?? [], data.transactions, data.cardPayments ?? []),
+    [data.accounts, data.transactions, data.cardPayments],
+  );
+
   return (
     <div>
       {/* MONEY — a personal money dashboard: balance, flow, then people. */}
@@ -895,6 +1099,59 @@ function OverviewTab() {
           <span className="spacer" />
           <span className="tiny muted">{flowLabel} cash flow</span>
         </div>
+      </div>
+
+      {/* Accounts — V4.4 */}
+      <div className="panel section-gap">
+        <div className="flex flex-wrap" style={{ justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          <div>
+            <h2 className="panel-title" style={{ marginBottom: 2 }}>Accounts</h2>
+            <p className="panel-sub" style={{ marginBottom: 0 }}>
+              Current balance per account vs period financial flow (Total available: <b>{formatMoney(availTotal, currency)}</b>).
+            </p>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('money/accounts')}>
+            Manage accounts <IconArrowRight size={13} />
+          </button>
+        </div>
+        {activeAccSummaries.length === 0 ? (
+          <EmptyState
+            icon="🏦"
+            title="No accounts yet"
+            text="Track bank accounts, cash, or wallets to manage where your money lives."
+            action={<button className="btn btn-primary btn-sm" onClick={() => navigate('money/accounts')}>Add account</button>}
+          />
+        ) : (
+          <div className="grid grid-4 mt-8" style={{ gap: 10 }}>
+            {activeAccSummaries.map(({ account, currentBalance }: AccountTotals) => (
+              <button
+                key={account.id}
+                className="panel-flat flex"
+                style={{
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  background: 'none',
+                  border: '1px solid var(--line)',
+                  padding: '10px 12px',
+                  textAlign: 'left',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                }}
+                onClick={() => navigate(`money/accounts/${account.id}`)}
+              >
+                <div>
+                  <div className="small bold">{account.name}</div>
+                  <div className="tiny muted">{account.type}</div>
+                </div>
+                <div className="small bold t-num mt-8" style={{ fontSize: 16 }}>
+                  {formatMoney(currentBalance, currency)}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Money flow — the trend, using the same chart language as History */}
@@ -1295,8 +1552,10 @@ function OverviewTab() {
           cards={crud.cards}
           people={crud.activePeople}
           sources={crud.sources}
+          accounts={crud.accounts}
           transactions={crud.data.transactions}
           onCreatePerson={crud.createPerson}
+          onCreateAccount={crud.createAccount}
         />
       )}
     </div>
@@ -1341,7 +1600,7 @@ function SourceRow({
 // describes what a money row *means*: income, expense, card purchase or card
 // payment. Card payments are rows, never expenses.
 
-type TxViewKind = 'income' | 'expense' | 'payment';
+type TxViewKind = 'income' | 'expense' | 'payment' | 'transfer';
 
 interface TxView {
   key: string;
@@ -1359,6 +1618,10 @@ interface TxView {
   /** Fund linked to this record (V4.3) — “Appa - College”, secondary to both. */
   sourceId?: string;
   source?: string;
+  accountId?: string;
+  account?: string;
+  transferAccountId?: string;
+  transferAccount?: string;
   recurrence?: Recurrence;
   tx?: Transaction;
   paymentRecord?: CardPayment;
@@ -1386,6 +1649,8 @@ function txToView(
     person: tx.personId ? personById.get(tx.personId)?.label : undefined,
     sourceId: tx.sourceId,
     source: tx.sourceId ? sourceById.get(tx.sourceId)?.label : undefined,
+    accountId: tx.accountId,
+    transferAccountId: tx.transferAccountId,
     recurrence: tx.recurrence,
     tx,
   };
@@ -1515,6 +1780,19 @@ function moneySourceField(sources: MoneySource[]): FilterField<TxView> {
   };
 }
 
+/** V4.4 — “Account” lives in the advanced filter drawer. */
+function moneyAccountField(accounts: MoneyAccount[]): FilterField<TxView> {
+  return {
+    id: 'account',
+    label: 'Account',
+    type: 'select',
+    placeholder: 'Any account',
+    options: [{ value: '__none__', label: 'Unspecified account' }, ...accounts.map((a) => ({ value: a.id, label: a.name }))],
+    match: (r, v) => (v === '__none__' ? !r.accountId && !r.transferAccountId : r.accountId === v || r.transferAccountId === v),
+    chip: (v) => (v === '__none__' ? 'no account' : accounts.find((a) => a.id === v)?.name ?? ''),
+  };
+}
+
 function moneyCategoryField(): FilterField<TxView> {
   return {
     id: 'category',
@@ -1600,6 +1878,7 @@ function TransactionsTab() {
   const cards = crud.cards;
   const people = crud.activePeople;
   const sources = crud.sources;
+  const accounts = crud.accounts;
   const currentYear = todayStr().slice(0, 4);
   const [pickerMonth, setPickerMonth] = useState(monthKeyOf(todayStr()));
   const view = useRecordViewFor('money/transactions', makeQuery({ defaultSort: 'newest' }));
@@ -1618,6 +1897,7 @@ function TransactionsTab() {
         { id: 'card', label: 'Credit Card', test: (r) => r.kind === 'expense' && !!r.cardId },
       ],
       filters: [
+        ...(accounts.length > 0 ? [moneyAccountField(accounts)] : []),
         ...(people.length > 0 ? [moneyPersonField(people)] : []),
         ...(sources.length > 0 ? [moneySourceField(sources)] : []),
         moneyMonthField(currentYear),
@@ -1629,7 +1909,7 @@ function TransactionsTab() {
       sortOptions: MONEY_SORTS,
       defaultSort: 'newest',
     }),
-    [cards, currentYear, currency, people, sources],
+    [accounts, cards, currentYear, currency, people, sources],
   );
 
   const result = useMemo(() => runQuery(rows, spec, query), [rows, spec, query]);
@@ -1764,8 +2044,10 @@ function TransactionsTab() {
           cards={cards}
           people={crud.activePeople}
           sources={crud.sources}
+          accounts={crud.accounts}
           transactions={crud.data.transactions}
           onCreatePerson={crud.createPerson}
+          onCreateAccount={crud.createAccount}
         />
       )}
     </div>
@@ -1906,7 +2188,7 @@ function IncomeTab() {
       </div>
 
       {crud.modal && (
-        <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats('income')} currency={currency} cards={crud.cards} people={crud.activePeople} sources={crud.sources} transactions={crud.data.transactions} onCreatePerson={crud.createPerson} />
+        <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats('income')} currency={currency} cards={crud.cards} people={crud.activePeople} sources={crud.sources} accounts={crud.accounts} transactions={crud.data.transactions} onCreatePerson={crud.createPerson} onCreateAccount={crud.createAccount} />
       )}
     </div>
   );
@@ -2048,7 +2330,7 @@ function ExpensesTab() {
       </div>
 
       {crud.modal && (
-        <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats('expense')} currency={currency} cards={cards} people={crud.activePeople} sources={crud.sources} transactions={crud.data.transactions} onCreatePerson={crud.createPerson} />
+        <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats('expense')} currency={currency} cards={cards} people={crud.activePeople} sources={crud.sources} accounts={crud.accounts} transactions={crud.data.transactions} onCreatePerson={crud.createPerson} onCreateAccount={crud.createAccount} />
       )}
     </div>
   );
@@ -2934,7 +3216,7 @@ function RecurringTab() {
       )}
 
       {crud.modal && (
-        <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats(crud.modal.type)} currency={currency} cards={crud.cards} people={crud.activePeople} sources={crud.sources} transactions={crud.data.transactions} onCreatePerson={crud.createPerson} />
+        <TxModal modal={crud.modal} draft={crud.draft} setDraft={crud.setDraft} onSave={crud.save} onClose={() => crud.setModal(null)} categories={crud.cats(crud.modal.type)} currency={currency} cards={crud.cards} people={crud.activePeople} sources={crud.sources} accounts={crud.accounts} transactions={crud.data.transactions} onCreatePerson={crud.createPerson} onCreateAccount={crud.createAccount} />
       )}
     </div>
   );
@@ -3010,8 +3292,10 @@ function PeopleTab({ personId }: { personId?: string }) {
           cards={crud.cards}
           people={crud.activePeople}
           sources={crud.sources}
+          accounts={crud.accounts}
           transactions={crud.data.transactions}
           onCreatePerson={crud.createPerson}
+          onCreateAccount={crud.createAccount}
         />
       )}
     </div>
@@ -3297,8 +3581,10 @@ function PersonLedger({ person, crud, currency }: { person: Person; crud: Return
           cards={crud.cards}
           people={crud.activePeople}
           sources={crud.sources}
+          accounts={crud.accounts}
           transactions={crud.data.transactions}
           onCreatePerson={crud.createPerson}
+          onCreateAccount={crud.createAccount}
         />
       )}
     </div>
@@ -3467,6 +3753,539 @@ function SourceMoneyRow({
       </span>
       <IconArrowRight size={13} />
     </button>
+  );
+}
+
+// ── Money Accounts / Wallets (V4.4) ──────────────────────────────────────────
+
+function AccountModal({
+  account,
+  currency,
+  onSave,
+  onClose,
+}: {
+  account?: MoneyAccount;
+  currency: string;
+  onSave: (account: Partial<MoneyAccount>) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(account?.name ?? '');
+  const [type, setType] = useState<MoneyAccountType>(account?.type ?? 'Bank');
+  const [openingBalance, setOpeningBalance] = useState(account ? String(account.openingBalance ?? 0) : '0');
+  const [notes, setNotes] = useState(account?.notes ?? '');
+  const [active, setActive] = useState(account ? account.active !== false : true);
+  const [error, setError] = useState('');
+
+  const submit = () => {
+    if (!name.trim()) {
+      setError('Enter an account name.');
+      return;
+    }
+    const open = Number(openingBalance);
+    if (!Number.isFinite(open)) {
+      setError('Enter a valid starting balance.');
+      return;
+    }
+    onSave({
+      name: name.trim(),
+      type,
+      openingBalance: open,
+      notes: notes.trim() || undefined,
+      active,
+    });
+  };
+
+  return (
+    <Modal title={account ? 'Edit Account' : 'Add Account'} onClose={onClose}>
+      {error && <div className="banner banner-error mb-12">{error}</div>}
+      <div className="form-row">
+        <label className="form-label" htmlFor="acc-name">Account Name</label>
+        <input
+          id="acc-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. SBI, Cash, HDFC Savings"
+          autoFocus
+        />
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="acc-type">Account Type</label>
+        <select id="acc-type" value={type} onChange={(e) => setType(e.target.value as MoneyAccountType)}>
+          {MONEY_ACCOUNT_TYPES.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="acc-open">Starting Balance ({currency})</label>
+        <input
+          id="acc-open"
+          type="number"
+          step="0.01"
+          value={openingBalance}
+          onChange={(e) => setOpeningBalance(e.target.value)}
+        />
+        <div className="tiny muted" style={{ marginTop: 2 }}>
+          Initial state of the account — never counted as income, expense or net flow.
+        </div>
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="acc-notes">Notes (optional)</label>
+        <input id="acc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Account number, branch..." />
+      </div>
+      {account && (
+        <div className="form-row flex" style={{ gap: 8, alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            id="acc-active"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
+          <label htmlFor="acc-active" className="small">Active account</label>
+        </div>
+      )}
+      <div className="flex" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit}>
+          {account ? 'Save changes' : 'Create account'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function TransferModal({
+  accounts,
+  currency,
+  onSave,
+  onClose,
+}: {
+  accounts: MoneyAccount[];
+  currency: string;
+  onSave: (transfer: { fromAccountId: string; toAccountId: string; amount: number; date: string; notes?: string }) => void;
+  onClose: () => void;
+}) {
+  const [fromId, setFromId] = useState(accounts[0]?.id ?? '');
+  const [toId, setToId] = useState(accounts.find((a) => a.id !== accounts[0]?.id)?.id ?? '');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayStr());
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState('');
+
+  const submit = () => {
+    const amt = safeAmount(Number(amount));
+    if (amt <= 0) {
+      setError('Enter a valid amount greater than zero.');
+      return;
+    }
+    if (!fromId || !toId) {
+      setError('Select both source and destination accounts.');
+      return;
+    }
+    if (fromId === toId) {
+      setError('Source and destination accounts must be different.');
+      return;
+    }
+    onSave({
+      fromAccountId: fromId,
+      toAccountId: toId,
+      amount: amt,
+      date,
+      notes: notes.trim() || undefined,
+    });
+  };
+
+  return (
+    <Modal title="Transfer Between Accounts" onClose={onClose}>
+      {error && <div className="banner banner-error mb-12">{error}</div>}
+      <div className="form-row">
+        <label className="form-label" htmlFor="xfer-from">Paid from (Source Account)</label>
+        <select id="xfer-from" value={fromId} onChange={(e) => setFromId(e.target.value)}>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="xfer-to">Received into (Destination Account)</label>
+        <select id="xfer-to" value={toId} onChange={(e) => setToId(e.target.value)}>
+          {accounts.filter((a) => a.id !== fromId).map((a) => (
+            <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="xfer-amount">Amount ({currency})</label>
+        <input
+          id="xfer-amount"
+          type="number"
+          step="0.01"
+          min="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
+          autoFocus
+        />
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="xfer-date">Date</label>
+        <input id="xfer-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor="xfer-notes">Notes (optional)</label>
+        <input id="xfer-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. ATM withdrawal, Bank transfer" />
+      </div>
+      <div className="flex" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit}>Complete transfer</button>
+      </div>
+    </Modal>
+  );
+}
+
+function AccountDetailView({
+  account,
+  txs,
+  payments,
+  currency,
+  accounts,
+  onBack,
+  onEdit,
+}: {
+  account: MoneyAccount;
+  txs: Transaction[];
+  payments: CardPayment[];
+  currency: string;
+  accounts: MoneyAccount[];
+  onBack: () => void;
+  onEdit: () => void;
+}) {
+  const totals = accountTotals(account, txs, payments);
+  const activity = accountTransactions(account.id, txs);
+  const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+
+  return (
+    <div>
+      <div className="flex flex-wrap mb-16" style={{ gap: 8, alignItems: 'center' }}>
+        <button className="btn btn-sm" onClick={onBack}>
+          ← Back to Accounts
+        </button>
+        <div className="spacer" />
+        <button className="btn btn-sm" onClick={onEdit}>
+          Edit Account
+        </button>
+      </div>
+
+      <div className="panel-flat mb-16">
+        <div className="flex flex-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+              <h2 className="panel-title" style={{ marginBottom: 0 }}>{account.name}</h2>
+              <span className="badge">{account.type}</span>
+              {account.archived && <span className="badge muted">Archived</span>}
+            </div>
+            {account.notes && <p className="tiny muted" style={{ marginTop: 4 }}>{account.notes}</p>}
+          </div>
+          <div className="stat-value money-pos" style={{ fontSize: 32 }}>
+            {formatMoney(totals.currentBalance, currency)}
+          </div>
+        </div>
+
+        <div className="grid grid-5" style={{ gap: 8, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+          <div>
+            <div className="stat-label">Opening balance</div>
+            <div className="small bold">{formatMoney(totals.openingBalance, currency)}</div>
+          </div>
+          <div>
+            <div className="stat-label">Money in</div>
+            <div className="small bold money-pos">+{formatMoney(totals.income, currency)}</div>
+          </div>
+          <div>
+            <div className="stat-label">Money out</div>
+            <div className="small bold" style={{ color: 'var(--neg)' }}>−{formatMoney(totals.expense, currency)}</div>
+          </div>
+          <div>
+            <div className="stat-label">Transfers in</div>
+            <div className="small bold money-pos">+{formatMoney(totals.transfersIn, currency)}</div>
+          </div>
+          <div>
+            <div className="stat-label">Transfers out</div>
+            <div className="small bold" style={{ color: 'var(--neg)' }}>−{formatMoney(totals.transfersOut, currency)}</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 className="section-title mb-12">Recent Activity</h3>
+
+      {activity.length === 0 ? (
+        <EmptyState
+          icon="📋"
+          title="No activity recorded"
+          text="Transactions assigned to or transferred from/to this account will appear here."
+        />
+      ) : (
+        <div className="panel-flat">
+          {activity.map((t) => {
+            const isPrimary = t.accountId === account.id;
+            const isDest = t.type === 'transfer' && t.transferAccountId === account.id;
+            const isInc = t.type === 'income' && isPrimary;
+            const isExp = t.type === 'expense' && isPrimary;
+            const isXferIn = t.type === 'transfer' && isDest;
+            const isXferOut = t.type === 'transfer' && isPrimary;
+
+            const otherAccName = isXferIn
+              ? accountById.get(t.accountId ?? '')?.name || 'Account'
+              : isXferOut
+              ? accountById.get(t.transferAccountId ?? '')?.name || 'Account'
+              : undefined;
+
+            return (
+              <div key={t.id} className="tx-row" style={{ borderBottom: '1px solid var(--line)', padding: '10px 0' }}>
+                <span className={`tx-dot ${isInc || isXferIn ? 'income' : isExp || isXferOut ? 'expense' : 'payment'}`}>
+                  {isInc || isXferIn ? '+' : isExp || isXferOut ? '−' : '⇄'}
+                </span>
+                <div className="grow">
+                  <div className="small bold">
+                    {t.type === 'transfer'
+                      ? isXferIn
+                        ? `Transfer from ${otherAccName}`
+                        : `Transfer to ${otherAccName}`
+                      : t.description || t.category}
+                  </div>
+                  <div className="tiny muted">
+                    {formatDateMed(t.date)} · {t.category}
+                    {t.notes ? ` · ${t.notes}` : ''}
+                  </div>
+                </div>
+                <span className={`tx-amount ${isInc || isXferIn ? 'money-pos' : isExp || isXferOut ? '' : 'money-neutral'}`}>
+                  {isInc || isXferIn ? '+' : '−'}{formatMoney(t.amount, currency)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountsTab({ accountId }: { accountId?: string }) {
+  const crud = useTxCrud();
+  const { data, update } = crud;
+  const currency = data.settings.finance.currency;
+  const accounts = data.accounts ?? [];
+  const [accountModal, setAccountModal] = useState<null | { account?: MoneyAccount }>(null);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [filterState, setFilterState] = useState<'all' | 'active' | 'archived'>('active');
+
+  const selectedAccount = accountId ? accounts.find((a) => a.id === accountId) : undefined;
+
+  if (selectedAccount) {
+    return (
+      <AccountDetailView
+        account={selectedAccount}
+        txs={data.transactions}
+        payments={data.cardPayments ?? []}
+        currency={currency}
+        accounts={accounts}
+        onBack={() => navigate('money/accounts')}
+        onEdit={() => setAccountModal({ account: selectedAccount })}
+      />
+    );
+  }
+
+  const summaries = summarizeAccounts(accounts, data.transactions, data.cardPayments ?? []);
+  const availableTotal = totalAvailableBalance(accounts, data.transactions, data.cardPayments ?? []);
+
+  const filteredSummaries = summaries.filter((s) => {
+    if (filterState === 'active') return s.account.active && !s.account.archived;
+    if (filterState === 'archived') return s.account.archived;
+    return true;
+  });
+
+  const saveAccount = (accountData: Partial<MoneyAccount>) => {
+    if (accountModal?.account) {
+      update((d) => {
+        d.accounts = (d.accounts ?? []).map((a) =>
+          a.id === accountModal.account!.id
+            ? { ...a, ...accountData, updatedAt: new Date().toISOString() }
+            : a,
+        );
+        return { ...d };
+      });
+    } else {
+      const newAcc = makeAccount({
+        name: accountData.name || 'New Account',
+        type: accountData.type || 'Bank',
+        openingBalance: accountData.openingBalance || 0,
+        currency: accountData.currency,
+        notes: accountData.notes,
+      });
+      update((d) => {
+        d.accounts = [...(d.accounts ?? []), newAcc];
+        return { ...d };
+      });
+    }
+    setAccountModal(null);
+  };
+
+  const toggleArchive = (acc: MoneyAccount) => {
+    update((d) => {
+      d.accounts = (d.accounts ?? []).map((a) =>
+        a.id === acc.id ? { ...a, archived: !a.archived, updatedAt: new Date().toISOString() } : a,
+      );
+      return { ...d };
+    });
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap mb-16" style={{ gap: 8, alignItems: 'center' }}>
+        <div>
+          <h2 className="panel-title" style={{ marginBottom: 0 }}>Accounts &amp; Wallets</h2>
+          <p className="panel-sub" style={{ marginBottom: 0 }}>
+            Track liquid cash, bank balances and investments across real accounts.
+          </p>
+        </div>
+        <span className="spacer" />
+        <button className="btn btn-sm" onClick={() => setTransferModalOpen(true)} disabled={accounts.filter((a) => !a.archived).length < 2}>
+          ⇄ Transfer
+        </button>
+        <button className="btn btn-sm btn-primary" onClick={() => setAccountModal({})}>
+          + Add account
+        </button>
+      </div>
+
+      <div className="grid grid-3 mb-16">
+        <div className="panel-flat">
+          <div className="stat-label">Total available balance</div>
+          <div className="stat-value money-pos">{formatMoney(availableTotal, currency)}</div>
+          <div className="stat-hint">across {accounts.filter((a) => a.active && !a.archived).length} active accounts</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Bank &amp; Savings</div>
+          <div className="stat-value">
+            {formatMoney(
+              summaries
+                .filter((s) => (s.account.type === 'Bank' || s.account.type === 'Savings') && !s.account.archived)
+                .reduce((a, s) => a + s.currentBalance, 0),
+              currency,
+            )}
+          </div>
+          <div className="stat-hint">institutional deposits</div>
+        </div>
+        <div className="panel-flat">
+          <div className="stat-label">Cash &amp; Wallets</div>
+          <div className="stat-value">
+            {formatMoney(
+              summaries
+                .filter((s) => (s.account.type === 'Cash' || s.account.type === 'Wallet') && !s.account.archived)
+                .reduce((a, s) => a + s.currentBalance, 0),
+              currency,
+            )}
+          </div>
+          <div className="stat-hint">liquid physical &amp; digital cash</div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap mb-16" style={{ gap: 6, alignItems: 'center' }}>
+        <button
+          className={`rt-pill ${filterState === 'active' ? 'active' : ''}`}
+          onClick={() => setFilterState('active')}
+        >
+          Active
+        </button>
+        <button
+          className={`rt-pill ${filterState === 'all' ? 'active' : ''}`}
+          onClick={() => setFilterState('all')}
+        >
+          All
+        </button>
+        <button
+          className={`rt-pill ${filterState === 'archived' ? 'active' : ''}`}
+          onClick={() => setFilterState('archived')}
+        >
+          Archived
+        </button>
+      </div>
+
+      {filteredSummaries.length === 0 ? (
+        <EmptyState
+          icon="🏦"
+          title="No accounts found"
+          text="Add your bank accounts, cash, wallets or savings to track balances."
+          action={
+            <button className="btn btn-primary btn-sm" onClick={() => setAccountModal({})}>
+              + Add account
+            </button>
+          }
+        />
+      ) : (
+        <div className="grid grid-3 mb-16">
+          {filteredSummaries.map((s) => (
+            <div
+              key={s.account.id}
+              className={`panel-flat ${s.account.archived ? 'muted-panel' : ''}`}
+              style={{ position: 'relative', cursor: 'pointer' }}
+              onClick={() => navigate(`money/accounts/${s.account.id}`)}
+            >
+              <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span className="bold" style={{ fontSize: 16 }}>{s.account.name}</span>
+                <span className="badge">{s.account.type}</span>
+              </div>
+              <div className="stat-value" style={{ fontSize: 24, marginBottom: 4 }}>
+                {formatMoney(s.currentBalance, currency)}
+              </div>
+              <div className="tiny muted flex" style={{ justifyContent: 'space-between', marginTop: 8 }}>
+                <span>Start: {formatMoney(s.openingBalance, currency)}</span>
+                <span>{s.count} transaction{s.count === 1 ? '' : 's'}</span>
+              </div>
+              <div className="flex" style={{ gap: 6, marginTop: 12 }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => navigate(`money/accounts/${s.account.id}`)}
+                >
+                  View activity
+                </button>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => setAccountModal({ account: s.account })}
+                >
+                  Edit
+                </button>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => toggleArchive(s.account)}
+                >
+                  {s.account.archived ? 'Reactivate' : 'Archive'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {accountModal && (
+        <AccountModal
+          account={accountModal.account}
+          currency={currency}
+          onSave={saveAccount}
+          onClose={() => setAccountModal(null)}
+        />
+      )}
+
+      {transferModalOpen && (
+        <TransferModal
+          accounts={accounts.filter((a) => !a.archived)}
+          currency={currency}
+          onSave={(t) => {
+            crud.saveTransfer(t);
+            setTransferModalOpen(false);
+          }}
+          onClose={() => setTransferModalOpen(false)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -3938,8 +4757,10 @@ function SourceDetail({ source, crud, currency }: { source: MoneySource; crud: R
           cards={crud.cards}
           people={crud.activePeople}
           sources={crud.sources}
+          accounts={crud.accounts}
           transactions={crud.data.transactions}
           onCreatePerson={crud.createPerson}
+          onCreateAccount={crud.createAccount}
         />
       )}
     </div>

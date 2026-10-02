@@ -210,6 +210,7 @@ export function createInitialData(): AppData {
     cardPayments: [],
     people: [],
     sources: [],
+    accounts: [],
     reminders: [],
     tasks: [],
     inbox: [],

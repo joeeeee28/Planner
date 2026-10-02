@@ -111,7 +111,7 @@ export function txIncome(t: Transaction): number {
 }
 
 export function txExpense(t: Transaction): number {
-  return t.type === 'income' ? 0 : t.amount;
+  return t.type === 'expense' ? t.amount : 0;
 }
 
 export function totals(txs: Transaction[]): { income: number; expense: number; saved: number } {

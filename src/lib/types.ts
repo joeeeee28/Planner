@@ -395,7 +395,38 @@ export interface PlanningSettings {
 
 // ── Money / finance ──────────────────────────────────────────────────────────
 
-export type TxType = 'income' | 'expense';
+export type TxType = 'income' | 'expense' | 'transfer';
+
+export type MoneyAccountType =
+  | 'Bank'
+  | 'Cash'
+  | 'Wallet'
+  | 'Savings'
+  | 'Investment'
+  | 'Other';
+
+export const MONEY_ACCOUNT_TYPES: MoneyAccountType[] = [
+  'Bank',
+  'Cash',
+  'Wallet',
+  'Savings',
+  'Investment',
+  'Other',
+];
+
+export interface MoneyAccount {
+  id: ID;
+  name: string;
+  type: MoneyAccountType;
+  /** Opening balance at account creation time (never income/expense/net flow). */
+  openingBalance: number;
+  currency?: string;
+  active: boolean;
+  notes?: string;
+  archived?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
 
 /** Recurrence schedule for recurring transactions (income or expense). */
 export type Recurrence = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
@@ -409,6 +440,10 @@ export interface Transaction {
   category: string;
   description?: string;
   paymentType?: string;
+  /** Optional account linked to this transaction (V4.4). */
+  accountId?: ID;
+  /** Optional destination account for transfers (V4.4). */
+  transferAccountId?: ID;
   /**
    * Optional credit-card link (V4.1). A linked *expense* is a card purchase —
    * it counts as spending exactly once. Paying the card is never a Transaction:
@@ -751,6 +786,10 @@ export interface AppData {
    * no `sources`, and no historical transaction is ever assigned one.
    */
   sources?: MoneySource[];
+  /**
+   * Accounts / wallets (V4.4) — optional and additive. Bank, cash, wallets, etc.
+   */
+  accounts?: MoneyAccount[];
   reminders: Reminder[];
   /** Optional planned tasks (V4) — additive; absent in older documents. */
   tasks?: PlannedTask[];

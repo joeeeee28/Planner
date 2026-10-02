@@ -71,7 +71,7 @@ function normalizeTransactions(list: unknown): Transaction[] {
     if (!raw || typeof raw !== 'object') continue;
     const t = raw as Partial<Transaction>;
     // Legacy records (pre-type) are treated as expenses; never crash on them.
-    const type = t.type === 'income' ? 'income' : 'expense';
+    const type = t.type === 'income' ? 'income' : t.type === 'transfer' ? 'transfer' : 'expense';
     const amount = Number.isFinite(t.amount) && (t.amount as number) > 0 ? (t.amount as number) : 0;
     if (amount <= 0) continue;
     const id = typeof t.id === 'string' && t.id ? t.id : `tx-${Math.random().toString(36).slice(2, 10)}`;
@@ -85,6 +85,9 @@ function normalizeTransactions(list: unknown): Transaction[] {
       category: typeof t.category === 'string' && t.category ? t.category : 'Other',
       description: typeof t.description === 'string' ? t.description : undefined,
       paymentType: typeof t.paymentType === 'string' ? t.paymentType : undefined,
+      // V4.4 — account links survive reloads.
+      accountId: typeof t.accountId === 'string' && t.accountId ? t.accountId : undefined,
+      transferAccountId: typeof t.transferAccountId === 'string' && t.transferAccountId ? t.transferAccountId : undefined,
       // V4.1 — a card-linked purchase keeps its card across reloads. Only the
       // card id is stored here; the card itself holds nothing but last-4.
       cardId: typeof t.cardId === 'string' && t.cardId ? t.cardId : undefined,
@@ -544,6 +547,40 @@ function normalizeCardPayments(list: unknown): AppData['cardPayments'] {
   return out;
 }
 
+/** Normalize money accounts (V4.4). Default type is 'Other'. */
+function normalizeAccounts(list: unknown): AppData['accounts'] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: NonNullable<AppData['accounts']> = [];
+  const validTypes = new Set(['Bank', 'Cash', 'Wallet', 'Savings', 'Investment', 'Other']);
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const name = typeof r.name === 'string' ? r.name.trim() : '';
+    if (!name) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : `acc-${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const rawType = typeof r.type === 'string' ? r.type : 'Other';
+    const type = (validTypes.has(rawType) ? rawType : 'Other') as import('./types').MoneyAccount['type'];
+    const openingBalance = Number.isFinite(Number(r.openingBalance)) ? Number(r.openingBalance) : 0;
+    out.push({
+      id,
+      name,
+      type,
+      openingBalance,
+      currency: str(r.currency),
+      active: r.active !== false,
+      archived: r.archived === true ? true : undefined,
+      notes: str(r.notes),
+      createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+      updatedAt: str(r.updatedAt),
+    });
+  }
+  return out;
+}
+
 export function normalizeData(cached: AppData): AppData {
   if (cached.transactions) cached.transactions = normalizeTransactions(cached.transactions);
   if (cached.savingsGoals) cached.savingsGoals = normalizeSavingsGoals(cached.savingsGoals);
@@ -552,6 +589,7 @@ export function normalizeData(cached: AppData): AppData {
   cached.cardPayments = normalizeCardPayments(cached.cardPayments);
   cached.people = normalizePeople(cached.people);
   cached.sources = normalizeSources(cached.sources);
+  cached.accounts = normalizeAccounts(cached.accounts);
   if (cached.reminders) cached.reminders = normalizeReminders(cached.reminders);
   cached.tasks = normalizePlannedTasks(cached.tasks);
   cached.inbox = normalizeInbox(cached.inbox);
