@@ -809,13 +809,14 @@ export function validateImport(json: string): { doc: Partial<AppData>; source: '
   }
   const p = parsed as Record<string, unknown>;
 
-  // V3 envelope: { schemaVersion, data, … }
+  // V3/V4/V5 envelope: { schemaVersion, data, … }
   let doc: Partial<AppData>;
   let source: 'v3' | 'legacy' = 'legacy';
   if (p.schemaVersion !== undefined) {
     source = 'v3';
-    if (p.schemaVersion !== EXPORT_SCHEMA_VERSION) {
-      throw new Error(`Unsupported backup schema version "${String(p.schemaVersion)}" (expected ${EXPORT_SCHEMA_VERSION}).`);
+    const verStr = String(p.schemaVersion);
+    if (!['3.0', '3', '4.0', '4', '5.0', '5', EXPORT_SCHEMA_VERSION].includes(verStr)) {
+      throw new Error(`Unsupported backup schema version "${verStr}".`);
     }
     if (!p.data || typeof p.data !== 'object' || Array.isArray(p.data)) {
       throw new Error('This backup is missing its data section.');
@@ -825,17 +826,18 @@ export function validateImport(json: string): { doc: Partial<AppData>; source: '
     doc = p as Partial<AppData>;
   }
 
-  const hasSettings = doc.settings && typeof doc.settings === 'object';
   const hasAnyData =
     Array.isArray(doc.transactions) ||
     Array.isArray(doc.goals) ||
     Array.isArray(doc.habits) ||
+    Array.isArray(doc.tasks) ||
     Array.isArray(doc.daily) ||
     (typeof doc.daily === 'object' && doc.daily !== null) ||
     Array.isArray(doc.learning) ||
     Array.isArray(doc.projects);
-  if (!hasSettings || !hasAnyData) {
-    throw new Error('This file does not look like a Growth OS backup (no settings or data found).');
+  const hasSettings = doc.settings && typeof doc.settings === 'object' && Object.keys(doc.settings).length > 0;
+  if (!hasAnyData && !hasSettings) {
+    throw new Error('This file does not look like a Growth OS backup (no data found).');
   }
 
   // Structural validation of known collections — malformed members would be
@@ -854,6 +856,20 @@ export function validateImport(json: string): { doc: Partial<AppData>; source: '
   expectArray('projects');
   expectArray('achievements');
   expectArray('skills');
+  expectArray('tasks');
+  expectArray('inbox');
+  expectArray('routines');
+  expectArray('recurringTasks');
+  expectArray('notifications');
+  expectArray('reminders');
+  expectArray('sources');
+  expectArray('accounts');
+  expectArray('obligations');
+  expectArray('creditCards');
+  expectArray('cardPayments');
+  expectArray('people');
+  expectArray('standaloneCommitments');
+  expectArray('migrationHistory');
   counts.dailyDays = doc.daily && typeof doc.daily === 'object' ? Object.keys(doc.daily as object).length : 0;
   counts.monthly = doc.monthly && typeof doc.monthly === 'object' ? Object.keys(doc.monthly as object).length : 0;
   counts.weekly = doc.weekly && typeof doc.weekly === 'object' ? Object.keys(doc.weekly as object).length : 0;
