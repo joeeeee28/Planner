@@ -22,6 +22,7 @@ const InsightsPage = lazy(() => import('./pages/Insights').then((m) => ({ defaul
 const ReviewsPage = lazy(() => import('./pages/Reviews').then((m) => ({ default: m.ReviewsPage })));
 const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })));
 const AutomationPage = lazy(() => import('./pages/Automation').then((m) => ({ default: m.AutomationPage })));
+const NotificationsPage = lazy(() => import('./pages/Notifications').then((m) => ({ default: m.NotificationsPage })));
 
 function PageFallback() {
   return (
@@ -123,6 +124,9 @@ function AppRouter() {
       break;
     case 'settings':
       page = <SettingsPage />;
+      break;
+    case 'notifications':
+      page = <NotificationsPage />;
       break;
     default:
       page = <DashboardPage />;
