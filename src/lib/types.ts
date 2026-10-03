@@ -372,6 +372,7 @@ export interface HomeWidgetPreferences {
   learning?: boolean;
   habits?: boolean;
   upcoming?: boolean;
+  analytics?: boolean;
 }
 
 export interface Settings {
