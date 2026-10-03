@@ -6,8 +6,8 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   define: {
-    __APP_VERSION__: JSON.stringify('V5.0-RC'),
-    __BUILD_COMMIT__: JSON.stringify(process.env.VITE_COMMIT_HASH || '37be7e7'),
+    __APP_VERSION__: JSON.stringify('5.0.0 (V5.0-RC)'),
+    __BUILD_COMMIT__: JSON.stringify(process.env.VITE_COMMIT_HASH || '79bc6d5'),
   },
   server: {
     host: '0.0.0.0',
