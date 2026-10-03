@@ -26,6 +26,9 @@ import { verdictFor } from '../lib/calendar/scheduler';
 import { ScheduleSheet } from '../components/ScheduleSheet';
 import { dailyShutdownProposal, SHUTDOWN_PROMPTS } from '../lib/reviewIntel';
 import { todayAttentionItems } from '../lib/attention';
+import { CalendarCapacityBanner } from '../components/CalendarCapacityBanner';
+import { EndOfDayReviewModal } from '../components/EndOfDayReview';
+import { FocusModeModal, type FocusSessionItem } from '../components/FocusMode';
 import type { DayEntry, PlannedTask, Routine, TaskItem, Transaction } from '../lib/types';
 
 const emptyJournal = {
@@ -71,6 +74,8 @@ export function TodayPage() {
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [shutdownAnswers, setShutdownAnswers] = useState<Record<string, string>>({});
   const [shutdownDone, setShutdownDone] = useState(false);
+  const [focusItem, setFocusItem] = useState<FocusSessionItem | null>(null);
+  const [eodReviewOpen, setEodReviewOpen] = useState(false);
 
   const cycle = currentCycle(data.cycles);
   const isFuture = date > t;
@@ -261,6 +266,24 @@ export function TodayPage() {
         </div>
         <div className="spacer" />
         <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+          <button className="btn btn-sm btn-ghost" onClick={() => setEodReviewOpen(true)}>
+            🌙 Review day
+          </button>
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => {
+              const firstTask = now[0] ?? next[0];
+              setFocusItem({
+                id: firstTask?.id ?? 'custom-focus',
+                title: firstTask?.text ?? 'Focus Session',
+                type: firstTask ? 'task' : 'custom',
+                durationMin: firstTask?.minutes ?? 45,
+                relatedEntityId: firstTask?.id,
+              });
+            }}
+          >
+            ⚡ Focus Mode
+          </button>
           {loadChipLevel && (
             <span className={`load-chip ${loadChipLevel}`} title={loadChipTitle}>
               {wf(work.totalMin)} planned
@@ -279,6 +302,11 @@ export function TodayPage() {
           </button>
         </div>
       </div>
+
+      {focusItem && <FocusModeModal item={focusItem} onClose={() => setFocusItem(null)} />}
+      {eodReviewOpen && <EndOfDayReviewModal date={date} onClose={() => setEodReviewOpen(false)} />}
+
+      <CalendarCapacityBanner date={date} onOpenPlanMyDay={() => navigate(`plan/day/${date}`)} />
 
       {/* Needs Attention Today Contextual Card */}
       {isTodayDay && todayAttn.length > 0 && (
