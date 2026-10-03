@@ -50,7 +50,13 @@ export function readRawDoc(): string | null {
 }
 
 export function writeRawDoc(json: string) {
-  localStorage.setItem(activeKey, json);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(activeKey, json);
+    }
+  } catch {
+    /* noop */
+  }
 }
 
 export function removeRawDoc() {
@@ -318,6 +324,7 @@ function normalizeRecurringTasks(list: unknown): AppData['recurringTasks'] {
       active: r.active !== false,
       skipMissed: r.skipMissed !== false,
       lastMaterialized: typeof r.lastMaterialized === 'string' && D.test(r.lastMaterialized) ? r.lastMaterialized : undefined,
+      skippedOccurrences: Array.isArray(r.skippedOccurrences) ? (r.skippedOccurrences as string[]).filter((d) => typeof d === 'string' && D.test(d)) : undefined,
       createdAt: typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
       updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
     });
@@ -411,6 +418,7 @@ function normalizeNotifications(list: unknown): AppData['notifications'] {
       kind: typeof r.kind === 'string' ? r.kind : 'notice',
       title: String(r.title),
       body: typeof r.body === 'string' && r.body ? r.body : undefined,
+      priority: typeof r.priority === 'string' && ['P0', 'P1', 'P2', 'P3'].includes(r.priority) ? (r.priority as 'P0' | 'P1' | 'P2' | 'P3') : undefined,
       date: typeof r.date === 'string' && D.test(r.date) ? r.date : '2026-01-01',
       route: typeof r.route === 'string' && r.route ? r.route : undefined,
       read: r.read === true,

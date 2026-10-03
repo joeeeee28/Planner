@@ -95,14 +95,26 @@ export function sortMutationsByDependency(queue: PendingMutation[]): PendingMuta
 
 // ── Mutation Queue Local Storage ──────────────────────────────────────────────
 
+const memoryQueueStore = new Map<string, string>();
+
 export function queueStorageKey(userId: string): string {
   return `growth-os.v5.queue.${userId}`;
 }
 
 export function readStoredQueue(userId: string): PendingMutation[] {
+  const key = queueStorageKey(userId);
+  let raw: string | null = null;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      raw = localStorage.getItem(key);
+    } catch {
+      raw = memoryQueueStore.get(key) || null;
+    }
+  } else {
+    raw = memoryQueueStore.get(key) || null;
+  }
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(queueStorageKey(userId));
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as PendingMutation[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -111,19 +123,29 @@ export function readStoredQueue(userId: string): PendingMutation[] {
 }
 
 export function writeStoredQueue(userId: string, queue: PendingMutation[]): void {
-  try {
-    localStorage.setItem(queueStorageKey(userId), JSON.stringify(queue));
-  } catch {
-    /* storage full/unavailable */
+  const key = queueStorageKey(userId);
+  const json = JSON.stringify(queue);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(key, json);
+      return;
+    } catch {
+      // fallback to memory
+    }
   }
+  memoryQueueStore.set(key, json);
 }
 
 export function clearStoredQueue(userId: string): void {
-  try {
-    localStorage.removeItem(queueStorageKey(userId));
-  } catch {
-    /* noop */
+  const key = queueStorageKey(userId);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // noop
+    }
   }
+  memoryQueueStore.delete(key);
 }
 
 // ── Multi-Tab Broadcast Channel (Section 13) ─────────────────────────────────
