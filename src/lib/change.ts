@@ -66,7 +66,7 @@ function shiftQuarterKey(key: string, delta: number): { from: DateStr; to: DateS
   return { from, to: `${ny}-${String(fromM + 2).padStart(2, '0')}-31`, key: `${ny}-Q${nq + 1}` };
 }
 
-function rangeFor(data: AppData, scope: ChangeScope, now: DateStr) {
+export function rangeFor(data: AppData, scope: ChangeScope, now: DateStr) {
   if (scope === 'today') {
     return { current: { from: now, to: now }, previous: { from: addDays(now, -1), to: addDays(now, -1) } };
   }
@@ -96,7 +96,7 @@ function quarterLabel(r: DayRange): string {
   return q.key;
 }
 
-function moneyOf(txs: { type: string; amount: number }[]) {
+export function moneyOf(txs: { type: string; amount: number }[]) {
   const income = txs.filter((x) => x.type === 'income').reduce((a, x) => a + x.amount, 0);
   const expense = txs.filter((x) => x.type !== 'income').reduce((a, x) => a + x.amount, 0);
   return { income, expense, saved: income - expense };
@@ -239,7 +239,7 @@ export function changeReport(data: AppData, scope: ChangeScope, now: DateStr = t
     },
     { key: 'income', label: 'Income', current: cm.income, previous: pm.income, unit: 'money', route: 'money/transactions' },
     { key: 'expense', label: 'Expenses', current: cm.expense, previous: pm.expense, unit: 'money', route: 'money/transactions' },
-    { key: 'savings', label: 'Saved (income − expenses)', current: cm.saved, previous: pm.saved, unit: 'money', route: 'money' },
+    { key: 'savings', label: 'Net Saved', current: cm.saved, previous: pm.saved, unit: 'money', route: 'money' },
     {
       key: 'reviews',
       label: 'Reviews written',

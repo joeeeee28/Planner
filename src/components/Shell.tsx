@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
-import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle, IconChart } from './icons';
+import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle, IconChart, IconTrendUp } from './icons';
 import { QuickAddModal, type QuickAddKind } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
@@ -11,26 +11,43 @@ interface NavItem {
   path: string;
   label: string;
   icon: (p: { size?: number }) => React.ReactElement;
-  group: 'do' | 'grow' | 'system';
+  group: 'plan' | 'grow' | 'money' | 'reflect' | 'system';
 }
 
 const NAV_MAIN: NavItem[] = [
-  { path: 'home', label: 'Home', icon: IconHome, group: 'do' },
-  { path: 'today', label: 'Today', icon: IconToday, group: 'do' },
-  { path: 'automation', label: 'Automation', icon: IconCycle, group: 'do' },
-  { path: 'inbox', label: 'Inbox', icon: IconInbox, group: 'do' },
-  { path: 'plan', label: 'Plan', icon: IconPlan, group: 'do' },
+  // PLAN
+  { path: 'home', label: 'Home', icon: IconHome, group: 'plan' },
+  { path: 'today', label: 'Today', icon: IconToday, group: 'plan' },
+  { path: 'automation', label: 'Automation', icon: IconCycle, group: 'plan' },
+  { path: 'inbox', label: 'Inbox', icon: IconInbox, group: 'plan' },
+  { path: 'plan', label: 'Plan', icon: IconPlan, group: 'plan' },
+  { path: 'reviews', label: 'Reviews', icon: IconReviews, group: 'plan' },
+
+  // GROW
   { path: 'goals', label: 'Goals', icon: IconGoal, group: 'grow' },
   { path: 'growth', label: 'Growth', icon: IconGrowth, group: 'grow' },
-  { path: 'money', label: 'Money', icon: IconMoney, group: 'grow' },
-  { path: 'journal', label: 'Journal', icon: IconJournal, group: 'grow' },
-  { path: 'reviews', label: 'Reviews', icon: IconReviews, group: 'do' },
-  { path: 'analytics', label: 'Analytics', icon: IconChart, group: 'grow' },
-  { path: 'insights', label: 'Insights', icon: IconInsights, group: 'grow' },
+  { path: 'growth/learning', label: 'Learning', icon: IconGrowth, group: 'grow' },
+
+  // MONEY
+  { path: 'money', label: 'Money', icon: IconMoney, group: 'money' },
+  { path: 'investments', label: 'Investments', icon: IconTrendUp, group: 'money' },
+
+  // REFLECT
+  { path: 'journal', label: 'Journal', icon: IconJournal, group: 'reflect' },
+  { path: 'analytics', label: 'Analytics', icon: IconChart, group: 'reflect' },
+  { path: 'insights', label: 'Insights', icon: IconInsights, group: 'reflect' },
+
+  // SYSTEM
   { path: 'settings', label: 'Settings', icon: IconSettings, group: 'system' },
 ];
 
-const GROUP_LABEL: Record<string, string> = { do: 'Plan & do', grow: 'Grow', system: 'System' };
+const GROUP_LABEL: Record<string, string> = {
+  plan: 'Plan',
+  grow: 'Grow',
+  money: 'Money',
+  reflect: 'Reflect',
+  system: 'System',
+};
 
 const MOBILE_TABS = ['home', 'today', 'plan', 'money'];
 
@@ -68,6 +85,9 @@ function SyncChip({ onClick }: { onClick?: () => void }) {
 }
 
 function pageTitle(section: string, sub: string | undefined): string {
+  if (section === 'investments') {
+    return 'Investments';
+  }
   if (section === 'growth' && sub) {
     const map: Record<string, string> = { habits: 'Habits', learning: 'Learning', career: 'Career', cycles: 'Growth cycles' };
     return map[sub] ?? 'Growth';
@@ -194,7 +214,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const active = (path: string) => (section === path ? 'active' : '');
 
-  const groups = ['do', 'grow'] as const;
+  const groups = ['plan', 'grow', 'money', 'reflect'] as const;
   const systemItems = NAV_MAIN.filter((n) => n.group === 'system');
 
   const sidebar = (

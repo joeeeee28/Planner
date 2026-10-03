@@ -24,7 +24,10 @@ export type SearchKind =
   | 'source'
   | 'account'
   | 'obligation'
-  | 'creditcard';
+  | 'creditcard'
+  | 'investment'
+  | 'instrument'
+  | 'holding';
 
 export interface SearchResult {
   kind: SearchKind;
@@ -61,6 +64,9 @@ export function searchGroupOf(kind: SearchKind): SearchGroup {
     case 'account':
     case 'obligation':
     case 'creditcard':
+    case 'investment':
+    case 'instrument':
+    case 'holding':
       return 'money';
     case 'habit':
     case 'learning':
@@ -442,6 +448,57 @@ export function searchAll(data: AppData, query: string): SearchResult[] {
         snippet: `••••${c.last4}`,
         route: '#/money/accounts',
         score: 25 + n,
+      });
+    }
+  }
+
+  // Investments & Instruments
+  for (const inst of data.investmentInstruments ?? []) {
+    const pool = [inst.symbol, inst.name, inst.exchange, inst.isin ?? '', inst.assetType].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'instrument',
+        id: inst.id,
+        title: `${inst.symbol} — ${inst.name}`,
+        snippet: `${inst.exchange} · ${inst.assetType}${inst.isin ? ` · ${inst.isin}` : ''}`,
+        route: '#/investments',
+        score: (hits(inst.symbol, q) > 0 ? 35 : 18) + n,
+      });
+    }
+  }
+
+  // Holdings
+  for (const h of data.investmentHoldings ?? []) {
+    const inst = (data.investmentInstruments ?? []).find((i) => i.id === h.instrumentId);
+    if (!inst) continue;
+    const pool = [inst.symbol, inst.name, `holding ${h.quantity}`].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'holding',
+        id: h.id,
+        title: `Holding: ${inst.symbol}`,
+        snippet: `${h.quantity} shares · avg cost ${h.averageCost}`,
+        route: '#/investments',
+        score: (hits(inst.symbol, q) > 0 ? 30 : 15) + n,
+      });
+    }
+  }
+
+  // Upcoming Investment Plans
+  for (const plan of data.investmentPlans ?? []) {
+    const inst = plan.instrumentId ? (data.investmentInstruments ?? []).find((i) => i.id === plan.instrumentId) : undefined;
+    const pool = [inst?.symbol ?? '', inst?.name ?? '', plan.notes ?? '', plan.frequency ?? '', plan.status].join(' · ');
+    const n = hits(pool, q);
+    if (n > 0) {
+      push({
+        kind: 'investment',
+        id: plan.id,
+        title: `Investment Plan: ${inst?.symbol ?? 'Planned'} (${plan.amount})`,
+        snippet: `${plan.status} · planned ${plan.plannedDate}${plan.frequency ? ` · ${plan.frequency}` : ''}`,
+        route: '#/investments',
+        score: 20 + n,
       });
     }
   }

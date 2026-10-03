@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
-import { addDays, formatDateLong, formatDateMed, isToday, todayStr, cycleDayNumber, currentCycle, weekdayName } from '../lib/dates';
+import { addDays, formatDateLong, formatDateMed, isToday, todayStr, weekdayName } from '../lib/dates';
 import { dayProgress, habitScheduledOn, goalEffectiveProgress } from '../lib/analytics';
 import { formatMoney, todaySpending, todayIncome, nextOccurrence } from '../lib/finance';
 import { ProgressBar, TaskList, EmptyState, Stars } from '../components/ui';
@@ -77,7 +77,6 @@ export function TodayPage() {
   const [focusItem, setFocusItem] = useState<FocusSessionItem | null>(null);
   const [eodReviewOpen, setEodReviewOpen] = useState(false);
 
-  const cycle = currentCycle(data.cycles);
   const isFuture = date > t;
   const isTodayDay = isToday(date);
   const currency = data.settings.finance.currency;
@@ -250,24 +249,19 @@ export function TodayPage() {
   return (
     <div className="page">
       {/* header */}
-      <div className="flex flex-wrap mb-16">
+      <div className="flex flex-wrap mb-16 items-baseline justify-between" style={{ gap: 12 }}>
         <div>
-          <h1 className="t-title" style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: 17 }}>
-            {isTodayDay ? 'Today' : weekdayName(date)}
+          <h1 className="t-title" style={{ fontSize: 24, margin: 0, fontWeight: 700 }}>
+            {weekdayName(date)}
           </h1>
-          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
             {formatDateLong(date)}
-            {cycle && (
-              <span className="tiny muted" style={{ marginLeft: 10, fontWeight: 550 }}>
-                Day {cycleDayNumber(cycle, date)} of your Growth Cycle
-              </span>
-            )}
           </div>
         </div>
         <div className="spacer" />
-        <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
-          <button className="btn btn-sm btn-ghost" onClick={() => setEodReviewOpen(true)}>
-            🌙 Review day
+        <div className="flex flex-wrap items-center gap-8">
+          <button className="btn btn-sm btn-secondary" onClick={() => navigate(`plan/day/${date}`)}>
+            📅 Plan My Day
           </button>
           <button
             className="btn btn-sm btn-primary"
@@ -283,6 +277,9 @@ export function TodayPage() {
             }}
           >
             ⚡ Focus Mode
+          </button>
+          <button className="btn btn-sm btn-ghost" onClick={() => setEodReviewOpen(true)}>
+            🌙 Review Day
           </button>
           {loadChipLevel && (
             <span className={`load-chip ${loadChipLevel}`} title={loadChipTitle}>

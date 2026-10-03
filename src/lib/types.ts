@@ -368,6 +368,7 @@ export interface HomeWidgetPreferences {
   today?: boolean;
   attention?: boolean;
   money?: boolean;
+  investments?: boolean;
   goals?: boolean;
   learning?: boolean;
   habits?: boolean;
@@ -921,6 +922,18 @@ export interface AppData {
   automationLogs?: AutomationLogItem[];
   /** Migration and import history log (V5 Phase 17) — additive. */
   migrationHistory?: MigrationHistoryItem[];
+  /** Investment instruments (V5) — additive. */
+  investmentInstruments?: InvestmentInstrument[];
+  /** Portfolio holdings rolled up by instrument (V5) — additive. */
+  investmentHoldings?: InvestmentHolding[];
+  /** Investment transactions (V5) — additive. */
+  investmentTransactions?: InvestmentTransaction[];
+  /** Planned upcoming investments (V5) — additive. */
+  investmentPlans?: InvestmentPlan[];
+  /** Normalized cached market quotes keyed by symbol/id (V5) — additive. */
+  cachedMarketQuotes?: Record<string, MarketQuote>;
+  /** Timestamp of last market data refresh (V5) — additive. */
+  lastMarketRefresh?: string;
   /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
   periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;
@@ -1172,7 +1185,77 @@ export interface MigrationHistoryItem {
   skippedCount: number;
   failedCount: number;
   status: 'completed' | 'partial' | 'failed' | 'rolled-back';
+}
+
+// ── Investments Module (V5) ────────────────────────────────────────────────
+
+export type AssetType = 'STOCK' | 'ETF' | 'MUTUAL_FUND' | 'BOND' | 'OTHER';
+
+export interface InvestmentInstrument {
+  id: ID;
+  symbol: string;
+  name: string;
+  exchange: string;
+  assetType: AssetType;
+  currency: string;
+  isin?: string;
+  active: boolean;
+  marketDataProvider?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface InvestmentHolding {
+  id: ID;
+  instrumentId: ID;
+  quantity: number;
+  averageCost: number;
+  investedAmount: number;
+  openedAt: string;
+  updatedAt: string;
+}
+
+export type InvestmentTxType = 'BUY' | 'SELL' | 'DIVIDEND' | 'SPLIT' | 'BONUS' | 'ADJUSTMENT';
+
+export interface InvestmentTransaction {
+  id: ID;
+  date: DateStr;
+  instrumentId: ID;
+  type: InvestmentTxType;
+  quantity: number;
+  price: number;
+  amount: number;
+  fees?: number;
+  broker?: string;
+  currency: string;
   notes?: string;
+  moneyTransactionId?: ID;
+}
+
+export interface InvestmentPlan {
+  id: ID;
+  plannedDate: DateStr;
+  instrumentId?: ID;
+  amount: number;
+  quantity?: number;
+  frequency?: 'once' | 'monthly' | 'weekly' | 'quarterly';
+  status: 'planned' | 'completed' | 'cancelled';
+  notes?: string;
+}
+
+export type MarketStatus = 'Open' | 'Closed' | 'Delayed' | 'Unavailable';
+
+export interface MarketQuote {
+  instrumentId?: ID;
+  symbol: string;
+  price: number;
+  previousClose: number;
+  dayChange: number;
+  dayChangePercent: number;
+  currency: string;
+  marketStatus: MarketStatus;
+  provider: string;
+  timestamp: string;
+  isDelayed: boolean;
 }
 
 declare global {

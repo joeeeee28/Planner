@@ -31,8 +31,12 @@ import type {
   PlannedTask,
   SavingsGoal,
   Transaction,
+  InvestmentTransaction,
+  InvestmentPlan,
+  InvestmentTxType,
 } from '../lib/types';
 import { MONEY_ACCOUNT_TYPES } from '../lib/types';
+import { applyInvestmentTransaction } from '../lib/investments';
 
 export type QuickAddKind =
   | 'palette'
@@ -47,7 +51,9 @@ export type QuickAddKind =
   | 'goal'
   | 'habit'
   | 'learning'
-  | 'saving';
+  | 'saving'
+  | 'investment'
+  | 'investment-plan';
 
 export interface QuickAddProps {
   onClose: () => void;
@@ -76,6 +82,8 @@ const ACTION_DEFINITIONS: {
   { id: 'learning', label: 'Learning', icon: '◈', module: 'grow', description: 'Track a new topic, course or certification' },
   { id: 'source', label: 'Money Source', icon: '💎', module: 'money', description: 'Create a dedicated pot / fund for a specific purpose' },
   { id: 'account', label: 'Account', icon: '🏦', module: 'money', description: 'Track a bank, cash, wallet or investment account' },
+  { id: 'investment', label: 'Investment', icon: '📈', module: 'money', description: 'Record executed stock purchase or sale' },
+  { id: 'investment-plan', label: 'Upcoming Investment', icon: '📅', module: 'money', description: 'Plan future recurring or one-time investment' },
 ];
 
 const NAV_COMMANDS = [
@@ -84,6 +92,11 @@ const NAV_COMMANDS = [
   { id: 'inbox', label: 'Inbox', route: 'inbox', icon: '📥' },
   { id: 'goals', label: 'Goals', route: 'goals', icon: '◎' },
   { id: 'money', label: 'Money', route: 'money', icon: '💳' },
+  { id: 'investments', label: 'Investments', route: 'investments', icon: '📈' },
+  { id: 'portfolio', label: 'Portfolio', route: 'investments', icon: '💼' },
+  { id: 'add-investment', label: 'Add Investment', route: 'investments', icon: '➕' },
+  { id: 'add-upcoming-investment', label: 'Add Upcoming Investment', route: 'investments', icon: '📅' },
+  { id: 'import-investments', label: 'Import Investments', route: 'investments', icon: '📥' },
   { id: 'journal', label: 'Journal', route: 'journal', icon: '✎' },
   { id: 'reviews', label: 'Reviews', route: 'reviews', icon: '📊' },
   { id: 'insights', label: 'Insights', route: 'insights', icon: '💡' },
@@ -136,6 +149,14 @@ export function QuickAddModal({
 
   // Learning specific
   const [learningType, setLearningType] = useState('topic');
+
+  // Investment specific
+  const [invSymbol, setInvSymbol] = useState('');
+  const [invType, setInvType] = useState<InvestmentTxType>('BUY');
+  const [invQuantity, setInvQuantity] = useState('');
+  const [invPrice, setInvPrice] = useState('');
+  const [invExchange, setInvExchange] = useState('NSE');
+  const [invFrequency, setInvFrequency] = useState<'once' | 'monthly' | 'weekly' | 'quarterly'>('monthly');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -464,6 +485,111 @@ export function QuickAddModal({
       } else if (kind === 'journal') {
         pushCommand('Opened Journal');
         navigate(`journal/${t}`);
+      } else if (kind === 'investment') {
+        const sym = invSymbol.trim().toUpperCase();
+        if (!sym) {
+          setError('Instrument symbol is required.');
+          setIsSubmitting(false);
+          return;
+        }
+        const qty = parseFloat(invQuantity);
+        const prc = parseFloat(invPrice);
+        if (isNaN(qty) || qty <= 0) {
+          setError('Quantity must be greater than zero.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (isNaN(prc) || prc <= 0) {
+          setError('Price per share must be greater than zero.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        update((d) => {
+          let inst = (d.investmentInstruments ?? []).find(
+            (i) => i.symbol.toUpperCase() === sym && i.exchange.toUpperCase() === (invExchange.trim().toUpperCase() || 'NSE')
+          );
+          if (!inst) {
+            inst = {
+              id: uid('inst'),
+              symbol: sym,
+              name: sym,
+              exchange: invExchange.trim().toUpperCase() || 'NSE',
+              assetType: 'STOCK',
+              currency: d.settings.finance.currency,
+              active: true,
+            };
+            d.investmentInstruments = [...(d.investmentInstruments ?? []), inst];
+          }
+
+          const tx: InvestmentTransaction = {
+            id: uid('itx'),
+            date: date || t,
+            instrumentId: inst.id,
+            type: invType,
+            quantity: qty,
+            price: prc,
+            amount: Math.round(qty * prc * 100) / 100,
+            currency: d.settings.finance.currency,
+            notes: note.trim() || undefined,
+          };
+
+          const newHoldings = applyInvestmentTransaction(d.investmentHoldings ?? [], tx);
+          return {
+            ...d,
+            investmentTransactions: [tx, ...(d.investmentTransactions ?? [])],
+            investmentHoldings: newHoldings,
+          };
+        });
+
+        pushCommand(`Recorded ${invType} ${qty} ${sym}`);
+        navigate('investments');
+      } else if (kind === 'investment-plan') {
+        const numAmt = parseFloat(amount);
+        if (isNaN(numAmt) || numAmt <= 0) {
+          setError('Planned amount must be greater than zero.');
+          setIsSubmitting(false);
+          return;
+        }
+        const sym = invSymbol.trim().toUpperCase();
+        update((d) => {
+          let instId: string | undefined = undefined;
+          if (sym) {
+            let inst = (d.investmentInstruments ?? []).find((i) => i.symbol.toUpperCase() === sym);
+            if (!inst) {
+              inst = {
+                id: uid('inst'),
+                symbol: sym,
+                name: sym,
+                exchange: 'NSE',
+                assetType: 'STOCK',
+                currency: d.settings.finance.currency,
+                active: true,
+              };
+              d.investmentInstruments = [...(d.investmentInstruments ?? []), inst];
+            }
+            instId = inst.id;
+          }
+
+          const plan: InvestmentPlan = {
+            id: uid('iplan'),
+            plannedDate: date || t,
+            instrumentId: instId,
+            amount: numAmt,
+            quantity: invQuantity ? parseFloat(invQuantity) || undefined : undefined,
+            frequency: invFrequency,
+            status: 'planned',
+            notes: note.trim() || undefined,
+          };
+
+          return {
+            ...d,
+            investmentPlans: [...(d.investmentPlans ?? []), plan],
+          };
+        });
+
+        pushCommand(`Added investment plan ${currency}${numAmt}`);
+        navigate('investments');
       }
 
       setIsSubmitting(false);
@@ -1055,6 +1181,160 @@ export function QuickAddModal({
                 <p className="small muted" style={{ margin: 0 }}>
                   Opens today's journal for free writing.
                 </p>
+              </div>
+            )}
+
+            {/* INVESTMENT CAPTURE */}
+            {kind === 'investment' && (
+              <div className="flex flex-col gap-12 mb-16">
+                <div className="flex gap-8">
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${invType === 'BUY' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setInvType('BUY')}
+                    style={{ flex: 1 }}
+                  >
+                    BUY
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${invType === 'SELL' ? 'btn-danger' : 'btn-ghost'}`}
+                    onClick={() => setInvType('SELL')}
+                    style={{ flex: 1 }}
+                  >
+                    SELL
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="form-label">Symbol (e.g. RELIANCE, TCS)</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      placeholder="RELIANCE"
+                      value={invSymbol}
+                      onChange={(e) => setInvSymbol(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Exchange</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      placeholder="NSE"
+                      value={invExchange}
+                      onChange={(e) => setInvExchange(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="form-label">Quantity</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="input w-full"
+                      placeholder="10"
+                      value={invQuantity}
+                      onChange={(e) => setInvQuantity(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Price per share ({currency})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="input w-full"
+                      placeholder="2500"
+                      value={invPrice}
+                      onChange={(e) => setInvPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="form-label">Date</label>
+                    <input
+                      type="date"
+                      className="input w-full"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Notes (optional)</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      placeholder="Broker / order ref"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* UPCOMING INVESTMENT PLAN CAPTURE */}
+            {kind === 'investment-plan' && (
+              <div className="flex flex-col gap-12 mb-16">
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="form-label">Symbol / Instrument</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      placeholder="NIFTYBEES, TCS"
+                      value={invSymbol}
+                      onChange={(e) => setInvSymbol(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Planned Amount ({currency})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="input w-full"
+                      placeholder="10000"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="form-label">Planned Date</label>
+                    <input
+                      type="date"
+                      className="input w-full"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Frequency</label>
+                    <select
+                      className="select w-full"
+                      value={invFrequency}
+                      onChange={(e) => setInvFrequency(e.target.value as 'once' | 'monthly' | 'weekly' | 'quarterly')}
+                    >
+                      <option value="monthly">Monthly SIP</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="once">One-time</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label">Notes (optional)</label>
+                  <input
+                    type="text"
+                    className="input w-full"
+                    placeholder="SIP target / thesis"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                </div>
               </div>
             )}
 

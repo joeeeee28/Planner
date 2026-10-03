@@ -16,14 +16,20 @@ import {
   type TimeRangeKey,
   type AnalyticsFilter,
 } from '../lib/analyticsEngine';
-import { IconChart, IconPlan, IconGoal, IconHabit, IconLearning, IconMoney, IconToday, IconClose } from '../components/icons';
+import { IconChart, IconPlan, IconGoal, IconHabit, IconLearning, IconMoney, IconToday, IconClose, IconTrendUp } from '../components/icons';
 import { todayStr } from '../lib/dates';
 import { formatMoney } from '../lib/finance';
+import {
+  calculatePortfolioSummary,
+  getPortfolioAllocation,
+  filterThisMonthInvestments,
+  filterUpcomingInvestments,
+} from '../lib/investments';
 
 export function AnalyticsPage() {
   const { data, update } = useApp();
   const [rangeKey, setRangeKey] = useState<TimeRangeKey>('this-week');
-  const [activeTab, setActiveTab] = useState<'overview' | 'planning' | 'goals' | 'habits' | 'learning' | 'money' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'planning' | 'goals' | 'habits' | 'learning' | 'money' | 'investments' | 'reports'>('overview');
   const [customFrom, setCustomFrom] = useState<string>(todayStr().slice(0, 8) + '01');
   const [customTo, setCustomTo] = useState<string>(todayStr());
 
@@ -48,6 +54,32 @@ export function AnalyticsPage() {
 
   const weeklyReport = useMemo(() => generateWeeklyReport(data), [data]);
   const monthlyReport = useMemo(() => generateMonthlyReport(data), [data]);
+
+  const portfolioSummary = useMemo(() => {
+    return calculatePortfolioSummary(
+      data.investmentHoldings ?? [],
+      data.investmentInstruments ?? [],
+      data.cachedMarketQuotes ?? {}
+    );
+  }, [data.investmentHoldings, data.investmentInstruments, data.cachedMarketQuotes]);
+
+  const portfolioAllocations = useMemo(() => {
+    return getPortfolioAllocation(portfolioSummary.metrics);
+  }, [portfolioSummary.metrics]);
+
+  const thisMonthInvested = useMemo(() => {
+    const s = filterThisMonthInvestments(
+      data.investmentTransactions ?? [],
+      data.investmentPlans ?? [],
+      todayStr().slice(0, 7)
+    );
+    return s.investedThisMonth;
+  }, [data.investmentTransactions, data.investmentPlans]);
+
+  const upcomingInvested = useMemo(() => {
+    const plans = filterUpcomingInvestments(data.investmentPlans ?? [], todayStr());
+    return plans.reduce((acc, p) => acc + p.amount, 0);
+  }, [data.investmentPlans]);
 
   const currency = data.settings?.finance?.currency ?? 'INR';
 
@@ -252,6 +284,7 @@ export function AnalyticsPage() {
             ['habits', 'Habits & Routines', IconHabit],
             ['learning', 'Learning', IconLearning],
             ['money', 'Money', IconMoney],
+            ['investments', 'Investments', IconTrendUp],
             ['reports', 'Reports', IconChart],
           ] as const
         ).map(([tabId, label, Icon]) => (
@@ -344,6 +377,22 @@ export function AnalyticsPage() {
               <div className="text-2xl font-bold">{formatMoney(fullAnalytics.money.saved, currency, true)}</div>
               <div className="tiny muted mt-4">
                 Income: {formatMoney(fullAnalytics.money.income, currency, true)} · Exp: {formatMoney(fullAnalytics.money.expense, currency, true)}
+              </div>
+            </div>
+
+            {/* Investments Card */}
+            <div
+              className="panel clickable"
+              onClick={() => setActiveTab('investments')}
+              style={{ cursor: 'pointer', padding: 16 }}
+            >
+              <div className="flex items-center justify-between muted tiny mb-4">
+                <span>INVESTMENTS</span>
+                <IconTrendUp size={14} />
+              </div>
+              <div className="text-2xl font-bold">{formatMoney(portfolioSummary.totalCurrentValue, currency)}</div>
+              <div className={`tiny mt-4 ${portfolioSummary.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>
+                {portfolioSummary.totalPL >= 0 ? '+' : ''}{formatMoney(portfolioSummary.totalPL, currency)} ({portfolioSummary.totalReturnPct.toFixed(2)}%) · {(data.investmentHoldings ?? []).length} holdings
               </div>
             </div>
           </div>
@@ -767,7 +816,99 @@ export function AnalyticsPage() {
         </div>
       )}
 
-      {/* TAB 7: REPORTS */}
+      {/* TAB 7: INVESTMENTS */}
+      {activeTab === 'investments' && (
+        <div className="flex flex-col gap-16">
+          <div className="panel">
+            <div className="flex items-center justify-between mb-12">
+              <h2 className="panel-title" style={{ margin: 0 }}>Investment Portfolio Analytics (Factual)</h2>
+              <button className="btn btn-sm btn-ghost" onClick={() => navigate('investments')}>
+                Open Investments Module →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-12 text-center mb-16">
+              <div className="p-12 rounded" style={{ background: 'var(--bg-subtle)' }}>
+                <div className="text-xl font-bold">{formatMoney(portfolioSummary.totalInvested, currency)}</div>
+                <div className="tiny muted">Total Invested</div>
+              </div>
+              <div className="p-12 rounded" style={{ background: 'var(--bg-subtle)' }}>
+                <div className="text-xl font-bold">{formatMoney(portfolioSummary.totalCurrentValue, currency)}</div>
+                <div className="tiny muted">Current Value</div>
+              </div>
+              <div className="p-12 rounded" style={{ background: 'var(--bg-subtle)' }}>
+                <div className={`text-xl font-bold ${portfolioSummary.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {portfolioSummary.totalPL >= 0 ? '+' : ''}{formatMoney(portfolioSummary.totalPL, currency)}
+                </div>
+                <div className="tiny muted">Total P/L ({portfolioSummary.totalReturnPct.toFixed(2)}%)</div>
+              </div>
+              <div className="p-12 rounded" style={{ background: 'var(--bg-subtle)' }}>
+                <div className="text-xl font-bold">{formatMoney(thisMonthInvested, currency)}</div>
+                <div className="tiny muted">Invested This Month</div>
+              </div>
+            </div>
+            <div className="tiny muted">
+              Upcoming planned investments: <strong>{formatMoney(upcomingInvested, currency)}</strong> (strictly excluded from current invested amount and portfolio value).
+            </div>
+          </div>
+
+          {/* Allocation */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+            <div className="panel">
+              <h2 className="panel-title mb-12">Portfolio Allocation by Instrument</h2>
+              {portfolioAllocations.byInstrument.length === 0 ? (
+                <p className="small muted">No active holdings recorded yet.</p>
+              ) : (
+                <div className="flex flex-col gap-8">
+                  {portfolioAllocations.byInstrument.map((a) => (
+                    <div key={a.key} className="flex items-center justify-between p-8 rounded border" style={{ borderColor: 'var(--border-color)' }}>
+                      <div>
+                        <div className="small font-semibold">{a.label}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="small font-bold">{formatMoney(a.value, currency)}</div>
+                        <div className="tiny muted">{a.percentage.toFixed(1)}%</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="panel">
+              <h2 className="panel-title mb-12">Holdings Snapshot</h2>
+              {(data.investmentHoldings ?? []).length === 0 ? (
+                <p className="small muted">No holdings in portfolio.</p>
+              ) : (
+                <div className="flex flex-col gap-8">
+                  {(data.investmentHoldings ?? []).map((h) => {
+                    const inst = (data.investmentInstruments ?? []).find((i) => i.id === h.instrumentId);
+                    const quote = (data.cachedMarketQuotes ?? {})[h.instrumentId];
+                    const currentPrice = quote?.price ?? h.averageCost;
+                    const val = h.quantity * currentPrice;
+                    const pl = val - h.investedAmount;
+                    return (
+                      <div key={h.id} className="flex items-center justify-between p-8 rounded border" style={{ borderColor: 'var(--border-color)' }}>
+                        <div>
+                          <div className="small font-semibold">{inst?.symbol ?? 'Instrument'}</div>
+                          <div className="tiny muted">{h.quantity} shares · avg {formatMoney(h.averageCost, currency)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="small font-bold">{formatMoney(val, currency)}</div>
+                          <div className={`tiny ${pl >= 0 ? 'text-success' : 'text-danger'}`}>
+                            {pl >= 0 ? '+' : ''}{formatMoney(pl, currency)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 8: REPORTS */}
       {activeTab === 'reports' && (
         <div className="flex flex-col gap-16">
           {/* Weekly Report Card */}

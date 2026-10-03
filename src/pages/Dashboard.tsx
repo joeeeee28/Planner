@@ -15,12 +15,18 @@ import { dayProgress, dayStreak, goalEffectiveProgress, goalDeadlineInfo } from 
 import { navigate } from '../lib/router';
 import { attentionItems as computeAttention, categorizedAttention } from '../lib/attention';
 import { factualSmartInsights } from '../lib/insights2';
-import { changeReport, changeDeltaLabel } from '../lib/change';
+import { changeReport, changeDeltaLabel, rangeFor, moneyOf } from '../lib/change';
 import { nextBestAction } from '../lib/priority';
 import { formatMoney, monthTotals, goalPct, savingsRate, monthlyMoneySeries } from '../lib/finance';
 import { deriveCommitments } from '../lib/commitments';
 import { ProgressBar, Stars, Modal } from '../components/ui';
-import { IconArrowRight } from '../components/icons';
+import { IconArrowRight, IconMoney } from '../components/icons';
+import { MetricCard, StatGrid } from '../components/v5';
+import {
+  calculatePortfolioSummary,
+  filterThisMonthInvestments,
+  filterUpcomingInvestments,
+} from '../lib/investments';
 import { uid } from '../lib/uid';
 import { QuickAddModal, type QuickAddKind } from '../components/QuickAdd';
 import { activeGoals, tasksOf, nextTaskForGoal } from '../lib/plan';
@@ -67,6 +73,8 @@ export function DashboardPage() {
   const showLearning = hw.learning !== false;
   const showHabits = hw.habits !== false;
   const showUpcoming = hw.upcoming !== false;
+  const showInvestments = hw.investments !== false;
+  const showAnalytics = hw.analytics !== false;
 
   const dayP = dayProgress(entry, data.growthAreas);
   const streak = dayStreak(data);
@@ -115,6 +123,32 @@ export function DashboardPage() {
   const activeGoalsCount = data.goals.filter((g) => g.status === 'in-progress' || g.status === 'not-started').length;
   const tasksDoneThisWeek = tasks.filter((x) => x.done && x.doneAt && x.doneAt.slice(0, 10) >= addDays(t, -7)).length;
   const activeLearningCount = data.learning.filter((l) => l.status === 'in-progress' || l.status === 'planned').length;
+
+  // ── investments summary ──
+  const holdings = data.investmentHoldings ?? [];
+  const instruments = data.investmentInstruments ?? [];
+  const quotes = data.cachedMarketQuotes ?? {};
+  const portfolio = calculatePortfolioSummary(holdings, instruments, quotes);
+  const thisMonthInvest = filterThisMonthInvestments(data.investmentTransactions ?? [], data.investmentPlans ?? [], mk);
+  const upcomingInvest = filterUpcomingInvestments(data.investmentPlans ?? [], t);
+
+  // ── "What Changed This Week" Financial Comparison (Sections 8-11) ──
+  const weekScope = rangeFor(data, 'week', t);
+  const curTxs = data.transactions.filter((tx) => tx.date >= weekScope.current.from && tx.date <= weekScope.current.to);
+  const prevTxs = data.transactions.filter((tx) => tx.date >= weekScope.previous.from && tx.date <= weekScope.previous.to);
+  const curM = moneyOf(curTxs);
+  const prevM = moneyOf(prevTxs);
+  const incDelta = curM.income - prevM.income;
+  const expDelta = curM.expense - prevM.expense;
+  const savDelta = curM.saved - prevM.saved;
+
+  const incTrend: 'up' | 'down' | 'flat' = incDelta > 0 ? 'up' : incDelta < 0 ? 'down' : 'flat';
+  const expTrend: 'up' | 'down' | 'flat' = expDelta > 0 ? 'up' : expDelta < 0 ? 'down' : 'flat';
+  const savTrend: 'up' | 'down' | 'flat' = savDelta > 0 ? 'up' : savDelta < 0 ? 'down' : 'flat';
+
+  const incLabel = incDelta > 0 ? `+${formatMoney(incDelta, currency)} vs last week` : incDelta < 0 ? `-${formatMoney(Math.abs(incDelta), currency)} vs last week` : 'no change vs last week';
+  const expLabel = expDelta > 0 ? `+${formatMoney(expDelta, currency)} vs last week` : expDelta < 0 ? `-${formatMoney(Math.abs(expDelta), currency)} vs last week` : 'no change vs last week';
+  const savLabel = savDelta > 0 ? `+${formatMoney(savDelta, currency)} vs last week` : savDelta < 0 ? `-${formatMoney(Math.abs(savDelta), currency)} vs last week` : 'no change vs last week';
 
   // ── money summary ──
   const mm = monthTotals(data.transactions, mk);
@@ -490,33 +524,129 @@ export function DashboardPage() {
         </section>
       )}
 
-      {/* WHAT CHANGED — this week vs last week (only real deltas) */}
-      {changedTop.length > 0 && (
+      {/* WHAT CHANGED THIS WEEK — Redesigned with 3 Compact Metric Cards (Sections 8-11) */}
+      {(showAnalytics || showMoney) && (
         <section className="section-gap" aria-label="What changed this week">
           <div className="flex mb-16" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <h2 className="t-section" style={{ margin: 0 }}>
+            <h2 className="t-section" style={{ margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 13, fontWeight: 800 }}>
               What changed this week
             </h2>
-            <span className="tiny muted">vs last week</span>
+            <span className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 650 }}>
+              VS LAST WEEK
+            </span>
           </div>
-          <div className="panel" style={{ padding: '4px 16px' }}>
-            {changedTop.map(({ m }, i) => {
-              const delta = m.current - m.previous;
-              const deltaLabel = changeDeltaLabel(m, (n) => formatMoney(n, currency));
-              return (
-                <div key={m.key}>
-                  {i > 0 && <div className="divider" />}
-                  <button className="changed-row" onClick={() => navigate(m.route ?? 'home')}>
-                    <span className="grow small">{m.label}</span>
-                    <span className="small t-num">
-                      {m.unit === 'money' ? formatMoney(m.current, currency) : m.current}
-                    </span>
-                    <span className={`changed-delta ${delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'}`}>{deltaLabel}</span>
+
+          <StatGrid cols={3}>
+            <MetricCard
+              label="INCOME"
+              value={formatMoney(curM.income, currency)}
+              delta={incDelta !== 0 ? `${incDelta > 0 ? '+' : '-'}${formatMoney(Math.abs(incDelta), currency)}` : undefined}
+              deltaLabel={incLabel}
+              trend={incTrend}
+              semantic="income"
+              icon={<IconMoney size={14} />}
+              onClick={() => navigate('money/transactions')}
+            />
+            <MetricCard
+              label="NET SAVED"
+              value={formatMoney(curM.saved, currency)}
+              delta={savDelta !== 0 ? `${savDelta > 0 ? '+' : '-'}${formatMoney(Math.abs(savDelta), currency)}` : undefined}
+              deltaLabel={savLabel}
+              trend={savTrend}
+              semantic="savings"
+              tooltip="Net Saved = Income − Expenses"
+              subtext="Income − Expenses"
+              onClick={() => navigate('money')}
+            />
+            <MetricCard
+              label="EXPENSES"
+              value={formatMoney(curM.expense, currency)}
+              delta={expDelta !== 0 ? `${expDelta > 0 ? '+' : '-'}${formatMoney(Math.abs(expDelta), currency)}` : undefined}
+              deltaLabel={expLabel}
+              trend={expTrend}
+              semantic="expense"
+              icon={<IconMoney size={14} />}
+              onClick={() => navigate('money/transactions')}
+            />
+          </StatGrid>
+
+          {/* Secondary non-financial changes if present (tasks, habits, goals) */}
+          {changedTop.filter((x) => x.m.key !== 'income' && x.m.key !== 'expense' && x.m.key !== 'savings').length > 0 && (
+            <div className="flex flex-wrap mt-12 gap-8">
+              {changedTop.filter((x) => x.m.key !== 'income' && x.m.key !== 'expense' && x.m.key !== 'savings').map(({ m }) => {
+                const delta = m.current - m.previous;
+                const deltaLabel = changeDeltaLabel(m, (n) => formatMoney(n, currency));
+                return (
+                  <button
+                    key={m.key}
+                    className="v5-badge flex items-center gap-6 clickable"
+                    onClick={() => navigate(m.route ?? 'home')}
+                    style={{ padding: '6px 12px', border: '1px solid var(--line)', background: 'var(--surface-2)', cursor: 'pointer' }}
+                  >
+                    <span className="small">{m.label}:</span>
+                    <b className="small t-num">{m.current}</b>
+                    <span className={`tiny bold ${delta > 0 ? 'text-pos' : delta < 0 ? 'text-neg' : 'muted'}`}>({deltaLabel})</span>
                   </button>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* INVESTMENTS WIDGET (Section 43) */}
+      {showInvestments && (
+        <section className="section-gap" aria-label="Investments Portfolio">
+          <div className="flex mb-16" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div className="flex items-center gap-8">
+              <h2 className="t-section" style={{ margin: 0 }}>Investments</h2>
+              <span className="v5-badge">{holdings.length} {holdings.length === 1 ? 'holding' : 'holdings'}</span>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('investments')}>
+              Portfolio Dashboard <IconArrowRight size={13} />
+            </button>
           </div>
+
+          {holdings.length === 0 ? (
+            <div className="v5-metric-card" style={{ padding: '24px 20px', textAlign: 'center' }}>
+              <p className="small muted mb-12">No active investment holdings yet.</p>
+              <div className="flex justify-center gap-8">
+                <button className="btn btn-sm btn-primary" onClick={() => navigate('investments')}>
+                  Open Investments
+                </button>
+              </div>
+            </div>
+          ) : (
+            <StatGrid cols={4}>
+              <MetricCard
+                label="PORTFOLIO VALUE"
+                value={formatMoney(portfolio.totalCurrentValue, currency, true)}
+                subtext={`Invested ${formatMoney(portfolio.totalInvested, currency, true)}`}
+                onClick={() => navigate('investments')}
+              />
+              <MetricCard
+                label="TOTAL P/L"
+                value={`${portfolio.totalPL >= 0 ? '+' : ''}${formatMoney(portfolio.totalPL, currency, true)}`}
+                delta={`${portfolio.totalReturnPct >= 0 ? '+' : ''}${portfolio.totalReturnPct.toFixed(1)}%`}
+                deltaLabel="all-time return"
+                trend={portfolio.totalPL >= 0 ? 'up' : 'down'}
+                semantic={portfolio.totalPL >= 0 ? 'positive' : 'negative'}
+                onClick={() => navigate('investments')}
+              />
+              <MetricCard
+                label="THIS MONTH"
+                value={formatMoney(thisMonthInvest.investedThisMonth, currency, true)}
+                subtext={`${thisMonthInvest.actionsCount} ${thisMonthInvest.actionsCount === 1 ? 'trade' : 'trades'} executed`}
+                onClick={() => navigate('investments')}
+              />
+              <MetricCard
+                label="UPCOMING"
+                value={formatMoney(thisMonthInvest.plannedAmount, currency, true)}
+                subtext={`${upcomingInvest.length} planned actions`}
+                onClick={() => navigate('investments')}
+              />
+            </StatGrid>
+          )}
         </section>
       )}
 
@@ -828,10 +958,12 @@ export function DashboardPage() {
               { key: 'today', label: 'Today & Top Priorities' },
               { key: 'attention', label: 'Needs Attention' },
               { key: 'money', label: 'Money Snapshot' },
+              { key: 'investments', label: 'Investments & Portfolio' },
               { key: 'goals', label: 'Goal Momentum' },
               { key: 'upcoming', label: 'Upcoming Commitments' },
               { key: 'learning', label: 'Learning Progress' },
               { key: 'habits', label: 'Habits & Routines' },
+              { key: 'analytics', label: 'Analytics & What Changed' },
             ].map((w) => {
               const val = (data.settings.homeWidgets as any)?.[w.key] !== false;
               return (
