@@ -38,7 +38,7 @@ export function loadBackendConfigFromEnv(): OAuthBackendConfig {
   return {
     port: Number(env.PORT || 3001),
     encryptionKey: env.TOKEN_ENCRYPTION_KEY || 'growth-os-v5-default-secret-key-32b',
-    corsOrigin: env.CORS_ORIGIN || '*',
+    corsOrigin: env.CORS_ORIGIN || 'https://joeeeee28.github.io',
     google: {
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
@@ -792,7 +792,22 @@ export function handleOAuthHttpRequest(
   res: ServerResponse,
   service: OAuthBackendService,
 ): void {
-  res.setHeader('Access-Control-Allow-Origin', service.config.corsOrigin || '*');
+  const reqOrigin = req.headers.origin;
+  const allowed = [
+    'https://joeeeee28.github.io',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:3002',
+  ];
+  if (service.config.corsOrigin) allowed.push(service.config.corsOrigin);
+  const allowOrigin = reqOrigin && allowed.includes(reqOrigin) ? reqOrigin : (service.config.corsOrigin || 'https://joeeeee28.github.io');
+
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Calendar-Provider, X-User-Id');
 

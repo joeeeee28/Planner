@@ -18,7 +18,7 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:
 
 const PORT = Number(process.env.PORT || process.env.OAUTH_PORT || 3001);
 const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'growth-os-v5-default-secret-key-32b';
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'https://joeeeee28.github.io';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -459,7 +459,22 @@ async function getValidAccessToken(userId, provider) {
 // ── HTTP Server ─────────────────────────────────────────────────────────────
 
 const server = createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+  const reqOrigin = req.headers.origin;
+  const allowed = [
+    'https://joeeeee28.github.io',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:3002',
+  ];
+  if (process.env.CORS_ORIGIN) allowed.push(process.env.CORS_ORIGIN);
+  const allowOrigin = reqOrigin && allowed.includes(reqOrigin) ? reqOrigin : CORS_ORIGIN;
+
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Calendar-Provider, X-User-Id');
 

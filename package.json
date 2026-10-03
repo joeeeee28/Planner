@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "start:oauth": "node server/oauthServer.mjs",
     "test": "tsx scripts/test-logic.ts && tsx scripts/test-income.ts && tsx scripts/test-money-v2.ts && tsx scripts/test-goals-v2.ts && tsx scripts/test-growth-v2.ts && tsx scripts/smoke-test.ts",
     "test:v3": "tsx scripts/test-v3-engine.ts && tsx scripts/smoke-test-v3.ts",
     "test:all": "npm test && npm run test:v3 && npm run test:v4 && npm run test:invariants && npm run test:engine5 && npm run test:engine6 && npm run test:auth",
