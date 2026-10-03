@@ -619,7 +619,7 @@ export function SettingsPage() {
           <h2 className="card-title"><IconInfo size={18} /> About & System Status</h2>
           <div className="small muted" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px', fontSize: 13, marginTop: 8 }}>
             <span className="bold">Version:</span>
-            <span>Growth OS {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'V4.6'}</span>
+            <span>Growth OS {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'V5.0'}</span>
 
             <span className="bold">Build Commit:</span>
             <span><code>{typeof __BUILD_COMMIT__ !== 'undefined' ? __BUILD_COMMIT__ : '6e6aff0'}</code></span>
