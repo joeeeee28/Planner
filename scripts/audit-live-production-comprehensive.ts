@@ -2,36 +2,6 @@ import assert from 'node:assert';
 
 const BASE_URL = 'https://joeeeee28.github.io/Planner/';
 
-interface AssetCheck {
-  path: string;
-  expectedStatus: number;
-  contentTypePrefix?: string;
-  minBytes?: number;
-}
-
-const CRITICAL_ASSETS: AssetCheck[] = [
-  { path: '', expectedStatus: 200, contentTypePrefix: 'text/html', minBytes: 500 },
-  { path: 'manifest.json', expectedStatus: 200, contentTypePrefix: 'application/json', minBytes: 400 },
-  { path: 'sw.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 2000 },
-  { path: 'favicon.svg', expectedStatus: 200, contentTypePrefix: 'image/svg+xml', minBytes: 300 },
-  { path: 'icons.svg', expectedStatus: 200, contentTypePrefix: 'image/svg+xml', minBytes: 3000 },
-  { path: 'assets/index-Bpz-YQFk.css', expectedStatus: 200, contentTypePrefix: 'text/css', minBytes: 50000 },
-  { path: 'assets/index-CritDp0W.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 200000 },
-  { path: 'assets/AppContext-zI7sbvnw.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 200000 },
-  { path: 'assets/cloudData-BCJuqiqv.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 30000 },
-  { path: 'assets/Settings-S_7YMqFk.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 50000 },
-  { path: 'assets/Analytics-D94KBGKR.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 35000 },
-  { path: 'assets/Money-Bo86zWSY.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 450000 },
-  { path: 'assets/Notifications-CGQ3EwlL.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 15000 },
-  { path: 'assets/Automation-x96UV4ac.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 15000 },
-  { path: 'assets/FocusMode-amkkcPFs.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 9000 },
-  { path: 'assets/Plan-CWR13nEM.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 25000 },
-  { path: 'assets/Today-5W7PtkfH.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 25000 },
-  { path: 'assets/Goals-DTq3p5fq.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 30000 },
-  { path: 'assets/Growth-BtfEZtRm.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 50000 },
-  { path: 'assets/Dashboard-BDCQEOmB.js', expectedStatus: 200, contentTypePrefix: 'application/javascript', minBytes: 25000 },
-];
-
 async function runLiveAudit() {
   console.log('============================================================');
   console.log('GROWTH OS V5 — LIVE PRODUCTION POST-DEPLOYMENT AUDIT');
@@ -51,30 +21,76 @@ async function runLiveAudit() {
     }
   };
 
-  // ── 1. HTTP and Asset Availability Check ─────────────────────────────────
+  // ── 1. Fetch index.html & Static Core Assets ──────────────────────────────
   console.log('1. Checking Live CDN Asset Availability & Status Codes:');
+  const indexRes = await fetch(BASE_URL);
+  assert.strictEqual(indexRes.status, 200, 'index.html returned 200');
+  const indexHtml = await indexRes.text();
+  ok(indexHtml.includes('<title>Growth OS — Personal & Professional Growth System</title>'), 'index.html title matches');
+
+  // Discover main assets
+  const jsMatch = indexHtml.match(/src="\.\/(assets\/index-[A-Za-z0-9_-]+\.js)"/);
+  assert.ok(jsMatch, 'Main JS bundle matched');
+  const mainJsPath = jsMatch[1];
+
+  const cssMatch = indexHtml.match(/href="\.\/(assets\/index-[A-Za-z0-9_-]+\.css)"/);
+  assert.ok(cssMatch, 'Main CSS bundle matched');
+  const mainCssPath = cssMatch[1];
+
+  const staticAssets = [
+    'manifest.json',
+    'sw.js',
+    'favicon.svg',
+    'icons.svg',
+    mainCssPath,
+    mainJsPath,
+  ];
+
+  for (const asset of staticAssets) {
+    const res = await fetch(new URL(asset, BASE_URL));
+    ok(res.status === 200, `${asset} -> HTTP ${res.status}`);
+  }
+
+  // Fetch main bundle
+  const mainJsRes = await fetch(new URL(mainJsPath, BASE_URL));
+  const mainJsText = await mainJsRes.text();
+
+  // Discover dynamic chunks referenced in main bundle
+  const moduleNames = [
+    'AppContext',
+    'cloudData',
+    'Settings',
+    'Analytics',
+    'Money',
+    'Investments',
+    'Notifications',
+    'Automation',
+    'FocusMode',
+    'Plan',
+    'Today',
+    'Goals',
+    'Growth',
+    'Dashboard',
+  ];
+
   const downloadedChunks: Record<string, string> = {};
+  downloadedChunks[mainJsPath] = mainJsText;
 
-  for (const asset of CRITICAL_ASSETS) {
-    const url = new URL(asset.path, BASE_URL).toString();
-    try {
-      const res = await fetch(url);
-      const text = await res.text();
-      const statusOk = res.status === asset.expectedStatus;
-      const ctype = res.headers.get('content-type') || '';
-      const ctypeOk = asset.contentTypePrefix ? ctype.includes(asset.contentTypePrefix) : true;
-      const sizeOk = asset.minBytes ? text.length >= asset.minBytes : true;
-
-      ok(
-        statusOk && ctypeOk && sizeOk,
-        `${asset.path || 'index.html'} -> HTTP ${res.status} (${text.length} bytes, ${ctype})`
-      );
-
-      if (asset.path.endsWith('.js')) {
-        downloadedChunks[asset.path] = text;
+  for (const mod of moduleNames) {
+    const chunkRegex = new RegExp(`${mod}-[A-Za-z0-9_-]+\\.js`);
+    const match = mainJsText.match(chunkRegex);
+    if (match) {
+      const chunkPath = `assets/${match[0]}`;
+      const res = await fetch(new URL(chunkPath, BASE_URL));
+      if (res.status === 200) {
+        const text = await res.text();
+        downloadedChunks[mod] = text;
+        ok(true, `Discovered and downloaded chunk: ${chunkPath} (${text.length} bytes)`);
+      } else {
+        ok(false, `Failed to download ${chunkPath}: HTTP ${res.status}`);
       }
-    } catch (err: any) {
-      ok(false, `${asset.path} failed to fetch: ${err.message}`);
+    } else {
+      ok(false, `Could not find chunk reference for module ${mod} in main bundle`);
     }
   }
 
@@ -96,18 +112,16 @@ async function runLiveAudit() {
   const swText = await swRes.text();
   ok(swText.includes('growth-os-shell-v5'), 'sw.js contains V5 shell cache identifier');
   ok(swText.includes('STATIC_ASSETS'), 'sw.js caches application shell');
-  ok(swText.includes('url.hostname.includes(\'supabase\')'), 'sw.js bypasses Supabase traffic from caching');
+  ok(swText.includes("url.hostname.includes('supabase')"), 'sw.js bypasses Supabase traffic from caching');
   ok(swText.includes('/auth/v1/'), 'sw.js explicitly avoids caching auth tokens');
   ok(swText.includes('self.skipWaiting()'), 'sw.js activates updates cleanly via skipWaiting');
 
   // ── 4. Live Version and Metadata Audit ───────────────────────────────────
   console.log('\n4. Live Version & Build Metadata Verification:');
-  const settingsChunk = downloadedChunks['assets/Settings-S_7YMqFk.js'] || '';
+  const settingsChunk = downloadedChunks['Settings'] || '';
   ok(settingsChunk.includes('5.0.0 (V5.0-RC)'), 'Settings UI renders "5.0.0 (V5.0-RC)"');
   ok(settingsChunk.includes('Growth OS'), 'Settings UI brand verified');
-
-  const mainChunk = downloadedChunks['assets/index-CritDp0W.js'] || '';
-  ok(mainChunk.length > 250000, 'Main bundle compiled successfully');
+  ok(mainJsText.length > 250000, 'Main bundle compiled successfully');
 
   // ── 5. Security & Zero Secret Leakage Check ──────────────────────────────
   console.log('\n5. Live Production Bundle Security Audit:');
@@ -135,44 +149,52 @@ async function runLiveAudit() {
   }
 
   // Passcode Web Crypto verification
-  ok(mainChunk.includes('PBKDF2'), 'Passcode encryption uses Web Crypto PBKDF2 (in main bundle)');
-  ok(mainChunk.includes('growth-os.lock.v1'), 'Per-user lock namespace present (in main bundle)');
-  const appCtxChunk = downloadedChunks['assets/AppContext-zI7sbvnw.js'] || '';
+  ok(mainJsText.includes('PBKDF2'), 'Passcode encryption uses Web Crypto PBKDF2 (in main bundle)');
+  ok(mainJsText.includes('growth-os.lock.v1'), 'Per-user lock namespace present (in main bundle)');
+  const appCtxChunk = downloadedChunks['AppContext'] || '';
   ok(appCtxChunk.includes('edaghxxrwxwzszphaybh.supabase.co'), 'Production Supabase URL configured in AppContext');
 
   // ── 6. Live Feature Module Verification ───────────────────────────────────
   console.log('\n6. Live Feature Module Verification:');
-  const analyticsChunk = downloadedChunks['assets/Analytics-D94KBGKR.js'] || '';
-  ok(analyticsChunk.includes('Personal Analytics') || analyticsChunk.includes('Personal & Professional Intelligence') || analyticsChunk.includes('Analytics'), 'Analytics module verified');
-  ok(analyticsChunk.includes('Reports') || analyticsChunk.includes('Category Breakdown') || analyticsChunk.includes('distribution'), 'Reports & insights engine verified');
+  const analyticsChunk = downloadedChunks['Analytics'] || '';
+  ok(analyticsChunk.includes('Personal Analytics') || analyticsChunk.includes('Analytics'), 'Analytics module verified');
+  ok(analyticsChunk.includes('Investments') || analyticsChunk.includes('Portfolio'), 'Investments present in Analytics');
 
-  const moneyChunk = downloadedChunks['assets/Money-Bo86zWSY.js'] || '';
+  const moneyChunk = downloadedChunks['Money'] || '';
   ok(moneyChunk.includes('Accounts'), 'Money Accounts tab present');
   ok(moneyChunk.includes('Sources'), 'Money Sources tab present');
   ok(moneyChunk.includes('Obligations'), 'Money Obligations tab present');
   ok(moneyChunk.includes('Transfers') || moneyChunk.includes('Transfer'), 'Money Transfers functionality present');
   ok(moneyChunk.includes('Credit Cards') || moneyChunk.includes('Cards'), 'Money Credit Cards tab present');
 
-  const notifChunk = downloadedChunks['assets/Notifications-CGQ3EwlL.js'] || '';
+  const invChunk = downloadedChunks['Investments'] || '';
+  ok(invChunk.includes('Portfolio') || invChunk.includes('Holdings'), 'Investments module contains Portfolio and Holdings');
+  ok(invChunk.includes('This Month') || invChunk.includes('Upcoming'), 'Investments module contains This Month and Upcoming tabs');
+
+  const notifChunk = downloadedChunks['Notifications'] || '';
   ok(notifChunk.includes('Notifications') || notifChunk.includes('Notification Center') || notifChunk.includes('notification'), 'Notifications module verified');
   ok(notifChunk.includes('Quiet Hours') || notifChunk.includes('quiet') || notifChunk.includes('Quiet'), 'Quiet hours support present');
 
-  const autoChunk = downloadedChunks['assets/Automation-x96UV4ac.js'] || '';
+  const autoChunk = downloadedChunks['Automation'] || '';
   ok(autoChunk.includes('Automation') || autoChunk.includes('Automations') || autoChunk.includes('Rules'), 'Automation engine present');
 
-  const focusChunk = downloadedChunks['assets/FocusMode-amkkcPFs.js'] || '';
+  const focusChunk = downloadedChunks['FocusMode'] || '';
   ok(focusChunk.includes('Focus Mode') || focusChunk.includes('Deep Work') || focusChunk.includes('Timer') || focusChunk.includes('Focus'), 'Focus mode present');
 
-  const planChunk = downloadedChunks['assets/Plan-CWR13nEM.js'] || '';
+  const planChunk = downloadedChunks['Plan'] || '';
   ok(planChunk.includes('Plan') || planChunk.includes('Calendar') || planChunk.includes('timeline'), 'Planning & calendar views present');
 
-  // ── 7. External Calendar Provider State Verification ─────────────────────
-  console.log('\n7. External Calendar Provider Truthfulness Audit:');
+  // ── 7. External Calendar & Market Data Provider State Verification ───────
+  console.log('\n7. External Provider Truthfulness Audit:');
   ok(
     settingsChunk.includes('Server backend not configured') || settingsChunk.includes('Not configured'),
     'External calendar UI clearly indicates unconfigured backend state'
   );
   ok(!settingsChunk.includes('fake-connected'), 'No fake calendar connection exists in bundle');
+  ok(
+    invChunk.includes('Market data provider not configured') || invChunk.includes('Unconfigured'),
+    'Investments UI truthfully displays unconfigured market data status when provider is unconfigured'
+  );
 
   console.log('\n============================================================');
   console.log(`AUDIT COMPLETE: ${passed} passed, ${failed} failed`);

@@ -59,10 +59,12 @@ async function verifyLiveProduction() {
 
   // 6. Fetch AppContext chunk & inspect
   console.log('\n6. Fetching AppContext chunk...');
-  const appCtxRes = await fetch(new URL('assets/AppContext-zI7sbvnw.js', baseUrl));
+  const appCtxMatch = jsText.match(/['"](assets\/AppContext-[^'"]+\.js)['"]/);
+  const appCtxPath = appCtxMatch ? appCtxMatch[1] : 'assets/AppContext-DMiKbhpw.js';
+  const appCtxRes = await fetch(new URL(appCtxPath, baseUrl));
   assert.strictEqual(appCtxRes.status, 200, 'Live AppContext chunk returned HTTP 200');
   const appCtxText = await appCtxRes.text();
-  console.log(`  ✅ Live AppContext downloaded (HTTP 200, size: ${appCtxText.length} chars)`);
+  console.log(`  ✅ Live AppContext downloaded (${appCtxPath}, HTTP 200, size: ${appCtxText.length} chars)`);
 
   // Verify V5 features in live bundle
   console.log('\n7. Auditing live bundle for V5 modules & security...');
@@ -81,11 +83,25 @@ async function verifyLiveProduction() {
 
   // 7. Fetch Settings chunk from live production
   console.log('\n7. Fetching Settings chunk to verify version...');
-  const settingsRes = await fetch(new URL('assets/Settings-S_7YMqFk.js', baseUrl));
+  const settingsMatch = jsText.match(/Settings-[A-Za-z0-9_-]+\.js/);
+  assert.ok(settingsMatch, 'Settings chunk referenced in main bundle');
+  const settingsPath = `assets/${settingsMatch[0]}`;
+  const settingsRes = await fetch(new URL(settingsPath, baseUrl));
   assert.strictEqual(settingsRes.status, 200, 'Live Settings chunk returned HTTP 200');
   const settingsText = await settingsRes.text();
   assert.ok(settingsText.includes('5.0.0 (V5.0-RC)'), 'Version 5.0.0 (V5.0-RC) present in live Settings UI');
-  console.log('  ✅ Live UI version verified: Growth OS 5.0.0 (V5.0-RC)');
+  console.log(`  ✅ Live UI version verified: Growth OS 5.0.0 (V5.0-RC) (${settingsPath})`);
+
+  // 8. Fetch Investments chunk from live production
+  console.log('\n8. Fetching Investments chunk to verify V5 module deployment...');
+  const invMatch = jsText.match(/Investments-[A-Za-z0-9_-]+\.js/);
+  assert.ok(invMatch, 'Investments chunk referenced in main bundle');
+  const invPath = `assets/${invMatch[0]}`;
+  const invRes = await fetch(new URL(invPath, baseUrl));
+  assert.strictEqual(invRes.status, 200, 'Live Investments chunk returned HTTP 200');
+  const invText = await invRes.text();
+  assert.ok(invText.includes('Portfolio'), 'Investments module contains Portfolio UI');
+  console.log(`  ✅ Live Investments module verified (${invPath}, HTTP 200, size: ${invText.length} chars)`);
 
   console.log('\n🎉 ALL LIVE PRODUCTION VERIFICATIONS PASSED SUCCESSFULLY!');
 }
