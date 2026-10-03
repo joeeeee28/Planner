@@ -181,3 +181,59 @@ export async function pushExternalEvent(
     externalId: payload.externalId || `mock-ext-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   };
 }
+
+/**
+ * Preflight check for live OAuth backend availability.
+ */
+export async function checkBackendPreflight(backendUrl: string | undefined): Promise<{
+  ok: boolean;
+  configured: boolean;
+  providers?: Record<CalendarProviderId, { configured: boolean; liveOAuth: boolean }>;
+  error?: string;
+}> {
+  if (!backendUrl) {
+    return { ok: false, configured: false, error: 'Backend URL not configured.' };
+  }
+  try {
+    const res = await fetch(`${backendUrl}/api/calendar/preflight`);
+    if (!res.ok) {
+      return { ok: false, configured: false, error: `Backend returned status ${res.status}` };
+    }
+    const data = (await res.json()) as {
+      ok: boolean;
+      providers?: Record<CalendarProviderId, { configured: boolean; liveOAuth: boolean }>;
+    };
+    return {
+      ok: Boolean(data.ok),
+      configured: true,
+      providers: data.providers,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      configured: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Disconnect and revoke backend provider session.
+ */
+export async function disconnectBackendSession(
+  backendUrl: string | undefined,
+  provider: CalendarProviderId,
+): Promise<{ ok: boolean }> {
+  if (!backendUrl) return { ok: true };
+  try {
+    const res = await fetch(`${backendUrl}/api/calendar/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: true }; // Client-side disconnect succeeds even if network fails
+  }
+}
+

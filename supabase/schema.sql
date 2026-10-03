@@ -105,6 +105,33 @@ $$;
 
 -- ── Optional: name kept in auth.users raw_user_meta_data (set by client) ──
 
+-- ── Phase 20: Server-side Provider Tokens Vault ─────────────────────────────
+-- Refresh tokens and access tokens are encrypted at rest with AES-256-GCM.
+-- Only the backend service (with service_role) or security definer functions can
+-- read and update these tokens. Browser clients using anon key CANNOT read them.
+
+create table if not exists public.provider_tokens (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null check (provider in ('google', 'outlook')),
+  encrypted_refresh_token text not null,
+  encrypted_access_token text,
+  token_expires_at timestamptz,
+  account_email text,
+  scopes text[] default '{}'::text[],
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider)
+);
+
+alter table public.provider_tokens enable row level security;
+
+-- Client anon key has NO select/insert/update/delete permissions by default.
+-- Only backend service role or explicit authenticated RPC can interact with provider_tokens.
+drop policy if exists "provider_tokens_deny_anon" on public.provider_tokens;
+create policy "provider_tokens_deny_anon" on public.provider_tokens
+  for all using (false);
+
 -- Verify with:
 --   select * from public.user_data;              -- dashboard (owner only)
 --   select auth.uid(), count(*) from user_data;  -- per-user row count
+--   select user_id, provider, account_email from public.provider_tokens;
