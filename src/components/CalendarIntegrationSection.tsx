@@ -210,12 +210,16 @@ export function CalendarIntegrationSection() {
 
             {!conn ? (
               <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center' }}>
-                <button className="btn btn-sm btn-primary" onClick={() => handleConnect(pid)}>
-                  Connect {label}
+                <button
+                  className="btn btn-sm btn-primary"
+                  disabled={!st.ok}
+                  onClick={() => handleConnect(pid)}
+                >
+                  Connect
                 </button>
                 {!st.ok && (
                   <span className="tiny muted">
-                    Note: Server backend not configured. Connecting uses deterministic test adapter mode.
+                    Note: Server backend not configured. Live synchronization requires secure OAuth backend integration. Connecting uses deterministic test adapter mode.
                   </span>
                 )}
               </div>
@@ -223,12 +227,12 @@ export function CalendarIntegrationSection() {
               <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center' }}>
                 <button
                   className="btn btn-sm btn-primary"
-                  disabled={isSyncing}
+                  disabled={isSyncing || !st.ok}
                   onClick={() => void handleSyncNow(pid)}
                 >
                   {isSyncing ? 'Syncing…' : 'Sync now'}
                 </button>
-                <button className="btn btn-sm" onClick={() => handleConnect(pid)}>
+                <button className="btn btn-sm" disabled={!st.ok} onClick={() => handleConnect(pid)}>
                   Reconnect
                 </button>
                 <button className="btn btn-sm btn-ghost" onClick={() => handleDisconnect(pid)}>
@@ -239,7 +243,7 @@ export function CalendarIntegrationSection() {
                   <input
                     type="checkbox"
                     checked={!!conn.writeEnabled}
-                    aria-label={`Enable two-way sync for ${label}`}
+                    aria-label={`Create calendar events from Growth OS in ${label}`}
                     onChange={(e) =>
                       update((d) => {
                         const conns = (d.calendarConnections ?? []).map((c) =>
