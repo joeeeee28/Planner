@@ -46,6 +46,7 @@ import { cacheKeyFor, writeUserCache, readMeta, writeMeta } from '../lib/cloudDa
 import { hasMeaningfulData, migrateLocalToCloud, markMigrationSkipped, type MigrationOutcome } from '../lib/migrate';
 import { createInitialData } from '../lib/defaults';
 import { mergeDeep } from '../lib/merge';
+import { maybeInitJothikaPortfolio } from '../lib/investmentSeed';
 
 const LOCAL_KEY = 'growth-os.v1';
 
@@ -176,6 +177,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(doc);
         writeUserCache(uid, doc);
         setSync({ status: 'synced', lastSyncAt: new Date().toISOString(), pending: false, failures: 0 });
+
+        // ── Jothika portfolio seed (idempotent) ──────────────────────────
+        // Runs only when userId === VITE_JOTHIKA_USER_ID.
+        // Safe to call every login — returns null if all positions exist.
+        const seeded = maybeInitJothikaPortfolio(uid, doc);
+        if (seeded) {
+          dataRef.current = seeded;
+          setData(seeded);
+          writeUserCache(uid, seeded);
+          queue.enqueue(seeded);
+        }
       } else if (remoteRes.ok && !remoteRes.data) {
         // remote empty → maybe offer migration of the legacy local doc
         const legacyRaw = rawLocalV1();
@@ -185,6 +197,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMigration({ pending: true, show: true, outcome: null, running: false });
         }
         setSync({ status: 'synced', lastSyncAt: readMeta().lastSyncAt ?? new Date().toISOString(), pending: false, failures: 0 });
+
+        // ── Jothika portfolio seed for new/empty cloud documents ─────────
+        const freshDoc = dataRef.current;
+        const seededFresh = maybeInitJothikaPortfolio(uid, freshDoc);
+        if (seededFresh) {
+          dataRef.current = seededFresh;
+          setData(seededFresh);
+          writeUserCache(uid, seededFresh);
+          if (queueRef.current) queueRef.current.enqueue(seededFresh);
+        }
       } else {
         // network failure: cache is authoritative for now
         setSync((s) => ({ status: 'pending', lastSyncAt: s.lastSyncAt, pending: true, failures: s.failures + 1 }));

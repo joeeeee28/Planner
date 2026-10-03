@@ -280,6 +280,185 @@ assert(importTxRes.nextData.transactions.filter((t: any) => t.type === 'income')
 assert(importTxRes.nextData.transactions.filter((t: any) => t.type === 'expense').length === initialExpenses, 'Investments create 0 ordinary expense');
 assert(importTxRes.nextData.accounts.reduce((a: any, b: any) => a + b.balance, 0) === initialNet, 'Investments do not mutate money account balances without explicit link');
 
+// ── 11. Broker Source Field & Snapshot Price ──────────────────────────────────
+console.log('\n11. Broker Source Field & Snapshot Price');
+import { filterHoldingsBySource } from '../src/lib/investments';
+import { maybeInitJothikaPortfolio, isJothika, verifyJothikaSeed, JOTHIKA_REFERENCE } from '../src/lib/investmentSeed';
+
+// Create test holdings with sources
+const growwHolding: InvestmentHolding = {
+  id: 'hld-groww-1',
+  instrumentId: 'inst-groww-1',
+  quantity: 9,
+  averageCost: 145.18,
+  investedAmount: 1306.62,
+  openedAt: '2024-01-01',
+  updatedAt: new Date().toISOString(),
+  source: 'GROWW',
+  snapshotPrice: 196.21,
+  sourceKey: 'GROWW:ADANI_POWER',
+};
+
+const zerodhaHolding: InvestmentHolding = {
+  id: 'hld-zerodha-1',
+  instrumentId: 'inst-zerodha-1',
+  quantity: 4,
+  averageCost: 431.45,
+  investedAmount: 1725.80,
+  openedAt: '2024-01-01',
+  updatedAt: new Date().toISOString(),
+  source: 'ZERODHA',
+  snapshotPrice: 421.50,
+  sourceKey: 'ZERODHA:COALINDIA',
+};
+
+const manualHolding: InvestmentHolding = {
+  id: 'hld-manual-1',
+  instrumentId: 'inst-manual-1',
+  quantity: 10,
+  averageCost: 100,
+  investedAmount: 1000,
+  openedAt: '2024-01-01',
+  updatedAt: new Date().toISOString(),
+};
+
+const mixedHoldings = [growwHolding, zerodhaHolding, manualHolding];
+
+// filterHoldingsBySource
+const allFiltered = filterHoldingsBySource(mixedHoldings, 'ALL');
+assert(allFiltered.length === 3, 'ALL tab returns all 3 holdings');
+
+const growwFiltered = filterHoldingsBySource(mixedHoldings, 'GROWW');
+assert(growwFiltered.length === 1, 'GROWW tab returns only 1 Groww holding');
+assert(growwFiltered[0]?.source === 'GROWW', 'GROWW tab holding has source=GROWW');
+
+const zerodhaFiltered = filterHoldingsBySource(mixedHoldings, 'ZERODHA');
+assert(zerodhaFiltered.length === 1, 'ZERODHA tab returns only 1 Zerodha holding');
+assert(zerodhaFiltered[0]?.source === 'ZERODHA', 'ZERODHA tab holding has source=ZERODHA');
+
+// Snapshot price fallback
+const instGroww: InvestmentInstrument = {
+  id: 'inst-groww-1', symbol: 'ADANIPOWER', name: 'Adani Power', exchange: 'NSE', assetType: 'STOCK', currency: 'INR', active: true,
+};
+const metricsWithSnapshot = calculateHoldingMetrics(growwHolding, instGroww, undefined);
+assert(metricsWithSnapshot.isSnapshot === true, 'Snapshot price used when no live quote');
+assert(metricsWithSnapshot.currentPrice === 196.21, 'Snapshot price is 196.21');
+assert(metricsWithSnapshot.hasLiveQuote === false, 'No live quote when using snapshot');
+assert(metricsWithSnapshot.source === 'GROWW', 'Source is GROWW on metric');
+
+// Live quote overrides snapshot
+const liveQuote = {
+  symbol: 'ADANIPOWER', price: 200.00, previousClose: 196.21,
+  dayChange: 3.79, dayChangePercent: 1.93, currency: 'INR',
+  marketStatus: 'Open' as const, provider: 'test', timestamp: new Date().toISOString(), isDelayed: false,
+};
+const metricsWithLive = calculateHoldingMetrics(growwHolding, instGroww, liveQuote);
+assert(metricsWithLive.hasLiveQuote === true, 'Live quote detected');
+assert(metricsWithLive.isSnapshot === false, 'isSnapshot false when live quote exists');
+assert(metricsWithLive.currentPrice === 200.00, 'Live price overrides snapshot');
+
+// ── 12. Multi-broker Duplicate Handling (TATAGOLD / TATSILV) ─────────────────
+console.log('\n12. Multi-broker Duplicate Handling');
+
+const tatagoldGroww: InvestmentHolding = {
+  id: 'hld-tatagold-groww', instrumentId: 'inst-tatagold',
+  quantity: 20, averageCost: 11.30, investedAmount: 226.00,
+  openedAt: '2024-01-01', updatedAt: new Date().toISOString(),
+  source: 'GROWW', snapshotPrice: 14.28, sourceKey: 'GROWW:TATAGOLD',
+};
+const tatagoldZerodha: InvestmentHolding = {
+  id: 'hld-tatagold-zerodha', instrumentId: 'inst-tatagold-z',
+  quantity: 13, averageCost: 12.38, investedAmount: 160.94,
+  openedAt: '2024-01-01', updatedAt: new Date().toISOString(),
+  source: 'ZERODHA', snapshotPrice: 14.29, sourceKey: 'ZERODHA:TATAGOLD',
+};
+
+const dupeHoldings = [tatagoldGroww, tatagoldZerodha];
+const growwOnly = filterHoldingsBySource(dupeHoldings, 'GROWW');
+const zerodhaOnly = filterHoldingsBySource(dupeHoldings, 'ZERODHA');
+const allBoth = filterHoldingsBySource(dupeHoldings, 'ALL');
+
+assert(growwOnly.length === 1, 'TATAGOLD: Groww has exactly 1 position');
+assert(growwOnly[0]?.quantity === 20, 'TATAGOLD: Groww quantity is 20');
+assert(zerodhaOnly.length === 1, 'TATAGOLD: Zerodha has exactly 1 position');
+assert(zerodhaOnly[0]?.quantity === 13, 'TATAGOLD: Zerodha quantity is 13');
+assert(allBoth.length === 2, 'TATAGOLD: ALL shows both positions separately');
+assert(allBoth[0]?.sourceKey !== allBoth[1]?.sourceKey, 'TATAGOLD: source keys are distinct');
+
+// ── 13. Jothika Seed Isolation ──────────────────────────────────────────────
+console.log('\n13. Jothika Seed User Isolation');
+
+// isJothika returns false for null
+assert(isJothika(null) === false, 'isJothika(null) = false');
+// isJothika returns false for non-matching ID (env not set in test context)
+assert(isJothika('some-other-user-id') === false, 'isJothika(other) = false when env not set');
+assert(isJothika('random-uuid-xyz') === false, 'isJothika(random) = false');
+
+// Seed returns null for non-Jothika users
+const otherUserData = createInitialData();
+const seededForOther = maybeInitJothikaPortfolio('other-user-id', otherUserData);
+assert(seededForOther === null, 'Other users get null (no seed) from maybeInitJothikaPortfolio');
+
+const seededForNull = maybeInitJothikaPortfolio(null, otherUserData);
+assert(seededForNull === null, 'Null userId gets null (no seed)');
+
+// verifyJothikaSeed on empty data
+const emptySeedVerify = verifyJothikaSeed(otherUserData);
+assert(emptySeedVerify.growwCount === 0, 'Empty data: growwCount=0');
+assert(emptySeedVerify.zerodhaCount === 0, 'Empty data: zerodhaCount=0');
+assert(emptySeedVerify.totalCount === 0, 'Empty data: totalCount=0');
+assert(emptySeedVerify.missingSourceKeys.length === 18, 'Empty data: all 18 source keys missing');
+assert(emptySeedVerify.duplicateSourceKeys.length === 0, 'Empty data: no duplicates');
+
+// JOTHIKA_REFERENCE constants sanity check
+assert(JOTHIKA_REFERENCE.groww.positionCount === 6, 'Groww reference: 6 positions');
+assert(JOTHIKA_REFERENCE.zerodha.positionCount === 12, 'Zerodha reference: 12 positions');
+assert(JOTHIKA_REFERENCE.combined.positionCount === 18, 'Combined reference: 18 positions');
+assert(JOTHIKA_REFERENCE.groww.invested > 4900 && JOTHIKA_REFERENCE.groww.invested < 5000,
+  'Groww invested ≈ ₹4,939');
+assert(JOTHIKA_REFERENCE.zerodha.invested > 26000 && JOTHIKA_REFERENCE.zerodha.invested < 27000,
+  'Zerodha invested ≈ ₹26,460');
+
+// ── 14. Source-Aware Portfolio Calculations ───────────────────────────────────
+console.log('\n14. Source-Aware Portfolio Calculations');
+
+const instGrowwSet: InvestmentInstrument[] = [
+  { id: 'inst-groww-1', symbol: 'ADANIPOWER', name: 'Adani Power', exchange: 'NSE', assetType: 'STOCK', currency: 'INR', active: true },
+];
+const instZerodhaSet: InvestmentInstrument[] = [
+  { id: 'inst-zerodha-1', symbol: 'COALINDIA', name: 'Coal India', exchange: 'NSE', assetType: 'STOCK', currency: 'INR', active: true },
+];
+const allInst = [...instGrowwSet, ...instZerodhaSet];
+
+const growwPortfolio = calculatePortfolioSummary([growwHolding], allInst, {});
+const zerodhaPortfolio = calculatePortfolioSummary([zerodhaHolding], allInst, {});
+const allPortfolio = calculatePortfolioSummary([growwHolding, zerodhaHolding], allInst, {});
+
+// With snapshot prices:
+// Groww: 9 × 196.21 = 1765.89; invested 1306.62 → P&L +459.27
+// Zerodha: 4 × 421.50 = 1686; invested 1725.80 → P&L -39.80
+
+assert(Math.abs(growwPortfolio.totalCurrentValue - 1765.89) < 0.1, 'Groww snapshot: current value ≈ 1765.89');
+assert(Math.abs(growwPortfolio.totalPL - 459.27) < 0.1, 'Groww snapshot: P&L ≈ +459.27');
+assert(Math.abs(zerodhaPortfolio.totalCurrentValue - 1686.00) < 0.1, 'Zerodha snapshot: current value ≈ 1686');
+assert(Math.abs(zerodhaPortfolio.totalPL - (-39.80)) < 0.1, 'Zerodha snapshot: P&L ≈ -39.80');
+
+const combined = growwPortfolio.totalCurrentValue + zerodhaPortfolio.totalCurrentValue;
+assert(Math.abs(allPortfolio.totalCurrentValue - combined) < 0.01, 'ALL portfolio = sum of GROWW + ZERODHA');
+
+assert(growwPortfolio.metrics[0]?.source === 'GROWW', 'Groww metric has source=GROWW');
+assert(zerodhaPortfolio.metrics[0]?.source === 'ZERODHA', 'Zerodha metric has source=ZERODHA');
+
+// Allocation has broker breakdown
+const allocWithBrokers = getPortfolioAllocation(allPortfolio.metrics);
+assert(allocWithBrokers.byBroker.length > 0, 'byBroker allocation populated');
+const growwSlice = allocWithBrokers.byBroker.find(s => s.key === 'GROWW');
+const zerodhaSlice = allocWithBrokers.byBroker.find(s => s.key === 'ZERODHA');
+assert(growwSlice !== undefined, 'GROWW slice exists in byBroker');
+assert(zerodhaSlice !== undefined, 'ZERODHA slice exists in byBroker');
+assert(Math.abs((growwSlice?.percentage ?? 0) + (zerodhaSlice?.percentage ?? 0) - 100) < 0.1,
+  'Groww + Zerodha allocation = 100%');
+
 console.log('\n==================================================');
 console.log(`INVESTMENTS TEST SUITE RESULTS: ${passed} PASSED, ${failed} FAILED`);
 console.log('==================================================\n');

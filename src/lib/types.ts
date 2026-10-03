@@ -1191,6 +1191,15 @@ export interface MigrationHistoryItem {
 
 export type AssetType = 'STOCK' | 'ETF' | 'MUTUAL_FUND' | 'BOND' | 'OTHER';
 
+/**
+ * Broker / data-source that owns this holding.
+ * GROWW   — imported from or held in Groww
+ * ZERODHA — imported from or held in Zerodha
+ * MANUAL  — manually entered by the user
+ * OTHER   — any other source / broker
+ */
+export type BrokerSource = 'GROWW' | 'ZERODHA' | 'MANUAL' | 'OTHER';
+
 export interface InvestmentInstrument {
   id: ID;
   symbol: string;
@@ -1212,6 +1221,24 @@ export interface InvestmentHolding {
   investedAmount: number;
   openedAt: string;
   updatedAt: string;
+  /**
+   * Broker / data-source that owns this holding.
+   * Used to filter ALL / GROWW / ZERODHA views.
+   * Defaults to 'MANUAL' for legacy records without a source.
+   */
+  source?: BrokerSource;
+  /**
+   * Last imported reference price (snapshot from broker screenshot/export).
+   * Displayed as 'IMPORTED SNAPSHOT' until a live quote replaces it.
+   * Never labelled as LIVE.
+   */
+  snapshotPrice?: number;
+  /**
+   * Deterministic source-aware identifier for idempotent seeding.
+   * Format: '{SOURCE}:{SYMBOL_UPPER}'
+   * e.g. 'GROWW:ADANI_POWER', 'ZERODHA:COALINDIA'
+   */
+  sourceKey?: string;
 }
 
 export type InvestmentTxType = 'BUY' | 'SELL' | 'DIVIDEND' | 'SPLIT' | 'BONUS' | 'ADJUSTMENT';

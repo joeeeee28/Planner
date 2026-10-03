@@ -10,6 +10,7 @@ import type {
   InvestmentPlan,
   MarketQuote,
   AssetType,
+  BrokerSource,
 } from './types';
 import { uid } from './uid';
 
@@ -28,6 +29,10 @@ export interface CalculatedHoldingMetric {
   hasLiveQuote: boolean;
   isDelayed: boolean;
   quoteUnavailable: boolean;
+  /** True when the price is from an imported snapshot, not a live/delayed provider. */
+  isSnapshot: boolean;
+  /** The broker/source that owns this holding. */
+  source: BrokerSource;
 }
 
 export interface PortfolioSummary {
@@ -54,6 +59,23 @@ export interface PortfolioAllocation {
   byInstrument: AllocationSlice[];
   byAssetType: AllocationSlice[];
   byExchange: AllocationSlice[];
+  byBroker: AllocationSlice[];
+}
+
+export type BrokerTab = 'ALL' | 'GROWW' | 'ZERODHA';
+
+/**
+ * Filter holdings by broker/source tab.
+ * 'ALL' returns all holdings.
+ * 'GROWW' returns only Groww holdings.
+ * 'ZERODHA' returns only Zerodha holdings.
+ */
+export function filterHoldingsBySource(
+  holdings: InvestmentHolding[],
+  tab: BrokerTab
+): InvestmentHolding[] {
+  if (tab === 'ALL') return holdings;
+  return holdings.filter((h) => (h.source ?? 'MANUAL') === tab);
 }
 
 export interface ThisMonthInvestmentSummary {
@@ -118,7 +140,17 @@ export function calculateHoldingMetrics(
   const investedAmount = holding.investedAmount > 0 ? holding.investedAmount : quantity * averageCost;
 
   const hasQuote = !!(quote && Number.isFinite(quote.price) && quote.price > 0);
-  const currentPrice = hasQuote ? (quote?.price as number) : averageCost;
+
+  // Use live quote first, then snapshot (imported reference), then average cost as last resort
+  const hasSnapshot = !hasQuote && Number.isFinite(holding.snapshotPrice) && (holding.snapshotPrice ?? 0) > 0;
+  const currentPrice = hasQuote
+    ? (quote!.price)
+    : hasSnapshot
+    ? (holding.snapshotPrice as number)
+    : averageCost;
+
+  const isSnapshot = !hasQuote && hasSnapshot;
+
   const currentValue = quantity * currentPrice;
   const pl = currentValue - investedAmount;
   const returnPct = investedAmount > 0 ? (pl / investedAmount) * 100 : 0;
@@ -126,7 +158,9 @@ export function calculateHoldingMetrics(
   const dayChange = quote && Number.isFinite(quote.dayChange) ? quote.dayChange * quantity : 0;
   const dayChangePercent = quote && Number.isFinite(quote.dayChangePercent) ? quote.dayChangePercent : 0;
   const isDelayed = quote?.isDelayed === true;
-  const quoteUnavailable = quote?.marketStatus === 'Unavailable';
+  const quoteUnavailable = !hasQuote && !hasSnapshot;
+
+  const source: BrokerSource = holding.source ?? 'MANUAL';
 
   return {
     holding,
@@ -143,6 +177,8 @@ export function calculateHoldingMetrics(
     hasLiveQuote: hasQuote,
     isDelayed,
     quoteUnavailable,
+    isSnapshot,
+    source,
   };
 }
 
@@ -272,12 +308,37 @@ export function getPortfolioAllocation(metrics: CalculatedHoldingMetric[]): Port
     }))
     .sort((a, b) => b.value - a.value);
 
+  // By Broker
+  const brokerColors: Record<string, string> = {
+    GROWW: '#00c853',
+    ZERODHA: '#2563eb',
+    MANUAL: '#c08a2d',
+    OTHER: '#6366f1',
+  };
+  const brokerMap = new Map<string, number>();
+  for (const m of metrics) {
+    const br = m.source || 'MANUAL';
+    brokerMap.set(br, (brokerMap.get(br) ?? 0) + m.currentValue);
+  }
+
+  const byBroker: AllocationSlice[] = Array.from(brokerMap.entries())
+    .map(([key, val]) => ({
+      key,
+      label: key.charAt(0) + key.slice(1).toLowerCase(),
+      value: val,
+      percentage: totalVal > 0 ? (val / totalVal) * 100 : 0,
+      color: brokerColors[key] ?? '#6366f1',
+    }))
+    .sort((a, b) => b.value - a.value);
+
   return {
     byInstrument,
     byAssetType,
     byExchange,
+    byBroker,
   };
 }
+
 
 /**
  * Apply an investment transaction (BUY/SELL) to holdings.
