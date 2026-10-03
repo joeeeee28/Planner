@@ -912,6 +912,10 @@ export interface AppData {
   inbox?: InboxItem[];
   /** Reusable planning templates (V5 Phase 12) — additive. */
   templates?: PlanningTemplate[];
+  /** Personal automation rules (V5 Phase 13) — additive. */
+  automations?: AutomationRule[];
+  /** Automation execution logs (V5 Phase 13) — additive. */
+  automationLogs?: AutomationLogItem[];
   /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
   periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;
@@ -1048,25 +1052,60 @@ export interface Routine {
  */
 export type RoutineRuns = Record<string, Record<ID, 'habit' | 'task' | 'plain'>>;
 
-/** Notification categories the user can mute independently. */
-export type NotifyCategory = 'tasks' | 'goals' | 'habits' | 'routines' | 'reviews' | 'money';
+/** Notification categories the user can mute independently (V5 Phase 13). */
+export type NotifyCategory =
+  | 'tasks'
+  | 'calendar'
+  | 'focus'
+  | 'recurring'
+  | 'goals'
+  | 'habits'
+  | 'learning'
+  | 'money'
+  | 'reviews'
+  | 'routines'
+  | 'system';
 
-/** Slice 6 — automation preferences on Settings (optional; engine falls back to on). */
+/** Slice 6 & V5 Phase 13 — automation preferences on Settings. */
 export interface AutomationSettings {
   notify?: Partial<Record<NotifyCategory, boolean>>;
   /** Quiet hours HH:MM — no notification delivery (in-app badge/panel gated). */
   quietStart?: string;
   quietEnd?: string;
+  /** Digest mode option: 'instant' or 'daily-digest'. Default instant. */
+  digestMode?: 'instant' | 'daily-digest';
 }
 
-/** A deterministic, deduplicated, user-dismissable in-app notification. */
+export type RelatedEntityType =
+  | 'task'
+  | 'calendar'
+  | 'focus'
+  | 'recurring'
+  | 'goal'
+  | 'habit'
+  | 'learning'
+  | 'money'
+  | 'review'
+  | 'routine'
+  | 'system';
+
+/** A deterministic, deduplicated, user-dismissable in-app notification (V5 Phase 13). */
 export interface AppNotification {
   id: ID;
   cat: NotifyCategory;
-  /** Short kind label, e.g. 'goal-deadline' | 'routine' | 'review' | 'bill'. */
+  /** Short kind label, e.g. 'goal-deadline' | 'routine' | 'review' | 'bill' | 'focus'. */
   kind: string;
   title: string;
   body?: string;
+  priority?: 'P0' | 'P1' | 'P2' | 'P3';
+  scheduledFor?: string;
+  relatedEntityType?: RelatedEntityType;
+  relatedEntityId?: ID;
+  action?: {
+    label: string;
+    route: string;
+  };
+  status?: 'pending' | 'delivered' | 'read' | 'dismissed';
   /** Day the notification belongs to (grouped Today / Upcoming / Earlier). */
   date: DateStr;
   /** Hash route to jump to the record (never to private content). */
@@ -1074,6 +1113,46 @@ export interface AppNotification {
   read?: boolean;
   dismissed?: boolean;
   createdAt: string;
+}
+
+export type AutomationTriggerType =
+  | 'task_due'
+  | 'calendar_event'
+  | 'recurring_occurrence'
+  | 'goal_milestone'
+  | 'habit_schedule'
+  | 'learning_schedule'
+  | 'money_commitment'
+  | 'review_due';
+
+export type AutomationActionType = 'create_notification' | 'create_reminder';
+
+export interface AutomationRule {
+  id: ID;
+  name: string;
+  description?: string;
+  trigger: {
+    type: AutomationTriggerType;
+    offsetMinutes?: number;
+  };
+  action: {
+    type: AutomationActionType;
+    priority?: 'P0' | 'P1' | 'P2' | 'P3';
+  };
+  active: boolean;
+  isBuiltIn?: boolean;
+  lastExecutedAt?: string;
+  createdAt: DateStr;
+  updatedAt?: string;
+}
+
+export interface AutomationLogItem {
+  id: ID;
+  ruleId: ID;
+  ruleName: string;
+  executedAt: string;
+  result: string;
+  targetEntityId?: ID;
 }
 
 declare global {

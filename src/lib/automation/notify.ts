@@ -11,15 +11,32 @@ import { staleRows } from '../stale';
 import { instanceId, nextOccurrence } from './recur';
 import { routineDayComplete, dayRunState, routineScheduledOn } from './routines';
 
-export const ALL_CATEGORIES: NotifyCategory[] = ['tasks', 'goals', 'habits', 'routines', 'reviews', 'money'];
+export const ALL_CATEGORIES: NotifyCategory[] = [
+  'tasks',
+  'calendar',
+  'focus',
+  'recurring',
+  'goals',
+  'habits',
+  'learning',
+  'money',
+  'reviews',
+  'routines',
+  'system',
+];
 
 export const CATEGORY_LABELS: Record<NotifyCategory, string> = {
   tasks: 'Tasks',
+  calendar: 'Calendar',
+  focus: 'Focus',
+  recurring: 'Recurring',
   goals: 'Goals',
   habits: 'Habits',
-  routines: 'Routines',
-  reviews: 'Reviews',
+  learning: 'Learning',
   money: 'Money',
+  reviews: 'Reviews',
+  routines: 'Routines',
+  system: 'System',
 };
 
 /** True when a category is enabled (settings absent → on). */
@@ -319,4 +336,26 @@ export function dismissNotification(list: AppNotification[] | undefined, id: str
 
 export function markAllRead(list: AppNotification[] | undefined): AppNotification[] {
   return (list ?? []).map((n) => ({ ...n, read: true }));
+}
+
+/**
+ * Smart reconciliation: invalidates/prunes notifications whose underlying entity
+ * was completed, deleted, skipped, or rescheduled.
+ */
+export function reconcileNotifications(list: AppNotification[] | undefined, data: AppData): AppNotification[] {
+  if (!list || list.length === 0) return [];
+  const tasksById = new Map((data.tasks ?? []).map((t) => [t.id, t]));
+  const recurringById = new Map((data.recurringTasks ?? []).map((r) => [r.id, r]));
+
+  return list.filter((n) => {
+    if (n.relatedEntityType === 'task' && n.relatedEntityId) {
+      const task = tasksById.get(n.relatedEntityId);
+      if (!task || task.done || task.skipped) return false;
+    }
+    if (n.relatedEntityType === 'recurring' && n.relatedEntityId) {
+      const rec = recurringById.get(n.relatedEntityId);
+      if (!rec || !rec.active) return false;
+    }
+    return true;
+  });
 }

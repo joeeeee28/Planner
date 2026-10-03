@@ -15,11 +15,16 @@ type NotifTab = 'all' | 'unread' | 'today';
 
 const CATEGORY_LABELS: Record<NotifyCategory, string> = {
   tasks: 'Tasks',
+  calendar: 'Calendar',
+  focus: 'Focus',
+  recurring: 'Recurring',
   goals: 'Goals',
+  habits: 'Habits',
+  learning: 'Learning',
   money: 'Money',
   reviews: 'Reviews',
   routines: 'Routines',
-  habits: 'Habits',
+  system: 'System',
 };
 
 function BellIcon({ size = 16 }: { size?: number }) {
