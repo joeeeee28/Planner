@@ -15,6 +15,7 @@ import { CATEGORY_LABELS, ALL_CATEGORIES, categoryEnabled } from '../lib/automat
 import { AUTO_LOCK_LABELS, PASSCODE_MAX, PASSCODE_MIN, isValidPasscode, type AutoLock } from '../lib/passcode';
 import { planningOf, capacityMinutesOf, windowLabel, DEFAULT_FOCUS_OPTIONS } from '../lib/calendar/time';
 import { CalendarIntegrationSection } from '../components/CalendarIntegrationSection';
+import { ImportMigrationCenterSection } from '../components/ImportMigrationCenterSection';
 
 /**
  * Settings → Security & privacy — the device passcode lock.
@@ -541,6 +542,8 @@ export function SettingsPage() {
             + Add growth area
           </button>
         </div>
+
+        <ImportMigrationCenterSection />
 
         <div className="card">
           <h2 className="card-title">💾 Your data</h2>

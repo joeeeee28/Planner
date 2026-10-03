@@ -919,6 +919,8 @@ export interface AppData {
   automations?: AutomationRule[];
   /** Automation execution logs (V5 Phase 13) — additive. */
   automationLogs?: AutomationLogItem[];
+  /** Migration and import history log (V5 Phase 17) — additive. */
+  migrationHistory?: MigrationHistoryItem[];
   /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
   periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;
@@ -1156,6 +1158,21 @@ export interface AutomationLogItem {
   executedAt: string;
   result: string;
   targetEntityId?: ID;
+}
+
+export interface MigrationHistoryItem {
+  id: ID;
+  timestamp: string;
+  fileName: string;
+  sourceType: 'json' | 'csv' | 'ics';
+  module: string;
+  recordsProcessed: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  status: 'completed' | 'partial' | 'failed' | 'rolled-back';
+  notes?: string;
 }
 
 declare global {
