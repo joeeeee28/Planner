@@ -14,7 +14,7 @@ import type { AutomationSettings, GrowthArea, NotifyCategory, PlanningSettings }
 import { CATEGORY_LABELS, ALL_CATEGORIES, categoryEnabled } from '../lib/automation/notify';
 import { AUTO_LOCK_LABELS, PASSCODE_MAX, PASSCODE_MIN, isValidPasscode, type AutoLock } from '../lib/passcode';
 import { planningOf, capacityMinutesOf, windowLabel, DEFAULT_FOCUS_OPTIONS } from '../lib/calendar/time';
-import { descriptorFor, connectionFor, connectionStatusLabel, externalConnectState } from '../lib/calendar/provider';
+import { CalendarIntegrationSection } from '../components/CalendarIntegrationSection';
 
 /**
  * Settings → Security & privacy — the device passcode lock.
@@ -520,105 +520,7 @@ export function SettingsPage() {
           </p>
         </div>
 
-        <div className="card">
-          <h2 className="card-title">🔌 Integrations</h2>
-          <p className="card-sub" style={{ marginTop: 0 }}>
-            Connect a real calendar so Growth OS plans around what already fills your time. Events stay read-only unless you enable writes — and nothing is ever shared with anyone.
-          </p>
-          <div className="stat-row">
-            <span className="k">🗓 Growth OS Calendar</span>
-            <span className="v"><span className="badge badge-success">Built in</span></span>
-          </div>
-          <p className="tiny muted" style={{ marginTop: 4 }}>
-            Your tasks, time blocks and habits <i>are</i> the Growth OS calendar — no connection needed.
-          </p>
-
-          {(['google', 'outlook'] as const).map((pid) => {
-            const label = pid === 'google' ? 'Google Calendar' : 'Microsoft Outlook';
-            const conn = connectionFor(data, pid);
-            const st = externalConnectState(pid);
-            const status = connectionStatusLabel(conn);
-            return (
-              <div key={pid} className="int-card mt-16">
-                <div className="flex" style={{ gap: 10, alignItems: 'center' }}>
-                  <span className="grow small bold">{label}</span>
-                  <span className={`badge ${status.tone === 'ok' ? 'badge-success' : status.tone === 'warn' ? 'badge-warn' : ''}`}>
-                    {status.label}
-                  </span>
-                </div>
-                <p className="tiny muted" style={{ margin: '6px 0 10px' }}>
-                  {descriptorFor(pid).permissionCopy}
-                </p>
-                {conn && (
-                  <div className="tiny" style={{ marginBottom: 8 }}>
-                    {conn.accountEmail && <div>Account: <b>{conn.accountEmail}</b></div>}
-                    <div style={{ marginTop: 4 }}>
-                      Calendars:
-                      {((conn.calendars ?? []).length > 0 ? conn.calendars! : [{ id: '…', name: 'loading…' }]).map((c) => (
-                        <span key={c.id} className="cal-chip">{c.name}</span>
-                      ))}
-                    </div>
-                    {conn.status === 'needs-attention' && conn.syncError && (
-                      <div className="tiny" style={{ color: 'var(--danger, #b91c1c)' }}>{conn.syncError}</div>
-                    )}
-                  </div>
-                )}
-                {!conn ? (
-                  <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center' }}>
-                    <button className="btn btn-sm" disabled title={st.reason}>
-                      Connect
-                    </button>
-                    <span className="tiny muted" style={{ flex: '1 1 220px', minWidth: 200 }}>
-                      {st.reason}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap" style={{ gap: 8, alignItems: 'center' }}>
-                    <button className="btn btn-sm" disabled title="Needs a configured calendar backend in this build.">
-                      Sync now
-                    </button>
-                    <button className="btn btn-sm" disabled title="Needs a configured calendar backend in this build.">
-                      Reconnect
-                    </button>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => {
-                        const remove = window.confirm(
-                          'Disconnect this calendar? Growth OS data stays untouched. Keep cached events for history?',
-                        );
-                        const drop = window.confirm('Remove cached events from Growth OS? Choose Cancel to keep them for past days.');
-                        if (!remove) return;
-                        update((d) => {
-                          d.calendarConnections = (d.calendarConnections ?? []).filter((c) => c.provider !== pid);
-                          if (drop) d.calendarEvents = (d.calendarEvents ?? []).filter((e) => e.provider !== pid);
-                          return { ...d };
-                        });
-                      }}
-                    >
-                      Disconnect
-                    </button>
-                    <label className="check-row" style={{ margin: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!conn.writeEnabled}
-                        aria-label={`Create calendar events from Growth OS in ${label}`}
-                        onChange={(e) =>
-                          update((d) => {
-                            d.calendarConnections = (d.calendarConnections ?? []).map((c) =>
-                              c.provider === pid ? { ...c, writeEnabled: e.target.checked } : c,
-                            );
-                            return { ...d };
-                          })
-                        }
-                      />
-                      <span className="tiny">Create calendar events from Growth OS</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <CalendarIntegrationSection />
 
         <div className="card">
           <h2 className="card-title">🌱 Growth areas</h2>

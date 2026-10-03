@@ -778,6 +778,8 @@ export interface PlannedTask {
   rescheduledAt?: string[];
   updatedAt?: string;
   doneAt?: string;
+  /** Linked external provider event key for two-way sync (V5 Phase 16). */
+  externalEventKey?: string;
 }
 
 // ── Universal Inbox ──────────────────────────────────────────────────────────

@@ -1,27 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Growth OS V4 — Slice 5 · Calendar provider architecture.
+// Growth OS V4/V5 — Slice 5 & Phase 16 · Calendar provider architecture & Sync Engine.
 //
-//   CalendarProvider (this module)
+//   CalendarProvider
 //   ├── Growth OS Calendar (built-in — planning data IS the local calendar)
-//   ├── Google Calendar adapter (external, OAuth via secure backend only)
-//   └── Microsoft Outlook adapter (external, OAuth via secure backend only)
+//   ├── Google Calendar adapter (external, OAuth via secure backend)
+//   └── Microsoft Outlook adapter (external, OAuth via secure backend)
 //
 // Hard rules:
 //   * No OAuth secret, client secret or refresh token ever lives in the
-//     frontend bundle. External adapters are thin HTTP clients that talk to a
-//     deployer-supplied backend URL (VITE_*_CALENDAR_BACKEND); without one
-//     they report a clear "not available in this build" state.
+//     frontend bundle. External adapters talk to deployer-supplied backend URL
+//     (VITE_*_CALENDAR_BACKEND); without one they report a clear "not available in this build".
 //   * External events are READ-ONLY by default. Writes require the user's
 //     explicit `writeEnabled` opt-in per connection.
-//   * The sync engine is deterministic and adapter-injected, so automated
-//     tests exercise it with provider-faithful mocks (MemoryGoogleAdapter /
-//     MemoryOutlookAdapter). Real OAuth handshakes are tested separately
-//     against the live providers — never simulated and claimed as production.
+//   * Stable deduplication by `${provider}:${calendarId}:${externalId}` prevents duplicate records.
 //   * Disconnect only stops synchronization. Nothing in the Growth OS
 //     document (tasks, goals, time blocks, journal) is ever deleted.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AppData, CalendarConnection, CalendarProviderId, ExternalCalendarMeta, ExternalEvent } from '../types';
+import type { AppData, CalendarConnection, CalendarProviderId, ExternalCalendarMeta, ExternalEvent, PlannedTask } from '../types';
+import { pushExternalEvent } from './integrationApi';
 
 export type CalendarEnv = 'growthos' | 'google' | 'outlook';
 
@@ -69,8 +66,6 @@ export function descriptorFor(id: CalendarEnv): ProviderDescriptor {
 // ── Backend configuration (never secrets — just the deployer's endpoint) ────
 
 export function backendUrlFor(id: CalendarProviderId): string | undefined {
-  // import.meta.env is replaced by Vite at build time; under plain Node (tests)
-  // it may be absent — treat as "no backend configured".
   const meta = import.meta as unknown as { env?: Record<string, string | undefined> };
   const env: Record<string, string | undefined> = meta.env ?? {};
   return id === 'google' ? env.VITE_GOOGLE_CALENDAR_BACKEND : env.VITE_OUTLOOK_CALENDAR_BACKEND;
@@ -81,7 +76,7 @@ export function externalConnectState(id: CalendarProviderId): { ok: boolean; rea
   return {
     ok: false,
     reason:
-      'Connecting needs a secure OAuth backend — secrets are never bundled in a static app. When a calendar backend URL is configured, Connect appears here automatically.',
+      'Calendar integration is not configured. (Requires VITE_GOOGLE_CALENDAR_BACKEND or VITE_OUTLOOK_CALENDAR_BACKEND)',
   };
 }
 
@@ -101,10 +96,11 @@ export interface ExternalSyncEvent {
 
 export interface ExternalCalendarAdapter {
   readonly id: CalendarProviderId;
-  /** Fetch events. The engine dedupes by stable key; removals are detected by
-   *  comparing the fetched set with the cached one. */
   fetchEvents(conn: CalendarConnection, since?: string): Promise<ExternalSyncEvent[]>;
   listCalendars(conn: CalendarConnection): Promise<ExternalCalendarMeta[]>;
+  createEvent?(conn: CalendarConnection, event: Partial<ExternalSyncEvent>): Promise<{ externalId: string }>;
+  updateEvent?(conn: CalendarConnection, externalId: string, event: Partial<ExternalSyncEvent>): Promise<void>;
+  deleteEvent?(conn: CalendarConnection, externalId: string): Promise<void>;
 }
 
 export function connectionStatusLabel(conn?: CalendarConnection): { label: string; tone: 'ok' | 'warn' | 'muted' } {
@@ -128,6 +124,91 @@ export function connectionFor(data: AppData, id: CalendarProviderId): CalendarCo
 
 export function eventsForProvider(data: AppData, id: CalendarProviderId): ExternalEvent[] {
   return (data.calendarEvents ?? []).filter((e) => e.provider === id);
+}
+
+// ── HTTP Provider Adapters (production secure endpoint connection) ──────────
+
+export class HttpGoogleAdapter implements ExternalCalendarAdapter {
+  readonly id: CalendarProviderId = 'google';
+  private readonly baseUrl?: string;
+
+  constructor(baseUrl?: string) {
+    this.baseUrl = baseUrl || backendUrlFor('google');
+  }
+
+  async fetchEvents(conn: CalendarConnection, since?: string): Promise<ExternalSyncEvent[]> {
+    if (!this.baseUrl) {
+      throw new Error('Google Calendar backend is not configured.');
+    }
+    const params = new URLSearchParams();
+    if (since) params.append('since', since);
+    if (conn.selectedCalendarIds.length > 0) {
+      params.append('calendars', conn.selectedCalendarIds.join(','));
+    }
+
+    const res = await fetch(`${this.baseUrl}/api/calendar/events?${params.toString()}`, {
+      headers: { 'X-Calendar-Provider': 'google' },
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error('AUTH_EXPIRED');
+    }
+    if (!res.ok) {
+      throw new Error(`Google Calendar API returned status ${res.status}`);
+    }
+    const json = (await res.json()) as { events: ExternalSyncEvent[] };
+    return json.events || [];
+  }
+
+  async listCalendars(): Promise<ExternalCalendarMeta[]> {
+    if (!this.baseUrl) return [];
+    const res = await fetch(`${this.baseUrl}/api/calendar/calendars`, {
+      headers: { 'X-Calendar-Provider': 'google' },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { calendars: ExternalCalendarMeta[] };
+    return json.calendars || [];
+  }
+
+  async createEvent(conn: CalendarConnection, event: Partial<ExternalSyncEvent>): Promise<{ externalId: string }> {
+    const res = await pushExternalEvent(this.baseUrl, conn, 'create', {
+      calendarId: event.calendarId || 'primary',
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      allDay: event.allDay,
+      location: event.location,
+    });
+    if (!res.ok || !res.externalId) throw new Error(res.error || 'Failed to create Google event');
+    return { externalId: res.externalId };
+  }
+
+  async updateEvent(conn: CalendarConnection, externalId: string, event: Partial<ExternalSyncEvent>): Promise<void> {
+    const res = await pushExternalEvent(this.baseUrl, conn, 'update', {
+      calendarId: event.calendarId || 'primary',
+      externalId,
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      allDay: event.allDay,
+      location: event.location,
+    });
+    if (!res.ok) throw new Error(res.error || 'Failed to update Google event');
+  }
+
+  async deleteEvent(conn: CalendarConnection, externalId: string): Promise<void> {
+    const res = await pushExternalEvent(this.baseUrl, conn, 'delete', {
+      calendarId: 'primary',
+      externalId,
+    });
+    if (!res.ok) throw new Error(res.error || 'Failed to delete Google event');
+  }
+}
+
+export class HttpOutlookAdapter extends HttpGoogleAdapter {
+  override readonly id: CalendarProviderId = 'outlook';
+  constructor(baseUrl?: string) {
+    super(baseUrl || backendUrlFor('outlook'));
+  }
 }
 
 // ── Sync engine ──────────────────────────────────────────────────────────────
@@ -174,8 +255,6 @@ export function dedupeEvents(
 /**
  * Run one sync against an adapter: pull changed events, dedupe by
  * `provider:calendar:eventId`, prune remote deletions, refresh stamps.
- * Fetch failures retry up to SYNC_RETRY_LIMIT times; the surfaced error is
- * always the user-safe label, never raw OAuth/API internals.
  */
 export async function runSync(
   connection: CalendarConnection,
@@ -187,18 +266,23 @@ export async function runSync(
   let events: ExternalSyncEvent[] = [];
   try {
     events = await adapter.fetchEvents(forSync, connection.lastSyncedAt);
-  } catch {
-    if (attempt < SYNC_RETRY_LIMIT) return runSync(connection, adapter, cached, attempt + 1);
+  } catch (err) {
+    const isAuthErr = err instanceof Error && err.message === 'AUTH_EXPIRED';
+    if (!isAuthErr && attempt < SYNC_RETRY_LIMIT) {
+      return runSync(connection, adapter, cached, attempt + 1);
+    }
     return {
       connection: {
         ...connection,
         status: 'needs-attention',
         retryCount: (connection.retryCount ?? 0) + 1,
-        syncError: 'Calendar sync needs attention. You can retry, reconnect, or disconnect.',
+        syncError: isAuthErr
+          ? 'Calendar authorization expired. Reconnect required.'
+          : 'Calendar sync needs attention. You can retry, reconnect, or disconnect.',
       },
       events: cached.filter((e) => e.provider === adapter.id),
       removedKeys: [],
-      error: 'Calendar sync needs attention.',
+      error: isAuthErr ? 'Reconnect required.' : 'Calendar sync needs attention.',
     };
   }
 
@@ -210,8 +294,6 @@ export async function runSync(
   }
 
   const selected = new Set(connection.selectedCalendarIds);
-  // Cached events are replaced by what the adapter reports (dedupe by key);
-  // anything the remote no longer returns is a deletion, not a stale cache.
   const fetchedByKey = new Map<string, ExternalEvent>();
   for (const e of events) {
     const ev = toExternalEvent(adapter.id, e);
@@ -291,6 +373,32 @@ export function connectRecord(input: ConnectInput): AppData {
 }
 
 /**
+ * Account Switching: Connecting a new provider account replaces the old connection
+ * and purges previous cached events for that provider so no data leaks across accounts.
+ */
+export function switchProviderAccount(data: AppData, provider: CalendarProviderId, newEmail: string): AppData {
+  const purgedEvents = (data.calendarEvents ?? []).filter((e) => e.provider !== provider);
+  const updatedConns = (data.calendarConnections ?? []).filter((c) => c.provider !== provider);
+
+  const newConn: CalendarConnection = {
+    provider,
+    accountEmail: newEmail,
+    status: 'connected',
+    connectedAt: new Date().toISOString(),
+    retryCount: 0,
+    selectedCalendarIds: [],
+    writeEnabled: false,
+  };
+
+  return {
+    ...data,
+    calendarConnections: [...updatedConns, newConn],
+    calendarEvents: purgedEvents,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
  * Disconnect: stops synchronization only — Growth OS data is untouched.
  * Cached external events may be removed (UI asks first) or kept for history.
  */
@@ -303,6 +411,64 @@ export function disconnectRecord(data: AppData, provider: CalendarProviderId, re
       : data.calendarEvents,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Push a Growth OS planned task to external calendar when writeEnabled is active.
+ */
+export async function pushTaskToExternalCalendar(
+  data: AppData,
+  task: PlannedTask,
+  provider: CalendarProviderId,
+  adapter?: ExternalCalendarAdapter,
+): Promise<{ updatedData: AppData; externalId?: string; error?: string }> {
+  const conn = connectionFor(data, provider);
+  if (!conn || !conn.writeEnabled) {
+    return { updatedData: data, error: 'Write access disabled or provider not connected.' };
+  }
+
+  const activeAdapter = adapter || (provider === 'google' ? new HttpGoogleAdapter() : new HttpOutlookAdapter());
+  if (!activeAdapter.createEvent || !activeAdapter.updateEvent) {
+    return { updatedData: data, error: 'Adapter does not support write operations.' };
+  }
+
+  try {
+    const startIso = task.date && task.start ? `${task.date}T${task.start}:00` : new Date().toISOString();
+    const durationMin = task.minutes || 45;
+    const endMs = new Date(startIso).getTime() + durationMin * 60000;
+    const endIso = new Date(endMs).toISOString();
+
+    const existingKey = task.externalEventKey;
+    let extId: string;
+
+    if (existingKey) {
+      const parts = existingKey.split(':');
+      extId = parts[2] || existingKey;
+      await activeAdapter.updateEvent(conn, extId, {
+        title: task.text,
+        start: startIso,
+        end: endIso,
+      });
+    } else {
+      const res = await activeAdapter.createEvent(conn, {
+        calendarId: conn.selectedCalendarIds[0] || 'primary',
+        title: task.text,
+        start: startIso,
+        end: endIso,
+      });
+      extId = res.externalId;
+    }
+
+    const key = eventKey(provider, conn.selectedCalendarIds[0] || 'primary', extId);
+    const updatedTasks = (data.tasks ?? []).map((t) => (t.id === task.id ? { ...t, externalEventKey: key } : t));
+
+    return {
+      updatedData: { ...data, tasks: updatedTasks, updatedAt: new Date().toISOString() },
+      externalId: extId,
+    };
+  } catch (err) {
+    return { updatedData: data, error: `External write failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 // ── Provider-faithful mocks (automated tests only) ──────────────────────────
@@ -318,16 +484,50 @@ export class MemoryGoogleAdapter implements ExternalCalendarAdapter {
   readonly id: CalendarProviderId = 'google';
   readonly calendars: MockCalendar[];
   readonly failFetch: boolean;
-  constructor(calendars: MockCalendar[] = [], failFetch = false) {
+  readonly isAuthExpired: boolean;
+  private createdEvents: ExternalSyncEvent[] = [];
+
+  constructor(calendars: MockCalendar[] = [], failFetch = false, isAuthExpired = false) {
     this.calendars = calendars;
     this.failFetch = failFetch;
+    this.isAuthExpired = isAuthExpired;
   }
+
   async fetchEvents(): Promise<ExternalSyncEvent[]> {
+    if (this.isAuthExpired) throw new Error('AUTH_EXPIRED');
     if (this.failFetch) throw new Error('network unavailable (mock)');
-    return this.calendars.flatMap((c) => c.events);
+    return [...this.calendars.flatMap((c) => c.events), ...this.createdEvents];
   }
+
   async listCalendars(): Promise<ExternalCalendarMeta[]> {
     return this.calendars.map((c) => ({ id: c.id, name: c.name }));
+  }
+
+  async createEvent(_conn: CalendarConnection, event: Partial<ExternalSyncEvent>): Promise<{ externalId: string }> {
+    const externalId = `mock-google-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const created: ExternalSyncEvent = {
+      externalId,
+      calendarId: event.calendarId || 'primary',
+      title: event.title || 'Untitled',
+      start: event.start || new Date().toISOString(),
+      end: event.end || new Date().toISOString(),
+      allDay: event.allDay,
+      location: event.location,
+      updatedAt: new Date().toISOString(),
+    };
+    this.createdEvents.push(created);
+    return { externalId };
+  }
+
+  async updateEvent(_conn: CalendarConnection, externalId: string, event: Partial<ExternalSyncEvent>): Promise<void> {
+    const idx = this.createdEvents.findIndex((e) => e.externalId === externalId);
+    if (idx >= 0) {
+      this.createdEvents[idx] = { ...this.createdEvents[idx], ...event, updatedAt: new Date().toISOString() };
+    }
+  }
+
+  async deleteEvent(_conn: CalendarConnection, externalId: string): Promise<void> {
+    this.createdEvents = this.createdEvents.filter((e) => e.externalId !== externalId);
   }
 }
 
