@@ -4783,4 +4783,551 @@ textarea {
   margin-top: 4px;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 23 — GLOBAL DESIGN SYSTEM & SPECIALIZED MODULE IDENTITIES
+   Structured + Notion + Groww + Zerodha + 21st.dev inspired architecture
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Typography Utilities */
+.t-display {
+  font-size: 32px;
+  font-weight: 850;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.t-title {
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.t-section {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.t-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.t-caption {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+.t-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ── Segmented Control Tabs (Groww + Apple + shadcn inspired) ─────────────── */
+.v5-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 10px);
+  padding: 4px;
+  user-select: none;
+}
+
+.v5-segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 34px;
+}
+
+.v5-segmented-btn:hover {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme='dark'] .v5-segmented-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.v5-segmented-btn.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='dark'] .v5-segmented-btn.active {
+  background: var(--surface-3);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.v5-segmented-count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: var(--line);
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+.v5-segmented-btn.active .v5-segmented-count {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* ── Asymmetric Wealth Hero (Groww + Zerodha + 21st.dev) ─────────────────── */
+.v5-wealth-hero {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 18px);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.v5-wealth-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #00c853, #3b82f6, #8b5cf6);
+  opacity: 0.85;
+}
+
+.v5-wealth-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.v5-wealth-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+
+.v5-wealth-val-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.v5-wealth-primary-val {
+  font-size: 36px;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+@media (max-width: 640px) {
+  .v5-wealth-primary-val {
+    font-size: 28px;
+  }
+}
+
+.v5-wealth-pnl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.v5-wealth-pnl-pill.pos {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.v5-wealth-pnl-pill.neg {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+/* Horizontal supporting metric bar */
+.v5-wealth-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.v5-wealth-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.v5-wealth-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+
+.v5-wealth-stat-val {
+  font-size: 16px;
+  font-weight: 750;
+  color: var(--ink);
+}
+
+/* ── Broker Snapshot Cards (Groww + Zerodha source identity) ─────────────── */
+.v5-broker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.v5-broker-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 14px);
+  padding: 16px 20px;
+  position: relative;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.v5-broker-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.v5-broker-card.groww {
+  border-top: 3px solid #00c853;
+}
+
+.v5-broker-card.zerodha {
+  border-top: 3px solid #3b82f6;
+}
+
+.v5-broker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.v5-broker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.v5-broker-badge.groww {
+  background: rgba(0, 200, 83, 0.12);
+  color: #00c853;
+}
+
+.v5-broker-badge.zerodha {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.v5-broker-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.v5-broker-lbl {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.v5-broker-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ── Refined Holdings Table (Zerodha precision + Groww friendliness) ──────── */
+.v5-holdings-container {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 16px);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+}
+
+.v5-holdings-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.v5-search-wrapper {
+  position: relative;
+  min-width: 240px;
+  flex: 1;
+  max-width: 360px;
+}
+
+.v5-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  font-size: 13px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  transition: all 0.15s ease;
+}
+
+.v5-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.v5-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.v5-holdings-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  text-align: left;
+}
+
+.v5-holdings-table th {
+  padding: 11px 16px;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.v5-holdings-table th.sortable {
+  cursor: pointer;
+}
+
+.v5-holdings-table th.sortable:hover {
+  color: var(--ink);
+}
+
+.v5-holdings-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  vertical-align: middle;
+  transition: background 0.1s ease;
+}
+
+.v5-holdings-table tr:last-child td {
+  border-bottom: none;
+}
+
+.v5-holdings-table tbody tr {
+  cursor: pointer;
+}
+
+.v5-holdings-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+.v5-ticker-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.v5-ticker-symbol {
+  font-weight: 750;
+  font-size: 13.5px;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.v5-ticker-name {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Holding Detail Right Sheet (shadcn Sheet / Drawer style) ─────────────── */
+.v5-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  animation: v5-fade-in 0.2s ease-out;
+}
+
+.v5-sheet-panel {
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  animation: v5-slide-left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-y: auto;
+}
+
+@keyframes v5-slide-left {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes v5-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.v5-sheet-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 10;
+}
+
+.v5-sheet-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.v5-sheet-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.v5-sheet-metric-box {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 10px);
+  padding: 12px 14px;
+}
+
+.v5-sheet-metric-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.v5-sheet-metric-val {
+  font-size: 16px;
+  font-weight: 750;
+  color: var(--ink);
+}
+
+/* ── Structured App Category Pill Tags ────────────────────────────────────── */
+.v5-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.v5-category-pill.plan {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.v5-category-pill.grow {
+  background: rgba(13, 148, 136, 0.12);
+  color: #0d9488;
+}
+
+.v5-category-pill.money {
+  background: rgba(5, 150, 105, 0.12);
+  color: #059669;
+}
+
+.v5-category-pill.reflect {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.v5-category-pill.invest {
+  background: rgba(0, 200, 83, 0.12);
+  color: #00c853;
+}
+
+
 

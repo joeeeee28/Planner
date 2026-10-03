@@ -152,66 +152,66 @@ function HoldingDetailDrawer({
           dayChange, dayChangePercent, hasLiveQuote, isDelayed, isSnapshot, source } = metric;
 
   return (
-    <Modal title={instrument.name || instrument.symbol} onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Source badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <SourceBadge source={source} />
-          <PriceLabel hasLiveQuote={hasLiveQuote} isDelayed={isDelayed} isSnapshot={isSnapshot} />
+    <div className="v5-sheet-overlay" onClick={onClose}>
+      <div className="v5-sheet-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={instrument.name || instrument.symbol}>
+        <div className="v5-sheet-header">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <SourceBadge source={source} />
+              <PriceLabel hasLiveQuote={hasLiveQuote} isDelayed={isDelayed} isSnapshot={isSnapshot} />
+            </div>
+            <h2 className="t-title" style={{ margin: 0 }}>{instrument.symbol}</h2>
+            <div className="tiny muted">{instrument.name} · {instrument.exchange}</div>
+          </div>
+          <button className="btn btn-icon btn-sm" onClick={onClose} aria-label="Close drawer">
+            ✕
+          </button>
         </div>
 
-        {/* KPI grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {[
-            { label: 'Symbol', val: instrument.symbol },
-            { label: 'Exchange', val: instrument.exchange },
-            { label: 'Quantity', val: `${quantity}` },
-            { label: 'Avg. Cost', val: maskValue(fmt(averageCost), hidden) },
-            { label: 'Invested', val: maskValue(fmt(investedAmount), hidden) },
-            { label: 'Current Price', val: maskValue(fmt(currentPrice), hidden) },
-            { label: 'Current Value', val: maskValue(fmt(currentValue), hidden) },
-          ].map(({ label, val }) => (
-            <div key={label} style={{ padding: '10px 12px', background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 8 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
-              <div style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{val}</div>
+        <div className="v5-sheet-body">
+          {/* Primary value banner */}
+          <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderRadius: 'var(--r-md, 14px)', border: '1px solid var(--line)' }}>
+            <div className="tiny uppercase bold muted" style={{ letterSpacing: '0.05em', marginBottom: 4 }}>Current Valuation</div>
+            <div className="t-display t-num">{maskValue(fmt(currentValue), hidden)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
+              <span className={`bold t-num ${pl >= 0 ? 'text-pos' : 'text-neg'}`} style={{ fontSize: 15 }}>
+                {pl >= 0 ? '+' : ''}{maskValue(fmt(pl), hidden)} ({pct(returnPct)})
+              </span>
+              <span className="tiny muted">total return</span>
             </div>
-          ))}
+          </div>
+
+          {/* Metric grid */}
+          <div className="v5-sheet-metric-grid">
+            {[
+              { label: 'Quantity', val: `${quantity} shares` },
+              { label: 'Avg. Cost', val: maskValue(fmt(averageCost), hidden) },
+              { label: 'Market Price (LTP)', val: maskValue(fmt(currentPrice), hidden) },
+              { label: 'Total Invested', val: maskValue(fmt(investedAmount), hidden) },
+              { label: 'Day P&L', val: `${dayChange >= 0 ? '+' : ''}${maskValue(fmt(dayChange), hidden)}` },
+              { label: 'Day Movement', val: pct(dayChangePercent) },
+            ].map(({ label, val }) => (
+              <div key={label} className="v5-sheet-metric-box">
+                <div className="v5-sheet-metric-lbl">{label}</div>
+                <div className="v5-sheet-metric-val t-num">{val}</div>
+              </div>
+            ))}
+          </div>
+
+          {holding.snapshotPrice != null && (
+            <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', border: '1px solid var(--line)' }}>
+              📷 <strong>Imported Snapshot Reference:</strong> {fmt(holding.snapshotPrice)} — preserved truthfully until real-time market quote replaces it.
+            </div>
+          )}
+
+          {instrument.isin && (
+            <div className="tiny muted" style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+              ISIN Identifier: <code style={{ fontSize: 11 }}>{instrument.isin}</code>
+            </div>
+          )}
         </div>
-
-        {/* P&L row */}
-        <div style={{
-          display: 'flex', gap: 12, padding: 14,
-          background: pl >= 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-          borderRadius: 10,
-          border: `1px solid ${pl >= 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
-        }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Total P&L</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: plColor(pl), fontVariantNumeric: 'tabular-nums' }}>
-              {maskValue(fmt(pl), hidden)}
-            </div>
-            <div style={{ fontSize: 12, color: plColor(returnPct) }}>{pct(returnPct)}</div>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Day P&L</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: plColor(dayChange), fontVariantNumeric: 'tabular-nums' }}>
-              {maskValue(fmt(dayChange), hidden)}
-            </div>
-            <div style={{ fontSize: 12, color: plColor(dayChangePercent) }}>{pct(dayChangePercent)}</div>
-          </div>
-        </div>
-
-        {holding.snapshotPrice != null && (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 12px', background: 'var(--surface2, rgba(255,255,255,0.03))', borderRadius: 6 }}>
-            📸 Reference snapshot price: {fmt(holding.snapshotPrice)} — displayed as SNAPSHOT until live provider configured.
-          </div>
-        )}
-
-        {instrument.isin && (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ISIN: {instrument.isin}</div>
-        )}
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -1232,7 +1232,6 @@ export function InvestmentsPage() {
   // ── KPI display ────────────────────────────────────────────────────────
 
   const kpi = activePortfolio;
-  const kpiLabel = brokerTab === 'ALL' ? null : brokerTab === 'GROWW' ? 'VIEWING GROWW' : 'VIEWING ZERODHA';
 
   // ── Responsive detect (simple) ─────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -1362,120 +1361,165 @@ export function InvestmentsPage() {
         </div>
       )}
 
-      {/* ── Combined KPI cards (always visible for context) ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 12,
-        marginBottom: 20,
-      }}>
-        {/* KPI context badge */}
-        {kpiLabel && (
-          <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
-              background: brokerTab === 'GROWW' ? 'rgba(0,200,83,0.15)' : 'rgba(37,99,235,0.15)',
-              color: brokerTab === 'GROWW' ? '#00c853' : '#60a5fa',
-            }}>
-              {kpiLabel}
+      {/* ── Asymmetric Wealth Hero (Groww + Zerodha wealth command center) ── */}
+      <div className="v5-wealth-hero">
+        <div className="v5-wealth-top">
+          <div>
+            <div className="v5-wealth-eyebrow">
+              <span>◍</span>
+              <span>YOUR PORTFOLIO · {brokerTab === 'ALL' ? 'ALL ACCOUNTS' : brokerTab === 'GROWW' ? 'GROWW ACCOUNT' : 'ZERODHA ACCOUNT'}</span>
+            </div>
+            <div className="v5-wealth-val-wrap">
+              <span className="v5-wealth-primary-val t-num">
+                {maskValue(fmt(kpi.totalCurrentValue), hidden)}
+              </span>
+              <span className={`v5-wealth-pnl-pill t-num ${kpi.totalPL >= 0 ? 'pos' : 'neg'}`}>
+                {kpi.totalPL >= 0 ? '▲ +' : '▼ '}{maskValue(fmt(kpi.totalPL), hidden)} ({pct(kpi.totalReturnPct)})
+              </span>
             </div>
           </div>
-        )}
 
-        {/* Total Investment */}
-        <div style={{ padding: '14px 16px', background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 12, border: '1px solid var(--line, rgba(255,255,255,0.07))' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 6 }}>Total Invested</div>
-          <div style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
-            {maskValue(fmt(kpi.totalInvested), hidden)}
+          {/* Visual performance sparkline curve */}
+          <div style={{ minWidth: 160, height: 48, display: 'flex', alignItems: 'center' }} aria-hidden="true">
+            <svg width="160" height="40" viewBox="0 0 160 40" fill="none" style={{ overflow: 'visible' }}>
+              <defs>
+                <linearGradient id="wealthGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor={kpi.totalPL >= 0 ? '#10b981' : '#ef4444'} stopOpacity="0.25" />
+                  <stop offset="100%" stopColor={kpi.totalPL >= 0 ? '#10b981' : '#ef4444'} stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path
+                d={kpi.totalPL >= 0 ? "M 0 32 Q 40 28, 80 16 T 160 6" : "M 0 8 Q 40 14, 80 24 T 160 34"}
+                fill="none"
+                stroke={kpi.totalPL >= 0 ? '#10b981' : '#ef4444'}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+              <path
+                d={kpi.totalPL >= 0 ? "M 0 32 Q 40 28, 80 16 T 160 6 L 160 40 L 0 40 Z" : "M 0 8 Q 40 14, 80 24 T 160 34 L 160 40 L 0 40 Z"}
+                fill="url(#wealthGradient)"
+              />
+            </svg>
           </div>
         </div>
 
-        {/* Current Value */}
-        <div style={{ padding: '14px 16px', background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 12, border: '1px solid var(--line, rgba(255,255,255,0.07))' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 6 }}>Current Value</div>
-          <div style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
-            {maskValue(fmt(kpi.totalCurrentValue), hidden)}
+        {/* Supporting metric horizontal strip */}
+        <div className="v5-wealth-strip">
+          <div className="v5-wealth-stat">
+            <span className="v5-wealth-stat-label">Total Invested</span>
+            <span className="v5-wealth-stat-val t-num">{maskValue(fmt(kpi.totalInvested), hidden)}</span>
           </div>
-          {kpi.totalCurrentValue > 0 && (
-            <div style={{ fontSize: 12, color: plColor(kpi.totalPL), marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
-              {kpi.totalPL >= 0 ? '+' : ''}{maskValue(fmt(kpi.totalPL), hidden)}
-            </div>
-          )}
-        </div>
 
-        {/* Today's P&L */}
-        <div style={{ padding: '14px 16px', background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 12, border: '1px solid var(--line, rgba(255,255,255,0.07))' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 6 }}>Today's P&L</div>
-          <div style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: plColor(kpi.todayChange), letterSpacing: '-0.01em' }}>
-            {maskValue(fmt(kpi.todayChange), hidden)}
+          <div className="v5-wealth-stat">
+            <span className="v5-wealth-stat-label">Today's P&L</span>
+            <span className={`v5-wealth-stat-val t-num ${kpi.todayChange >= 0 ? 'text-pos' : 'text-neg'}`}>
+              {kpi.todayChange >= 0 ? '+' : ''}{maskValue(fmt(kpi.todayChange), hidden)} ({pct(kpi.todayChangePercent)})
+            </span>
           </div>
-          <div style={{ fontSize: 12, color: plColor(kpi.todayChangePercent), marginTop: 2 }}>
-            {pct(kpi.todayChangePercent)}
-          </div>
-        </div>
 
-        {/* Total P&L */}
-        <div style={{
-          padding: '14px 16px',
-          background: kpi.totalPL >= 0 ? 'rgba(16,185,129,0.07)' : 'rgba(239,68,68,0.07)',
-          borderRadius: 12,
-          border: `1px solid ${kpi.totalPL >= 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
-        }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 6 }}>Total P&L</div>
-          <div style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: plColor(kpi.totalPL), letterSpacing: '-0.01em' }}>
-            {maskValue(fmt(kpi.totalPL), hidden)}
+          <div className="v5-wealth-stat">
+            <span className="v5-wealth-stat-label">Positions</span>
+            <span className="v5-wealth-stat-val t-num">{kpi.holdingsCount} securities</span>
           </div>
-          <div style={{ fontSize: 12, color: plColor(kpi.totalReturnPct), marginTop: 2 }}>
-            {pct(kpi.totalReturnPct)} total return
+
+          <div className="v5-wealth-stat">
+            <span className="v5-wealth-stat-label">Market State</span>
+            <span className="v5-wealth-stat-val" style={{ color: marketBadge.color, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span>{marketBadge.icon}</span> <span>{marketBadge.label}</span>
+            </span>
+          </div>
+
+          <div className="v5-wealth-stat">
+            <span className="v5-wealth-stat-label">Last Updated</span>
+            <span className="v5-wealth-stat-val" style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+              {timestampDisplay ?? 'Snapshot price'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ── Compact combined summary (when viewing broker tab) ── */}
-      {brokerTab !== 'ALL' && (
-        <div style={{
-          marginBottom: 16, padding: '10px 16px',
-          background: 'var(--surface2, rgba(255,255,255,0.03))',
-          borderRadius: 8, fontSize: 12,
-          display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
-          color: 'var(--text-muted)',
-        }}>
-          <span style={{ fontWeight: 600, color: 'inherit' }}>Combined portfolio:</span>
-          <span>Invested {maskValue(fmt(allPortfolio.totalInvested), hidden)}</span>
-          <span>Value {maskValue(fmt(allPortfolio.totalCurrentValue), hidden)}</span>
-          <span style={{ color: plColor(allPortfolio.totalPL) }}>
-            P&L {maskValue(fmt(allPortfolio.totalPL), hidden)} ({pct(allPortfolio.totalReturnPct)})
-          </span>
+      {/* ── Broker Snapshot Row (Groww + Zerodha source identity when ALL view) ── */}
+      {brokerTab === 'ALL' && (
+        <div className="v5-broker-grid">
+          {/* Groww Card */}
+          <div className="v5-broker-card groww" onClick={() => setBrokerTab('GROWW')} style={{ cursor: 'pointer' }}>
+            <div className="v5-broker-header">
+              <span className="v5-broker-badge groww">
+                <span>●</span> GROWW PORTFOLIO
+              </span>
+              <span className="tiny bold muted">{growwPortfolio.holdingsCount} positions</span>
+            </div>
+            <div className="v5-broker-row">
+              <span className="v5-broker-lbl">Current Value</span>
+              <span className="v5-broker-val t-num">{maskValue(fmt(growwPortfolio.totalCurrentValue), hidden)}</span>
+            </div>
+            <div className="v5-broker-row">
+              <span className="v5-broker-lbl">Invested Capital</span>
+              <span className="v5-broker-val t-num" style={{ color: 'var(--ink-2)' }}>{maskValue(fmt(growwPortfolio.totalInvested), hidden)}</span>
+            </div>
+            <div className="v5-broker-row" style={{ borderTop: '1px solid var(--line)', paddingTop: 6, marginTop: 6 }}>
+              <span className="v5-broker-lbl">Total Returns</span>
+              <span className={`v5-broker-val t-num ${growwPortfolio.totalPL >= 0 ? 'text-pos' : 'text-neg'}`}>
+                {growwPortfolio.totalPL >= 0 ? '+' : ''}{maskValue(fmt(growwPortfolio.totalPL), hidden)} ({pct(growwPortfolio.totalReturnPct)})
+              </span>
+            </div>
+          </div>
+
+          {/* Zerodha Card */}
+          <div className="v5-broker-card zerodha" onClick={() => setBrokerTab('ZERODHA')} style={{ cursor: 'pointer' }}>
+            <div className="v5-broker-header">
+              <span className="v5-broker-badge zerodha">
+                <span>●</span> ZERODHA PORTFOLIO
+              </span>
+              <span className="tiny bold muted">{zerodhaPortfolio.holdingsCount} positions</span>
+            </div>
+            <div className="v5-broker-row">
+              <span className="v5-broker-lbl">Current Value</span>
+              <span className="v5-broker-val t-num">{maskValue(fmt(zerodhaPortfolio.totalCurrentValue), hidden)}</span>
+            </div>
+            <div className="v5-broker-row">
+              <span className="v5-broker-lbl">Invested Capital</span>
+              <span className="v5-broker-val t-num" style={{ color: 'var(--ink-2)' }}>{maskValue(fmt(zerodhaPortfolio.totalInvested), hidden)}</span>
+            </div>
+            <div className="v5-broker-row" style={{ borderTop: '1px solid var(--line)', paddingTop: 6, marginTop: 6 }}>
+              <span className="v5-broker-lbl">Total Returns</span>
+              <span className={`v5-broker-val t-num ${zerodhaPortfolio.totalPL >= 0 ? 'text-pos' : 'text-neg'}`}>
+                {zerodhaPortfolio.totalPL >= 0 ? '+' : ''}{maskValue(fmt(zerodhaPortfolio.totalPL), hidden)} ({pct(zerodhaPortfolio.totalReturnPct)})
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── Broker tabs ── */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
-        {(['ALL', 'GROWW', 'ZERODHA'] as BrokerTab[]).map((tab) => {
-          const count = tab === 'ALL' ? allPortfolio.holdingsCount : tab === 'GROWW' ? growwPortfolio.holdingsCount : zerodhaPortfolio.holdingsCount;
-          const isActive = brokerTab === tab;
-          const tabColors: Record<BrokerTab, { active: string; text: string }> = {
-            ALL: { active: 'var(--accent-teal, #0d7a6e)', text: '#fff' },
-            GROWW: { active: '#00c853', text: '#000' },
-            ZERODHA: { active: '#2563eb', text: '#fff' },
-          };
-          return (
-            <button
-              key={tab}
-              onClick={() => setBrokerTab(tab)}
-              aria-pressed={isActive}
-              style={{
-                padding: '7px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                fontSize: 13, fontWeight: 700, minHeight: 44,
-                background: isActive ? tabColors[tab].active : 'var(--surface2, rgba(255,255,255,0.06))',
-                color: isActive ? tabColors[tab].text : 'var(--text-muted)',
-                transition: 'background 0.2s, color 0.2s',
-              }}
-            >
-              {tab} {count > 0 && <span style={{ opacity: 0.7, fontWeight: 400, fontSize: 11 }}>({count})</span>}
+      {/* ── Segmented Broker Tabs (ALL, GROWW, ZERODHA) ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div className="v5-segmented-control" role="tablist" aria-label="Broker Account View">
+          {(['ALL', 'GROWW', 'ZERODHA'] as BrokerTab[]).map((tab) => {
+            const count = tab === 'ALL' ? allPortfolio.holdingsCount : tab === 'GROWW' ? growwPortfolio.holdingsCount : zerodhaPortfolio.holdingsCount;
+            const isActive = brokerTab === tab;
+            return (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={isActive}
+                className={`v5-segmented-btn ${isActive ? 'active' : ''}`}
+                onClick={() => setBrokerTab(tab)}
+              >
+                <span>{tab}</span>
+                <span className="v5-segmented-count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {brokerTab !== 'ALL' && (
+          <div className="tiny muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>Filtering by {brokerTab}</span>
+            <button className="btn btn-ghost btn-xs" onClick={() => setBrokerTab('ALL')}>
+              Show All
             </button>
-          );
-        })}
+          </div>
+        )}
       </div>
 
       {/* ── Search + sort ── */}
