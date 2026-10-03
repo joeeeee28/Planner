@@ -34,10 +34,11 @@ const GROUP_LABEL: Record<string, string> = { do: 'Plan & do', grow: 'Grow', sys
 
 const MOBILE_TABS = ['home', 'today', 'plan', 'money'];
 
-/** Cloud sync indicator (hidden in local mode). */
-function SyncChip() {
-  const { mode, sync } = useApp();
-  if (mode !== 'cloud') return null;
+import { SyncCenterModal } from './SyncCenterModal';
+
+/** Cloud & Resilience sync indicator. */
+function SyncChip({ onClick }: { onClick?: () => void }) {
+  const { sync } = useApp();
   const map = {
     idle: null,
     syncing: { dot: 'sync', text: 'Syncing…' },
@@ -45,13 +46,21 @@ function SyncChip() {
     pending: { dot: 'warn', text: 'Saved locally' },
     error: { dot: 'warn', text: 'Sync needs attention' },
   } as const;
-  const c = map[sync.status];
-  if (!c) return null;
+  const c = map[sync.status] ?? { dot: 'ok', text: 'Synced' };
   const title = sync.lastSyncAt
     ? `Last synced ${new Date(sync.lastSyncAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}`
-    : 'Changes are saved on this device and sync to your account.';
+    : 'Changes are saved locally on this device. Click to open Sync Status.';
   return (
-    <span className={`sync-chip ${c.dot}`} role="status" aria-live="polite" title={title}>
+    <span
+      className={`sync-chip ${c.dot}`}
+      role="button"
+      tabIndex={0}
+      aria-live="polite"
+      title={title}
+      onClick={onClick}
+      onKeyDown={(e) => e.key === 'Enter' && onClick && onClick()}
+      style={{ cursor: 'pointer' }}
+    >
       <span className="sync-dot" />
       {c.text}
     </span>
@@ -84,6 +93,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [quickAdd, setQuickAdd] = useState<QuickAddKind | boolean>(false);
   const [activeIdx, setActiveIdx] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  const [openSyncCenter, setOpenSyncCenter] = useState(false);
 
   const section = route[0] ?? 'home';
   const sub = route[1];
@@ -250,7 +261,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <span className="topbar-title">{pageTitle(section, sub)}</span>
           </div>
           <div className="topbar-right">
-            <SyncChip />
+            <SyncChip onClick={() => setOpenSyncCenter(true)} />
             <div className="search-box" ref={searchRef}>
               <span className="search-icon">
                 <IconSearch />
@@ -362,6 +373,22 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </nav>
 
       {quickAdd && <QuickAddModal onClose={() => setQuickAdd(false)} initialKind={typeof quickAdd === 'string' ? quickAdd : 'task'} />}
+      <SyncCenterModal
+        open={openSyncCenter}
+        onClose={() => setOpenSyncCenter(false)}
+        snapshot={{
+          status: 'synced',
+          network: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'online',
+          lastSyncAt: new Date().toISOString(),
+          pendingCount: 0,
+          failedCount: 0,
+          queue: [],
+          conflictCount: 0,
+        }}
+        conflicts={[]}
+        onRetry={() => {}}
+        onClearQueue={() => {}}
+      />
     </div>
   );
 }
