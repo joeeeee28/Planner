@@ -14,6 +14,7 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { CalendarProviderId, ExternalCalendarMeta } from '../src/lib/types';
 import type { ExternalSyncEvent } from '../src/lib/calendar/provider';
+import { handleMarketHttpRequest, MarketBackendService } from './marketBackend';
 
 // ── Environment & Configuration ──────────────────────────────────────────────
 
@@ -829,6 +830,12 @@ export function handleOAuthHttpRequest(
   if (pathname === '/health' || pathname === '/api/calendar/health') {
     json(200, service.getHealth());
     return;
+  }
+
+  // Route /api/market/... to market backend handler
+  if (pathname.startsWith('/api/market/')) {
+    const marketHandled = handleMarketHttpRequest(req, res);
+    if (marketHandled) return;
   }
 
   if (pathname === '/api/calendar/preflight') {

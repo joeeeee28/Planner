@@ -383,6 +383,31 @@ function sortMetrics(
   });
 }
 
+function TableHeaderCell({
+  field,
+  label,
+  right,
+  sortField,
+  sortDir,
+  onSort,
+}: {
+  field: SortField;
+  label: string;
+  right?: boolean;
+  sortField: SortField;
+  sortDir: SortDir;
+  onSort: (f: SortField) => void;
+}) {
+  return (
+    <th
+      style={{ cursor: 'pointer', userSelect: 'none', textAlign: right ? 'right' : 'left', whiteSpace: 'nowrap' }}
+      onClick={() => onSort(field)}
+    >
+      {label} {field !== sortField ? <span style={{ opacity: 0.3 }}>⇅</span> : <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+    </th>
+  );
+}
+
 // ── ALL VIEW table ──────────────────────────────────────────────────────────
 
 function AllHoldingsTable({
@@ -400,35 +425,21 @@ function AllHoldingsTable({
   sortDir: SortDir;
   onSort: (f: SortField) => void;
 }) {
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (field !== sortField) return <span style={{ opacity: 0.3 }}>⇅</span>;
-    return <span>{sortDir === 'asc' ? '↑' : '↓'}</span>;
-  };
-
-  const Th = ({ field, label, right }: { field: SortField; label: string; right?: boolean }) => (
-    <th
-      style={{ cursor: 'pointer', userSelect: 'none', textAlign: right ? 'right' : 'left', whiteSpace: 'nowrap' }}
-      onClick={() => onSort(field)}
-    >
-      {label} <SortIcon field={field} />
-    </th>
-  );
-
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line, rgba(255,255,255,0.08))' }}>
-            <Th field="name" label="Instrument" />
+            <TableHeaderCell field="name" label="Instrument" sortField={sortField} sortDir={sortDir} onSort={onSort} />
             <th style={{ textAlign: 'left' }}>Source</th>
-            <Th field="qty" label="Qty" right />
-            <Th field="avgCost" label="Avg Cost" right />
-            <Th field="ltp" label="LTP" right />
-            <Th field="invested" label="Invested" right />
-            <Th field="currentValue" label="Cur. Value" right />
-            <Th field="pl" label="P&L" right />
-            <Th field="returnPct" label="Return" right />
-            <Th field="dayPct" label="Day Chg" right />
+            <TableHeaderCell field="qty" label="Qty" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="avgCost" label="Avg Cost" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="ltp" label="LTP" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="invested" label="Invested" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="currentValue" label="Cur. Value" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="pl" label="P&L" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="returnPct" label="Return" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="dayPct" label="Day Chg" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -495,31 +506,20 @@ function GrowwHoldingsTable({
   sortDir: SortDir;
   onSort: (f: SortField) => void;
 }) {
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (field !== sortField) return <span style={{ opacity: 0.3 }}>⇅</span>;
-    return <span>{sortDir === 'asc' ? '↑' : '↓'}</span>;
-  };
-  const Th = ({ field, label, right }: { field: SortField; label: string; right?: boolean }) => (
-    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: right ? 'right' : 'left', whiteSpace: 'nowrap' }}
-      onClick={() => onSort(field)}>
-      {label} <SortIcon field={field} />
-    </th>
-  );
-
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line, rgba(255,255,255,0.08))' }}>
-            <Th field="name" label="Company" />
-            <Th field="qty" label="Qty" right />
-            <Th field="avgCost" label="Avg Cost" right />
-            <Th field="ltp" label="Market Price" right />
-            <Th field="dayPct" label="1D Change" right />
-            <Th field="pl" label="Total P&L" right />
-            <Th field="returnPct" label="Return %" right />
-            <Th field="currentValue" label="Cur. Value" right />
-            <Th field="invested" label="Invested" right />
+            <TableHeaderCell field="name" label="Company" sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="qty" label="Qty" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="avgCost" label="Avg Cost" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="ltp" label="Market Price" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="dayPct" label="1D Change" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="pl" label="Total P&L" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="returnPct" label="Return %" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="currentValue" label="Cur. Value" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="invested" label="Invested" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -581,31 +581,20 @@ function ZerodhaHoldingsTable({
   sortDir: SortDir;
   onSort: (f: SortField) => void;
 }) {
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (field !== sortField) return <span style={{ opacity: 0.3 }}>⇅</span>;
-    return <span>{sortDir === 'asc' ? '↑' : '↓'}</span>;
-  };
-  const Th = ({ field, label, right }: { field: SortField; label: string; right?: boolean }) => (
-    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: right ? 'right' : 'left', whiteSpace: 'nowrap' }}
-      onClick={() => onSort(field)}>
-      {label} <SortIcon field={field} />
-    </th>
-  );
-
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line, rgba(255,255,255,0.08))' }}>
-            <Th field="name" label="Instrument" />
-            <Th field="qty" label="Qty." right />
-            <Th field="avgCost" label="Avg. Cost" right />
-            <Th field="ltp" label="LTP" right />
-            <Th field="invested" label="Invested" right />
-            <Th field="currentValue" label="Cur. Value" right />
-            <Th field="pl" label="P&L" right />
-            <Th field="returnPct" label="Net Chg." right />
-            <Th field="dayPct" label="Day Chg." right />
+            <TableHeaderCell field="name" label="Instrument" sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="qty" label="Qty." right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="avgCost" label="Avg. Cost" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="ltp" label="LTP" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="invested" label="Invested" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="currentValue" label="Cur. Value" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="pl" label="P&L" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="returnPct" label="Net Chg." right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="dayPct" label="Day Chg." right sortField={sortField} sortDir={sortDir} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -982,6 +971,7 @@ export function InvestmentsPage() {
   const [sortField, setSortField] = useState<SortField>('currentValue');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [providerError, setProviderError] = useState(false);
   const [marketStatus, setMarketStatus] = useState<MarketStatusResult | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [isProviderConfigured, setIsProviderConfigured] = useState(false);
@@ -1055,6 +1045,7 @@ export function InvestmentsPage() {
 
   const refreshMarketData = useCallback(async () => {
     setIsRefreshing(true);
+    setProviderError(false);
     const provider = getActiveMarketProvider();
     setIsProviderConfigured(provider.isConfigured);
     try {
@@ -1066,12 +1057,14 @@ export function InvestmentsPage() {
       }).filter((x): x is NonNullable<typeof x> => x !== null);
 
       if (symbolList.length > 0) {
-        const { quotes: nextQuotes, isOffline: offlineState } = await fetchQuotesWithFallback(symbolList, quotes, provider);
+        const { quotes: nextQuotes, isOffline: offlineState, hasErrors } = await fetchQuotesWithFallback(symbolList, quotes, provider);
         setIsOffline(offlineState);
+        setProviderError(hasErrors);
         update((d) => ({ ...d, cachedMarketQuotes: nextQuotes, lastMarketRefresh: new Date().toISOString() }));
       }
     } catch (err) {
       console.warn('Investments: refresh error', err);
+      setProviderError(true);
     } finally {
       setIsRefreshing(false);
     }
@@ -1079,7 +1072,20 @@ export function InvestmentsPage() {
 
   useEffect(() => {
     refreshMarketData();
-  }, []);
+  }, [refreshMarketData]);
+
+  // Auto-refresh timer during market hours
+  useEffect(() => {
+    const isMarketOpen = marketStatus?.status === 'Open' || marketStatus?.status === 'Delayed';
+    if (!isProviderConfigured || !isMarketOpen) return;
+
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refreshMarketData();
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [isProviderConfigured, marketStatus?.status, refreshMarketData]);
 
   // ── Close more menu on outside click ──────────────────────────────────
   useEffect(() => {
@@ -1106,19 +1112,122 @@ export function InvestmentsPage() {
 
   // ── Market status display ──────────────────────────────────────────────
 
-  const lastUpdatedFormatted = data.lastMarketRefresh
-    ? new Date(data.lastMarketRefresh).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : null;
+  const anyLiveQuote = useMemo(() => {
+    return Object.values(quotes).some((q) => q && !q.isDelayed && q.dataQuality === 'LIVE');
+  }, [quotes]);
 
-  const marketStatusLabel = (() => {
-    if (isOffline) return { label: 'Offline', color: '#f59e0b' };
-    if (!isProviderConfigured) return { label: 'Provider not configured', color: 'var(--text-muted)' };
+  const anyDelayedQuote = useMemo(() => {
+    return Object.values(quotes).some((q) => q && (q.isDelayed || q.dataQuality === 'DELAYED'));
+  }, [quotes]);
+
+  const hasCachedQuotes = useMemo(() => {
+    return Object.keys(quotes).length > 0;
+  }, [quotes]);
+
+  const marketBadge = useMemo(() => {
+    if (isOffline) {
+      return {
+        badge: 'OFFLINE' as const,
+        label: 'OFFLINE',
+        icon: '⚠️',
+        color: '#f59e0b',
+        bgColor: 'rgba(245,158,11,0.12)',
+        borderColor: 'rgba(245,158,11,0.3)',
+      };
+    }
+    if (!isProviderConfigured) {
+      return {
+        badge: 'NOT_CONFIGURED' as const,
+        label: 'NOT CONFIGURED',
+        icon: '⚙️',
+        color: 'var(--text-muted)',
+        bgColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.12)',
+      };
+    }
+    if (providerError && !hasCachedQuotes) {
+      return {
+        badge: 'UNAVAILABLE' as const,
+        label: 'UNAVAILABLE',
+        icon: '⛔',
+        color: '#ef4444',
+        bgColor: 'rgba(239,68,68,0.12)',
+        borderColor: 'rgba(239,68,68,0.3)',
+      };
+    }
     const s = marketStatus?.status;
-    if (s === 'Open') return { label: 'Market Open', color: '#10b981' };
-    if (s === 'Closed') return { label: 'Market Closed', color: 'var(--text-muted)' };
-    if (s === 'Delayed') return { label: 'Delayed Data', color: '#f59e0b' };
-    return { label: 'Unavailable', color: 'var(--text-muted)' };
-  })();
+    const st = marketStatus?.state;
+    if (s === 'Closed' || st === 'CLOSED' || st === 'CLOSING' || st === 'PRE_OPEN') {
+      return {
+        badge: 'MARKET_CLOSED' as const,
+        label: 'MARKET CLOSED',
+        icon: '🌙',
+        color: 'var(--text-muted)',
+        bgColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.12)',
+      };
+    }
+    if (anyLiveQuote) {
+      return {
+        badge: 'LIVE' as const,
+        label: 'LIVE',
+        icon: '🟢',
+        color: '#10b981',
+        bgColor: 'rgba(16,185,129,0.12)',
+        borderColor: 'rgba(16,185,129,0.3)',
+      };
+    }
+    if (anyDelayedQuote || s === 'Delayed') {
+      return {
+        badge: 'DELAYED' as const,
+        label: 'DELAYED',
+        icon: '⏳',
+        color: '#f59e0b',
+        bgColor: 'rgba(245,158,11,0.12)',
+        borderColor: 'rgba(245,158,11,0.3)',
+      };
+    }
+    if (hasCachedQuotes) {
+      return {
+        badge: 'LAST_KNOWN' as const,
+        label: 'LAST KNOWN',
+        icon: '📁',
+        color: '#38bdf8',
+        bgColor: 'rgba(56,189,248,0.12)',
+        borderColor: 'rgba(56,189,248,0.3)',
+      };
+    }
+    return {
+      badge: 'IMPORTED_SNAPSHOT' as const,
+      label: 'IMPORTED SNAPSHOT',
+      icon: '📷',
+      color: '#a78bfa',
+      bgColor: 'rgba(167,139,250,0.12)',
+      borderColor: 'rgba(167,139,250,0.3)',
+    };
+  }, [isOffline, isProviderConfigured, providerError, hasCachedQuotes, marketStatus, anyLiveQuote, anyDelayedQuote]);
+
+  const timestampDisplay = useMemo(() => {
+    if (!data.lastMarketRefresh) return null;
+    const refreshed = new Date(data.lastMarketRefresh);
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - refreshed.getTime()) / 1000);
+
+    if (marketBadge.badge === 'MARKET_CLOSED') {
+      return 'Last close 3:30 PM';
+    }
+    if (marketBadge.badge === 'OFFLINE') {
+      return `Last known ${refreshed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+    }
+    if (diffSec < 60) {
+      return `Updated ${diffSec <= 1 ? '1 sec' : `${diffSec} sec`} ago`;
+    }
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) {
+      return `Updated ${diffMin <= 1 ? '1 min' : `${diffMin} min`} ago`;
+    }
+    return `Updated ${refreshed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  }, [data.lastMarketRefresh, marketBadge.badge]);
 
   // ── KPI display ────────────────────────────────────────────────────────
 
@@ -1216,17 +1325,42 @@ export function InvestmentsPage() {
       </div>
 
       {/* ── Market status bar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, fontSize: 12 }}>
-        <span style={{ color: marketStatusLabel.color, fontWeight: 600 }}>● {marketStatusLabel.label}</span>
-        {lastUpdatedFormatted && (
-          <span style={{ color: 'var(--text-muted)' }}>Last updated: {lastUpdatedFormatted}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 16, fontSize: 12 }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px',
+          borderRadius: 6, fontWeight: 700, fontSize: 11, letterSpacing: '0.04em',
+          background: marketBadge.bgColor, color: marketBadge.color, border: `1px solid ${marketBadge.borderColor}`,
+        }}>
+          <span>{marketBadge.icon}</span>
+          <span>{marketBadge.label}</span>
+        </div>
+
+        {timestampDisplay && (
+          <span style={{ color: 'var(--text-muted)' }}>{timestampDisplay}</span>
         )}
+
         <span style={{ color: 'var(--text-muted)' }}>·</span>
         <span style={{ color: 'var(--text-muted)' }}>{allPortfolio.holdingsCount} position{allPortfolio.holdingsCount !== 1 ? 's' : ''}</span>
-        {!isProviderConfigured && (
+
+        {marketBadge.badge === 'NOT_CONFIGURED' && (
           <span style={{ color: 'var(--text-muted)' }}>— showing imported snapshots</span>
         )}
       </div>
+
+      {/* ── Provider failure notification ── */}
+      {providerError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+          padding: '8px 14px', borderRadius: 8, marginBottom: 16,
+          background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)',
+          fontSize: 13, color: '#fca5a5',
+        }}>
+          <span>⚠️ Market data unavailable — preserving last known market prices</span>
+          <button className="btn btn-xs btn-ghost" onClick={refreshMarketData} disabled={isRefreshing} style={{ color: '#fff', textDecoration: 'underline' }}>
+            Try Again
+          </button>
+        </div>
+      )}
 
       {/* ── Combined KPI cards (always visible for context) ── */}
       <div style={{

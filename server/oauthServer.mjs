@@ -15,6 +15,7 @@
 
 import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
+import { handleMarketApiRequest } from './marketServer.mjs';
 
 const PORT = Number(process.env.PORT || process.env.OAUTH_PORT || 3001);
 const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'growth-os-v5-default-secret-key-32b';
@@ -501,8 +502,19 @@ const server = createServer(async (req, res) => {
         google: { configured: GoogleDriver.isConfigured(), liveOAuth: GoogleDriver.isConfigured() },
         outlook: { configured: MicrosoftDriver.isConfigured(), liveOAuth: MicrosoftDriver.isConfigured() },
       },
+      market: {
+        configured: true,
+        provider: 'Yahoo Finance (Delayed NSE/BSE)',
+        isDelayed: true,
+      },
     });
     return;
+  }
+
+  // Handle market data API routes (/api/market/...)
+  if (pathname.startsWith('/api/market/')) {
+    const handled = await handleMarketApiRequest(req, res, pathname, url);
+    if (handled) return;
   }
 
   if (pathname === '/api/calendar/preflight') {

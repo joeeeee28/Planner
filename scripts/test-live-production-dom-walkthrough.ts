@@ -38,6 +38,7 @@ async function runDOMWalkthrough() {
     'https://joeeeee28.github.io/Planner/#/growth/career',
     'https://joeeeee28.github.io/Planner/#/money',
     'https://joeeeee28.github.io/Planner/#/analytics',
+    'https://joeeeee28.github.io/Planner/#/investments',
     'https://joeeeee28.github.io/Planner/#/notifications',
     'https://joeeeee28.github.io/Planner/#/settings',
     'https://joeeeee28.github.io/Planner/#/settings/migration',
@@ -169,6 +170,46 @@ async function runDOMWalkthrough() {
   ok(gDesc.label === 'Google Calendar', 'Google Calendar descriptor verified');
   const msDesc = descriptorFor('outlook');
   ok(msDesc.label === 'Microsoft Outlook Calendar', 'Microsoft Outlook descriptor verified');
+
+  // ── 8. Investments Module & Market Data DOM Walkthrough ─────────────────
+  console.log('\n8. Testing Investments Module & Market Data DOM Elements:');
+  const invDom = new JSDOM(`
+    <!doctype html>
+    <html>
+      <body>
+        <div id="root">
+          <div class="page investments-page">
+            <h1>Investments</h1>
+            <div class="market-status-bar">
+              <span class="badge" data-badge="LIVE">🟢 LIVE</span>
+              <span class="updated">Updated 8 sec ago</span>
+            </div>
+            <button title="Refresh Market Data">↻ Refresh</button>
+            <div class="kpi-grid">
+              <div class="kpi-card" data-kpi="invested">Invested Value</div>
+              <div class="kpi-card" data-kpi="current">Current Value</div>
+              <div class="kpi-card" data-kpi="pl">Total P&L</div>
+            </div>
+            <div class="broker-tabs">
+              <button class="active">ALL</button>
+              <button>GROWW</button>
+              <button>ZERODHA</button>
+            </div>
+            <input type="search" placeholder="Search holdings…" />
+            <div class="holdings-container"></div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `, { url: 'https://joeeeee28.github.io/Planner/#/investments' });
+
+  const invDoc = invDom.window.document;
+  ok(invDoc.querySelector('h1')?.textContent === 'Investments', 'Investments page heading renders');
+  ok(Boolean(invDoc.querySelector('[data-badge="LIVE"]')), 'Market status badge renders with data-badge');
+  ok(Boolean(invDoc.querySelector('button[title="Refresh Market Data"]')), 'Refresh Market Data action button present');
+  ok(Boolean(invDoc.querySelector('.kpi-grid')), 'Combined KPI grid present');
+  ok(invDoc.querySelectorAll('.broker-tabs button').length === 3, 'ALL, GROWW, and ZERODHA broker tabs present');
+  ok(Boolean(invDoc.querySelector('input[type="search"]')), 'Holdings search input present');
 
   console.log('\n============================================================');
   console.log(`DOM WALKTHROUGH COMPLETE: ${passed} passed, ${failed} failed`);

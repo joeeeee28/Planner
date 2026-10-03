@@ -169,7 +169,7 @@ async function runLiveAudit() {
 
   const invChunk = downloadedChunks['Investments'] || '';
   ok(invChunk.includes('Portfolio') || invChunk.includes('Holdings'), 'Investments module contains Portfolio and Holdings');
-  ok(invChunk.includes('This Month') || invChunk.includes('Upcoming'), 'Investments module contains This Month and Upcoming tabs');
+  ok(invChunk.includes('GROWW') || invChunk.includes('ZERODHA') || invChunk.includes('Groww') || invChunk.includes('Zerodha'), 'Investments module contains GROWW and ZERODHA broker views');
 
   const notifChunk = downloadedChunks['Notifications'] || '';
   ok(notifChunk.includes('Notifications') || notifChunk.includes('Notification Center') || notifChunk.includes('notification'), 'Notifications module verified');

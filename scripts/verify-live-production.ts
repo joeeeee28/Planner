@@ -59,8 +59,8 @@ async function verifyLiveProduction() {
 
   // 6. Fetch AppContext chunk & inspect
   console.log('\n6. Fetching AppContext chunk...');
-  const appCtxMatch = jsText.match(/['"](assets\/AppContext-[^'"]+\.js)['"]/);
-  const appCtxPath = appCtxMatch ? appCtxMatch[1] : 'assets/AppContext-DMiKbhpw.js';
+  const appCtxMatch = jsText.match(/AppContext-[A-Za-z0-9_-]+\.js/);
+  const appCtxPath = appCtxMatch ? `assets/${appCtxMatch[0]}` : 'assets/AppContext-CayuhTW1.js';
   const appCtxRes = await fetch(new URL(appCtxPath, baseUrl));
   assert.strictEqual(appCtxRes.status, 200, 'Live AppContext chunk returned HTTP 200');
   const appCtxText = await appCtxRes.text();

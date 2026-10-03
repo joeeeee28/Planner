@@ -1271,18 +1271,40 @@ export interface InvestmentPlan {
 
 export type MarketStatus = 'Open' | 'Closed' | 'Delayed' | 'Unavailable';
 
+export type MarketDataQuality =
+  | 'LIVE'
+  | 'DELAYED'
+  | 'LAST_KNOWN'
+  | 'IMPORTED_SNAPSHOT'
+  | 'OFFLINE'
+  | 'UNAVAILABLE'
+  | 'NOT_CONFIGURED';
+
+export type IndianMarketState =
+  | 'PRE_OPEN'
+  | 'OPEN'
+  | 'PAUSED'
+  | 'CLOSING'
+  | 'CLOSED'
+  | 'UNKNOWN';
+
 export interface MarketQuote {
   instrumentId?: ID;
   symbol: string;
+  exchange?: string;
   price: number;
   previousClose: number;
   dayChange: number;
   dayChangePercent: number;
   currency: string;
   marketStatus: MarketStatus;
+  marketState?: IndianMarketState;
+  dataQuality?: MarketDataQuality;
   provider: string;
   timestamp: string;
+  sourceTimestamp?: string;
   isDelayed: boolean;
+  isCached?: boolean;
 }
 
 declare global {
