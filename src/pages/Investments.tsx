@@ -12,7 +12,7 @@
 //   • Market data refresh with status labelling
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { todayStr } from '../lib/dates';
 import { formatMoney } from '../lib/finance';
@@ -138,18 +138,41 @@ function PriceLabel({
 
 // ── Holding detail drawer ───────────────────────────────────────────────────
 
+// ── Holding detail drawer (Section 34) ───────────────────────────────────────
+
 function HoldingDetailDrawer({
   metric,
+  allMetrics,
+  transactions = [],
+  marketBadge,
+  timestampDisplay,
   hidden,
   onClose,
 }: {
   metric: CalculatedHoldingMetric;
+  allMetrics?: CalculatedHoldingMetric[];
+  transactions?: InvestmentTransaction[];
+  marketBadge?: { label: string; icon: string; color: string };
+  timestampDisplay?: string | null;
   hidden: boolean;
   onClose: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<'Position' | 'Performance' | 'Market' | 'Transactions'>('Position');
   const { holding, instrument, quantity, averageCost, investedAmount,
           currentPrice, currentValue, pl, returnPct,
           dayChange, dayChangePercent, hasLiveQuote, isDelayed, isSnapshot, source } = metric;
+
+  // Sibling holdings across other brokers (e.g. TATAGOLD / TATSILV in both Groww & Zerodha)
+  const siblings = useMemo(() => {
+    if (!allMetrics) return [];
+    return allMetrics.filter(
+      (m) => m.instrument.symbol === instrument.symbol && m.holding.id !== holding.id
+    );
+  }, [allMetrics, instrument.symbol, holding.id]);
+
+  const relatedTxs = useMemo(() => {
+    return transactions.filter((t) => t.instrumentId === instrument.id);
+  }, [transactions, instrument.id]);
 
   return (
     <div className="v5-sheet-overlay" onClick={onClose}>
@@ -168,6 +191,21 @@ function HoldingDetailDrawer({
           </button>
         </div>
 
+        {/* Section 34 Tabs: Position, Performance, Market, Transactions */}
+        <div className="v5-sheet-tabs" role="tablist" aria-label="Holding Details">
+          {(['Position', 'Performance', 'Market', 'Transactions'] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={activeTab === t}
+              className={`v5-sheet-tab-btn ${activeTab === t ? 'active' : ''}`}
+              onClick={() => setActiveTab(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
         <div className="v5-sheet-body">
           {/* Primary value banner */}
           <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderRadius: 'var(--r-md, 14px)', border: '1px solid var(--line)' }}>
@@ -181,32 +219,189 @@ function HoldingDetailDrawer({
             </div>
           </div>
 
-          {/* Metric grid */}
-          <div className="v5-sheet-metric-grid">
-            {[
-              { label: 'Quantity', val: `${quantity} shares` },
-              { label: 'Avg. Cost', val: maskValue(fmt(averageCost), hidden) },
-              { label: 'Market Price (LTP)', val: maskValue(fmt(currentPrice), hidden) },
-              { label: 'Total Invested', val: maskValue(fmt(investedAmount), hidden) },
-              { label: 'Day P&L', val: `${dayChange >= 0 ? '+' : ''}${maskValue(fmt(dayChange), hidden)}` },
-              { label: 'Day Movement', val: pct(dayChangePercent) },
-            ].map(({ label, val }) => (
-              <div key={label} className="v5-sheet-metric-box">
-                <div className="v5-sheet-metric-lbl">{label}</div>
-                <div className="v5-sheet-metric-val t-num">{val}</div>
+          {/* TAB 1: Position */}
+          {activeTab === 'Position' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="v5-sheet-metric-grid">
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Asset</div>
+                  <div className="v5-sheet-metric-val" style={{ fontSize: 14 }}>{instrument.name}</div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Symbol</div>
+                  <div className="v5-sheet-metric-val">{instrument.symbol}</div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Broker Source</div>
+                  <div className="v5-sheet-metric-val"><SourceBadge source={source} /></div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Quantity</div>
+                  <div className="v5-sheet-metric-val t-num">{quantity} shares</div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Average Cost</div>
+                  <div className="v5-sheet-metric-val t-num">{maskValue(fmt(averageCost), hidden)}</div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Total Invested</div>
+                  <div className="v5-sheet-metric-val t-num">{maskValue(fmt(investedAmount), hidden)}</div>
+                </div>
               </div>
-            ))}
-          </div>
 
-          {holding.snapshotPrice != null && (
-            <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', border: '1px solid var(--line)' }}>
-              📷 <strong>Imported Snapshot Reference:</strong> {fmt(holding.snapshotPrice)} — preserved truthfully until real-time market quote replaces it.
+              {/* Multi-broker sibling allocation (Section 32) */}
+              {siblings.length > 0 && (
+                <div style={{ padding: '14px 16px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 10px)', border: '1px solid var(--line)' }}>
+                  <div className="tiny uppercase bold muted" style={{ letterSpacing: '0.05em', marginBottom: 8 }}>
+                    Multi-Broker Holdings ({siblings.length + 1} accounts)
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <SourceBadge source={source} />
+                        <span>{quantity} @ {maskValue(fmt(averageCost), hidden)}</span>
+                      </span>
+                      <span className="bold t-num">{maskValue(fmt(currentValue), hidden)}</span>
+                    </div>
+                    {siblings.map((s) => (
+                      <div key={s.holding.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <SourceBadge source={s.source} />
+                          <span>{s.quantity} @ {maskValue(fmt(s.averageCost), hidden)}</span>
+                        </span>
+                        <span className="bold t-num">{maskValue(fmt(s.currentValue), hidden)}</span>
+                      </div>
+                    ))}
+                    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                      <span>Combined ({quantity + siblings.reduce((a, s) => a + s.quantity, 0)} shares)</span>
+                      <span className="t-num">{maskValue(fmt(currentValue + siblings.reduce((a, s) => a + s.currentValue, 0)), hidden)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', border: '1px solid var(--line)' }}>
+                Exchange: <strong>{instrument.exchange}</strong> · ISIN: <code>{instrument.isin ?? 'Not specified'}</code>
+              </div>
             </div>
           )}
 
-          {instrument.isin && (
-            <div className="tiny muted" style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-              ISIN Identifier: <code style={{ fontSize: 11 }}>{instrument.isin}</code>
+          {/* TAB 2: Performance */}
+          {activeTab === 'Performance' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="v5-sheet-metric-grid">
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Current Value</div>
+                  <div className="v5-sheet-metric-val t-num">{maskValue(fmt(currentValue), hidden)}</div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Total P&L</div>
+                  <div className={`v5-sheet-metric-val t-num ${pl >= 0 ? 'text-pos' : 'text-neg'}`}>
+                    {pl >= 0 ? '+' : ''}{maskValue(fmt(pl), hidden)}
+                  </div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Total Return %</div>
+                  <div className={`v5-sheet-metric-val t-num ${returnPct >= 0 ? 'text-pos' : 'text-neg'}`}>
+                    {pct(returnPct)}
+                  </div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Day P&L</div>
+                  <div className={`v5-sheet-metric-val t-num ${dayChange >= 0 ? 'text-pos' : 'text-neg'}`}>
+                    {dayChange >= 0 ? '+' : ''}{maskValue(fmt(dayChange), hidden)}
+                  </div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Day Movement</div>
+                  <div className={`v5-sheet-metric-val t-num ${dayChangePercent >= 0 ? 'text-pos' : 'text-neg'}`}>
+                    {pct(dayChangePercent)}
+                  </div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Cost Basis</div>
+                  <div className="v5-sheet-metric-val t-num">{maskValue(fmt(investedAmount), hidden)}</div>
+                </div>
+              </div>
+
+              {holding.snapshotPrice != null && (
+                <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', border: '1px solid var(--line)' }}>
+                  📷 <strong>Imported Snapshot Reference:</strong> {fmt(holding.snapshotPrice)} — preserved truthfully until real-time market quote replaces it.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: Market */}
+          {activeTab === 'Market' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="v5-sheet-metric-grid">
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Market Price (LTP)</div>
+                  <div className="v5-sheet-metric-val t-num">{maskValue(fmt(currentPrice), hidden)}</div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Market Status</div>
+                  <div className="v5-sheet-metric-val" style={{ fontSize: 13 }}>
+                    {marketBadge?.icon} {marketBadge?.label ?? 'Snapshot Price'}
+                  </div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Last Updated</div>
+                  <div className="v5-sheet-metric-val" style={{ fontSize: 13 }}>
+                    {timestampDisplay ?? 'Snapshot price'}
+                  </div>
+                </div>
+                <div className="v5-sheet-metric-box">
+                  <div className="v5-sheet-metric-lbl">Exchange / Segment</div>
+                  <div className="v5-sheet-metric-val" style={{ fontSize: 13 }}>
+                    {instrument.exchange} · Equity
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', border: '1px solid var(--line)' }}>
+                ℹ️ Market quotes update LTP, Current Value, Day P&L, Total P&L, and Return %. Average Cost and Invested Capital remain strictly untouched.
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Transactions */}
+          {activeTab === 'Transactions' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {relatedTxs.length === 0 ? (
+                <div style={{ padding: '24px 16px', textAlign: 'center', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', color: 'var(--ink-2)', fontSize: 13 }}>
+                  <div>📁 No manual trade transactions recorded.</div>
+                  <div className="tiny muted" style={{ marginTop: 4 }}>
+                    Holding was imported from {source} broker portfolio snapshot.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 8px' }}>Date</th>
+                        <th style={{ padding: '6px 8px' }}>Type</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Qty</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Price</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {relatedTxs.map((tx) => (
+                        <tr key={tx.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                          <td style={{ padding: '6px 8px' }}>{tx.date}</td>
+                          <td style={{ padding: '6px 8px', fontWeight: 700 }}>{tx.type}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right' }}>{tx.quantity}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(tx.price)}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(tx.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -215,7 +410,7 @@ function HoldingDetailDrawer({
   );
 }
 
-// ── Analyse drawer ──────────────────────────────────────────────────────────
+// ── Analyse drawer (Section 33: Right-Side Sliding Sheet) ────────────────────
 
 function AnalyseDrawer({
   metrics,
@@ -231,6 +426,8 @@ function AnalyseDrawer({
   const totalPL = totalCurrentValue - totalInvested;
   const returnPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
   const todayPL = metrics.reduce((a, m) => a + m.dayChange, 0);
+  const prevVal = totalCurrentValue - todayPL;
+  const todayPct = prevVal > 0 ? (todayPL / prevVal) * 100 : 0;
 
   const growwMetrics = metrics.filter((m) => m.source === 'GROWW');
   const zerodhaMetrics = metrics.filter((m) => m.source === 'ZERODHA');
@@ -250,107 +447,129 @@ function AnalyseDrawer({
     : 0;
 
   return (
-    <Modal title="Portfolio Analysis" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          Descriptive metrics only. No investment recommendations provided.
-        </div>
-
-        {/* Portfolio value */}
-        <div style={{ padding: 16, background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 10 }}>
-          <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>Combined Portfolio</h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[
-              { label: 'Total Invested', val: maskValue(fmt(totalInvested), hidden) },
-              { label: 'Current Value', val: maskValue(fmt(totalCurrentValue), hidden) },
-              { label: 'Total P&L', val: maskValue(fmt(totalPL), hidden), color: plColor(totalPL) },
-              { label: 'Return %', val: pct(returnPct), color: plColor(returnPct) },
-              { label: "Today's P&L", val: maskValue(fmt(todayPL), hidden), color: plColor(todayPL) },
-              { label: 'Positions', val: `${metrics.length}` },
-            ].map(({ label, val, color }) => (
-              <div key={label}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: color ?? 'inherit', fontVariantNumeric: 'tabular-nums' }}>{val}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Broker Allocation */}
-        {(growwValue > 0 || zerodhaValue > 0) && (
-          <div style={{ padding: 14, background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 10 }}>
-            <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>Broker Allocation</h4>
-            {growwValue > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
-                  <span style={{ color: '#00c853', fontWeight: 600 }}>Groww</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {maskValue(fmt(growwValue), hidden)}
-                    {' · '}
-                    {totalCurrentValue > 0 ? ((growwValue / totalCurrentValue) * 100).toFixed(1) : '0'}%
-                  </span>
-                </div>
-                <div style={{ height: 6, borderRadius: 4, background: 'var(--surface3, rgba(255,255,255,0.06))' }}>
-                  <div style={{ height: '100%', borderRadius: 4, background: '#00c853', width: `${totalCurrentValue > 0 ? (growwValue / totalCurrentValue) * 100 : 0}%` }} />
-                </div>
-              </div>
-            )}
-            {zerodhaValue > 0 && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
-                  <span style={{ color: '#60a5fa', fontWeight: 600 }}>Zerodha</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {maskValue(fmt(zerodhaValue), hidden)}
-                    {' · '}
-                    {totalCurrentValue > 0 ? ((zerodhaValue / totalCurrentValue) * 100).toFixed(1) : '0'}%
-                  </span>
-                </div>
-                <div style={{ height: 6, borderRadius: 4, background: 'var(--surface3, rgba(255,255,255,0.06))' }}>
-                  <div style={{ height: '100%', borderRadius: 4, background: '#60a5fa', width: `${totalCurrentValue > 0 ? (zerodhaValue / totalCurrentValue) * 100 : 0}%` }} />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Asset Allocation */}
-        <div style={{ padding: 14, background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 10 }}>
-          <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>Asset Allocation</h4>
-          {Array.from(byAsset.entries())
-            .sort(([, a], [, b]) => b - a)
-            .map(([type, val]) => (
-              <div key={type} style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                  <span>{type === 'MUTUAL_FUND' ? 'Mutual Funds' : type.charAt(0) + type.slice(1).toLowerCase() + 's'}</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {totalCurrentValue > 0 ? ((val / totalCurrentValue) * 100).toFixed(1) : '0'}%
-                  </span>
-                </div>
-                <div style={{ height: 6, borderRadius: 4, background: 'var(--surface3, rgba(255,255,255,0.06))' }}>
-                  <div style={{
-                    height: '100%', borderRadius: 4,
-                    background: type === 'ETF' ? '#c08a2d' : type === 'STOCK' ? '#0ea5e9' : '#8b5cf6',
-                    width: `${totalCurrentValue > 0 ? (val / totalCurrentValue) * 100 : 0}%`,
-                  }} />
-                </div>
-              </div>
-            ))}
-        </div>
-
-        {/* Concentration */}
-        {largest && (
-          <div style={{ padding: 14, background: 'var(--surface2, rgba(255,255,255,0.04))', borderRadius: 10 }}>
-            <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700 }}>Concentration</h4>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Largest position: <strong>{largest.instrument.symbol}</strong> ({concentrationPct.toFixed(1)}% of portfolio)
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-              Positions: {metrics.length}
+    <div className="v5-sheet-overlay" onClick={onClose}>
+      <div className="v5-sheet-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Portfolio Analysis">
+        <div className="v5-sheet-header">
+          <div>
+            <h2 className="t-title" style={{ margin: 0 }}>Portfolio Analysis</h2>
+            <div className="tiny muted" style={{ marginTop: 2 }}>
+              Descriptive metrics only. No investment recommendations.
             </div>
           </div>
-        )}
+          <button className="btn btn-icon btn-sm" onClick={onClose} aria-label="Close analysis">
+            ✕
+          </button>
+        </div>
+
+        <div className="v5-sheet-body">
+          {/* Portfolio value summary */}
+          <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderRadius: 'var(--r-md, 14px)', border: '1px solid var(--line)' }}>
+            <div className="tiny uppercase bold muted" style={{ letterSpacing: '0.05em', marginBottom: 4 }}>Combined Portfolio Valuation</div>
+            <div className="t-display t-num">{maskValue(fmt(totalCurrentValue), hidden)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
+              <span className={`bold t-num ${totalPL >= 0 ? 'text-pos' : 'text-neg'}`} style={{ fontSize: 15 }}>
+                {totalPL >= 0 ? '+' : ''}{maskValue(fmt(totalPL), hidden)} ({pct(returnPct)})
+              </span>
+              <span className="tiny muted">total return</span>
+            </div>
+          </div>
+
+          {/* Key Metrics Grid */}
+          <div className="v5-sheet-metric-grid">
+            <div className="v5-sheet-metric-box">
+              <div className="v5-sheet-metric-lbl">Total Invested</div>
+              <div className="v5-sheet-metric-val t-num">{maskValue(fmt(totalInvested), hidden)}</div>
+            </div>
+            <div className="v5-sheet-metric-box">
+              <div className="v5-sheet-metric-lbl">Daily Movement</div>
+              <div className={`v5-sheet-metric-val t-num ${todayPL >= 0 ? 'text-pos' : 'text-neg'}`}>
+                {todayPL >= 0 ? '+' : ''}{maskValue(fmt(todayPL), hidden)} ({pct(todayPct)})
+              </div>
+            </div>
+            <div className="v5-sheet-metric-box">
+              <div className="v5-sheet-metric-lbl">Total Positions</div>
+              <div className="v5-sheet-metric-val t-num">{metrics.length} holdings</div>
+            </div>
+            <div className="v5-sheet-metric-box">
+              <div className="v5-sheet-metric-lbl">Largest Holding</div>
+              <div className="v5-sheet-metric-val" style={{ fontSize: 14 }}>
+                {largest?.instrument.symbol ?? 'None'} ({concentrationPct.toFixed(1)}%)
+              </div>
+            </div>
+          </div>
+
+          {/* Broker Allocation */}
+          {(growwValue > 0 || zerodhaValue > 0) && (
+            <div style={{ padding: 16, background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 10px)', border: '1px solid var(--line)' }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Broker Allocation
+              </h4>
+              {growwValue > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
+                    <span style={{ color: '#00c853', fontWeight: 700 }}>Groww ({growwMetrics.length} holdings)</span>
+                    <span className="t-num">
+                      {maskValue(fmt(growwValue), hidden)} · {totalCurrentValue > 0 ? ((growwValue / totalCurrentValue) * 100).toFixed(1) : '0'}%
+                    </span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 4, background: 'var(--surface-3)' }}>
+                    <div style={{ height: '100%', borderRadius: 4, background: '#00c853', width: `${totalCurrentValue > 0 ? (growwValue / totalCurrentValue) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              )}
+              {zerodhaValue > 0 && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
+                    <span style={{ color: '#60a5fa', fontWeight: 700 }}>Zerodha ({zerodhaMetrics.length} holdings)</span>
+                    <span className="t-num">
+                      {maskValue(fmt(zerodhaValue), hidden)} · {totalCurrentValue > 0 ? ((zerodhaValue / totalCurrentValue) * 100).toFixed(1) : '0'}%
+                    </span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 4, background: 'var(--surface-3)' }}>
+                    <div style={{ height: '100%', borderRadius: 4, background: '#60a5fa', width: `${totalCurrentValue > 0 ? (zerodhaValue / totalCurrentValue) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Asset Allocation */}
+          <div style={{ padding: 16, background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 10px)', border: '1px solid var(--line)' }}>
+            <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Asset Allocation
+            </h4>
+            {Array.from(byAsset.entries())
+              .sort(([, a], [, b]) => b - a)
+              .map(([type, val]) => (
+                <div key={type} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                    <span>{type === 'MUTUAL_FUND' ? 'Mutual Funds' : type.charAt(0) + type.slice(1).toLowerCase() + 's'}</span>
+                    <span className="t-num">
+                      {totalCurrentValue > 0 ? ((val / totalCurrentValue) * 100).toFixed(1) : '0'}%
+                    </span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 4, background: 'var(--surface-3)' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 4,
+                      background: type === 'ETF' ? '#c08a2d' : type === 'STOCK' ? '#0ea5e9' : '#8b5cf6',
+                      width: `${totalCurrentValue > 0 ? (val / totalCurrentValue) * 100 : 0}%`,
+                    }} />
+                  </div>
+                </div>
+              ))}
+          </div>
+
+          {/* Concentration */}
+          {largest && (
+            <div style={{ padding: 14, background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 10px)', border: '1px solid var(--line)', fontSize: 13 }}>
+              <div className="tiny uppercase bold muted" style={{ letterSpacing: '0.05em', marginBottom: 4 }}>Portfolio Concentration</div>
+              <div>Largest position is <strong>{largest.instrument.symbol}</strong> ({concentrationPct.toFixed(1)}% of total portfolio value).</div>
+              <div className="tiny muted" style={{ marginTop: 4 }}>Diversified across {metrics.length} distinct holdings.</div>
+            </div>
+          )}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -408,7 +627,7 @@ function TableHeaderCell({
   );
 }
 
-// ── ALL VIEW table ──────────────────────────────────────────────────────────
+// ── ALL VIEW table (Section 30 & 32) ────────────────────────────────────────
 
 function AllHoldingsTable({
   metrics,
@@ -425,64 +644,192 @@ function AllHoldingsTable({
   sortDir: SortDir;
   onSort: (f: SortField) => void;
 }) {
+  const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
+
+  // Group metrics by symbol to detect multi-broker positions (e.g. TATAGOLD, TATSILV)
+  const symbolMap = useMemo(() => {
+    const map = new Map<string, CalculatedHoldingMetric[]>();
+    for (const m of metrics) {
+      const sym = m.instrument.symbol;
+      const list = map.get(sym) ?? [];
+      list.push(m);
+      map.set(sym, list);
+    }
+    return map;
+  }, [metrics]);
+
+  const toggleExpand = (sym: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(sym)) next.delete(sym);
+      else next.add(sym);
+      return next;
+    });
+  };
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line, rgba(255,255,255,0.08))' }}>
-            <TableHeaderCell field="name" label="Instrument" sortField={sortField} sortDir={sortDir} onSort={onSort} />
-            <th style={{ textAlign: 'left' }}>Source</th>
-            <TableHeaderCell field="qty" label="Qty" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
-            <TableHeaderCell field="avgCost" label="Avg Cost" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="name" label="ASSET" sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <th style={{ textAlign: 'left' }}>SOURCE</th>
+            <TableHeaderCell field="qty" label="QTY" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="avgCost" label="AVG COST" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
             <TableHeaderCell field="ltp" label="LTP" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
-            <TableHeaderCell field="invested" label="Invested" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
-            <TableHeaderCell field="currentValue" label="Cur. Value" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="dayPct" label="TODAY" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="invested" label="INVESTED" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="currentValue" label="CURRENT" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
             <TableHeaderCell field="pl" label="P&L" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
-            <TableHeaderCell field="returnPct" label="Return" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
-            <TableHeaderCell field="dayPct" label="Day Chg" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
+            <TableHeaderCell field="returnPct" label="RETURN" right sortField={sortField} sortDir={sortDir} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
-          {metrics.map((m) => (
-            <tr
-              key={m.holding.id}
-              onClick={() => onSelect(m)}
-              style={{
-                borderBottom: '1px solid var(--line, rgba(255,255,255,0.05))',
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface2, rgba(255,255,255,0.03))')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = '')}
-            >
-              <td style={{ padding: '9px 8px' }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{m.instrument.symbol}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.instrument.name}</div>
-              </td>
-              <td style={{ padding: '9px 8px' }}>
-                <SourceBadge source={m.source} />
-              </td>
-              <td style={{ padding: '9px 8px', textAlign: 'right' }}>{m.quantity}</td>
-              <td style={{ padding: '9px 8px', textAlign: 'right' }}>{maskValue(fmt(m.averageCost), hidden)}</td>
-              <td style={{ padding: '9px 8px', textAlign: 'right' }}>
-                {maskValue(fmt(m.currentPrice), hidden)}
-                <div style={{ lineHeight: 1 }}>
-                  <PriceLabel hasLiveQuote={m.hasLiveQuote} isDelayed={m.isDelayed} isSnapshot={m.isSnapshot} />
-                </div>
-              </td>
-              <td style={{ padding: '9px 8px', textAlign: 'right' }}>{maskValue(fmt(m.investedAmount), hidden)}</td>
-              <td style={{ padding: '9px 8px', textAlign: 'right' }}>{maskValue(fmt(m.currentValue), hidden)}</td>
-              <td style={{ padding: '9px 8px', textAlign: 'right', color: plColor(m.pl) }}>
-                <div>{maskValue(fmt(m.pl), hidden)}</div>
-              </td>
-              <td style={{ padding: '9px 8px', textAlign: 'right', color: plColor(m.returnPct) }}>
-                {pct(m.returnPct)}
-              </td>
-              <td style={{ padding: '9px 8px', textAlign: 'right', color: plColor(m.dayChangePercent) }}>
-                {pct(m.dayChangePercent)}
-              </td>
-            </tr>
-          ))}
+          {metrics.map((m) => {
+            const sym = m.instrument.symbol;
+            const siblings = symbolMap.get(sym) ?? [];
+            const isMultiBroker = siblings.length > 1;
+            const isExpanded = expandedSymbols.has(sym);
+            const isFirstOfMulti = isMultiBroker && siblings[0].holding.id === m.holding.id;
+
+            return (
+              <React.Fragment key={m.holding.id}>
+                <tr
+                  onClick={() => onSelect(m)}
+                  style={{
+                    borderBottom: '1px solid var(--line, rgba(255,255,255,0.05))',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface2, rgba(255,255,255,0.03))')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '')}
+                >
+                  {/* ASSET: Company name on top, symbol underneath (Section 30) */}
+                  <td style={{ padding: '9px 10px' }}>
+                    <div style={{ fontWeight: 650, fontSize: 13 }}>{m.instrument.name}</div>
+                    <div className="tiny muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{m.instrument.symbol}</span>
+                      <span>·</span>
+                      <span>{m.instrument.exchange}</span>
+                      {isMultiBroker && isFirstOfMulti && (
+                        <button
+                          type="button"
+                          onClick={(e) => toggleExpand(sym, e)}
+                          className="btn btn-ghost btn-xs"
+                          style={{ padding: '0 4px', fontSize: 10, height: 18 }}
+                          title="Toggle broker breakdown"
+                        >
+                          {isExpanded ? '▲ Hide breakdown' : '▼ Breakdown'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* SOURCE: [GROWW] or [ZERODHA] or multi-broker pills (Section 30 & 32) */}
+                  <td style={{ padding: '9px 10px' }}>
+                    {isMultiBroker ? (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {siblings.map((s) => (
+                          <span key={s.holding.id} className="v5-multi-badge">
+                            {s.source} ({s.quantity})
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <SourceBadge source={m.source} />
+                    )}
+                  </td>
+
+                  {/* QTY */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right' }}>{m.quantity}</td>
+
+                  {/* AVG COST */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right' }}>{maskValue(fmt(m.averageCost), hidden)}</td>
+
+                  {/* LTP: compact sparkline + current price + price quality */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <svg width="34" height="14" viewBox="0 0 34 14" className="v5-sparkline" aria-hidden="true">
+                        <path
+                          d={m.dayChange >= 0 ? "M 2 11 Q 12 10, 20 5 T 32 2" : "M 2 3 Q 12 5, 20 9 T 32 12"}
+                          fill="none"
+                          stroke={m.dayChange >= 0 ? '#10b981' : '#ef4444'}
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <span>{maskValue(fmt(m.currentPrice), hidden)}</span>
+                    </div>
+                    <div style={{ lineHeight: 1, marginTop: 2 }}>
+                      <PriceLabel hasLiveQuote={m.hasLiveQuote} isDelayed={m.isDelayed} isSnapshot={m.isSnapshot} />
+                    </div>
+                  </td>
+
+                  {/* TODAY */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right' }}>
+                    <div style={{ color: plColor(m.dayChange) }}>
+                      {m.dayChange >= 0 ? '+' : ''}{maskValue(fmt(m.dayChange), hidden)}
+                    </div>
+                    <div style={{ fontSize: 11, color: plColor(m.dayChangePercent) }}>
+                      {pct(m.dayChangePercent)}
+                    </div>
+                  </td>
+
+                  {/* INVESTED */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right' }}>{maskValue(fmt(m.investedAmount), hidden)}</td>
+
+                  {/* CURRENT */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 600 }}>{maskValue(fmt(m.currentValue), hidden)}</td>
+
+                  {/* P&L */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right', color: plColor(m.pl), fontWeight: 600 }}>
+                    {m.pl >= 0 ? '+' : ''}{maskValue(fmt(m.pl), hidden)}
+                  </td>
+
+                  {/* RETURN */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right', color: plColor(m.returnPct), fontWeight: 600 }}>
+                    {pct(m.returnPct)}
+                  </td>
+                </tr>
+
+                {/* Section 32: Multi-broker position expanded breakdown */}
+                {isMultiBroker && isFirstOfMulti && isExpanded && (
+                  <>
+                    {siblings.map((sib) => (
+                      <tr
+                        key={`sub-${sib.holding.id}`}
+                        className="v5-subrow"
+                        onClick={() => onSelect(sib)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td style={{ paddingLeft: 24 }}>
+                          <span style={{ color: 'var(--ink-2)' }}>↳ {sib.source} Broker Account</span>
+                        </td>
+                        <td>
+                          <SourceBadge source={sib.source} />
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{sib.quantity}</td>
+                        <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.averageCost), hidden)}</td>
+                        <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.currentPrice), hidden)}</td>
+                        <td style={{ textAlign: 'right', color: plColor(sib.dayChange) }}>
+                          {sib.dayChange >= 0 ? '+' : ''}{maskValue(fmt(sib.dayChange), hidden)}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.investedAmount), hidden)}</td>
+                        <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.currentValue), hidden)}</td>
+                        <td style={{ textAlign: 'right', color: plColor(sib.pl) }}>
+                          {sib.pl >= 0 ? '+' : ''}{maskValue(fmt(sib.pl), hidden)}
+                        </td>
+                        <td style={{ textAlign: 'right', color: plColor(sib.returnPct) }}>
+                          {pct(sib.returnPct)}
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -981,6 +1328,7 @@ export function InvestmentsPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<CalculatedHoldingMetric | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [chartRange, setChartRange] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL'>('ALL');
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const holdings = useMemo(() => data.investmentHoldings ?? [], [data.investmentHoldings]);
@@ -1403,6 +1751,28 @@ export function InvestmentsPage() {
           </div>
         </div>
 
+        {/* Portfolio performance chart controls & timeframe notice (Section 25-26) */}
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div className="v5-chart-time-controls" role="group" aria-label="Portfolio chart time range">
+              {(['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  className={`v5-chart-time-btn ${chartRange === r ? 'active' : ''}`}
+                  onClick={() => setChartRange(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div className="tiny muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>📈</span>
+              <span>Portfolio history will appear as market data accumulates.</span>
+            </div>
+          </div>
+        </div>
+
         {/* Supporting metric horizontal strip */}
         <div className="v5-wealth-strip">
           <div className="v5-wealth-stat">
@@ -1650,6 +2020,10 @@ export function InvestmentsPage() {
       {selectedMetric && (
         <HoldingDetailDrawer
           metric={selectedMetric}
+          allMetrics={allPortfolio.metrics}
+          transactions={data.investmentTransactions ?? []}
+          marketBadge={marketBadge}
+          timestampDisplay={timestampDisplay}
           hidden={hidden}
           onClose={() => setSelectedMetric(null)}
         />

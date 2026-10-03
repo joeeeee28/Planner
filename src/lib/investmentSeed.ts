@@ -388,6 +388,61 @@ export function maybeInitJothikaPortfolio(
   };
 }
 
+/**
+ * Directly applies Jothika's verified seed portfolio (18 positions).
+ * Used for testing environments and verification suites.
+ */
+export function applyJothikaSeed(data: AppData): AppData {
+  const instruments = [...(data.investmentInstruments ?? [])];
+  const holdings = [...(data.investmentHoldings ?? [])];
+  const existingSourceKeys = new Set<string>(
+    holdings.map((h) => h.sourceKey).filter(Boolean) as string[]
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+
+  for (const entry of ALL_SEED) {
+    if (existingSourceKeys.has(entry.sourceKey)) continue;
+
+    let inst = findExistingInstrument(instruments, entry.symbol, entry.exchange);
+    if (!inst) {
+      inst = {
+        id: uid('inst'),
+        symbol: entry.symbol,
+        name: entry.name,
+        exchange: entry.exchange,
+        assetType: entry.assetType,
+        currency: 'INR',
+        active: true,
+      };
+      instruments.push(inst);
+    }
+
+    const holding: InvestmentHolding = {
+      id: uid('hld'),
+      instrumentId: inst.id,
+      quantity: entry.quantity,
+      averageCost: entry.averageCost,
+      investedAmount: entry.investedAmount,
+      openedAt: today,
+      updatedAt: now,
+      source: entry.source,
+      snapshotPrice: entry.snapshotPrice,
+      sourceKey: entry.sourceKey,
+    };
+    holdings.push(holding);
+  }
+
+  return {
+    ...data,
+    investmentInstruments: instruments,
+    investmentHoldings: holdings,
+    updatedAt: now,
+  };
+}
+
+export { ALL_SEED, GROWW_SEED, ZERODHA_SEED };
+
 // ── Test helpers ───────────────────────────────────────────────────────────
 
 /**

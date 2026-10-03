@@ -5329,5 +5329,103 @@ textarea {
   color: #00c853;
 }
 
+/* ── Portfolio Chart Time Controls (Section 26) ──────────────────────────── */
+.v5-chart-time-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  padding: 3px;
+  border-radius: var(--r-sm, 10px);
+}
+
+.v5-chart-time-btn {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 28px;
+}
+
+.v5-chart-time-btn:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+.v5-chart-time-btn.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Holding Detail Sheet Tabs (Section 34) ───────────────────────────────── */
+.v5-sheet-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 24px;
+  background: var(--surface);
+}
+
+.v5-sheet-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: -1px;
+}
+
+.v5-sheet-tab-btn:hover {
+  color: var(--ink);
+}
+
+.v5-sheet-tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Multi-Broker Badges & Expandable Rows (Section 32) ───────────────────── */
+.v5-multi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+
+.v5-subrow {
+  background: var(--surface-2);
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.v5-subrow td {
+  padding: 6px 12px !important;
+}
+
+/* ── Inline Sparkline SVG ─────────────────────────────────────────────────── */
+.v5-sparkline {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+
 
 
