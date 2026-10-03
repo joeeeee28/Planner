@@ -1,4 +1,4 @@
-// Growth OS V4 Slice 6 — recurring-task engine.
+// Growth OS V4 Slice 6 & V5 Phase 12 — recurring-task engine.
 // Deterministic occurrence math + idempotent materialization of actual
 // PlannedTask instances. Nothing here ever deletes history, moves deadlines
 // or alters completed instances. Safe defaults:
@@ -6,8 +6,9 @@
 //   * occurrences missed while away are SKIPPED by default (never back-filled);
 //   * one instance per (series, date) — repeated runs never duplicate.
 
-import type { DateStr, PlannedTask, RecurringTask, TaskRecurrence } from '../types';
+import type { AppData, DateStr, PlannedTask, RecurringTask, TaskRecurrence } from '../types';
 import { addDays, addYears, dayOfWeek, daysInMonth, todayStr } from '../dates';
+import { uid } from '../uid';
 
 /** Default future window materialized per series (bounded by design). */
 export const RECUR_WINDOW_DAYS = 30;
@@ -27,38 +28,86 @@ export const RECUR_KIND_LABELS: Record<TaskRecurrence['kind'], string> = {
 export const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export function isOccurrenceOn(rule: TaskRecurrence, date: DateStr, startDate: DateStr): boolean {
+export function isOccurrenceOn(
+  arg1: TaskRecurrence | Pick<RecurringTask, 'rule' | 'startDate' | 'endDate' | 'pauseUntil' | 'skippedOccurrences'>,
+  date: DateStr,
+  startDate?: DateStr,
+  opts?: { pauseUntil?: DateStr; skippedOccurrences?: DateStr[] }
+): boolean {
+  let rule: TaskRecurrence;
+  let startStr: DateStr;
+  let endDate: DateStr | undefined;
+  let pauseUntil: DateStr | undefined;
+  let skippedOccurrences: DateStr[] | undefined;
+
+  if ('rule' in arg1) {
+    rule = arg1.rule;
+    startStr = arg1.startDate;
+    endDate = arg1.endDate;
+    pauseUntil = arg1.pauseUntil;
+    skippedOccurrences = arg1.skippedOccurrences;
+  } else {
+    rule = arg1;
+    startStr = startDate!;
+    pauseUntil = opts?.pauseUntil;
+    skippedOccurrences = opts?.skippedOccurrences;
+  }
+
+  if (date < startStr) return false;
+  if (endDate && date > endDate) return false;
+  if (pauseUntil && date <= pauseUntil) return false;
+  if (skippedOccurrences?.includes(date)) return false;
+
   const d = new Date(date + 'T00:00:00');
+  const start = new Date(startStr + 'T00:00:00');
   const dow = d.getDay();
+  const diffDays = Math.round((d.getTime() - start.getTime()) / 86400000);
+  const interval = rule.interval && rule.interval > 1 ? rule.interval : 1;
+
+  if (rule.customWeekdays && rule.customWeekdays.length > 0) {
+    if (!rule.customWeekdays.includes(dow)) return false;
+    if (interval > 1) {
+      const diffWeeks = Math.floor(diffDays / 7);
+      if (diffWeeks % interval !== 0) return false;
+    }
+    return true;
+  }
+
   switch (rule.kind) {
     case 'daily':
-      return date >= startDate;
+      return diffDays >= 0 && diffDays % interval === 0;
     case 'weekdays':
-      return date >= startDate && dow !== 0 && dow !== 6;
-    case 'weekly':
-      return date >= startDate && dow === (rule.weekDay ?? dayOfWeek(startDate));
-    case 'biweekly': {
-      // Anchor on the start date's week; the same weekday every 14 days.
-      const start = new Date(startDate + 'T00:00:00');
-      const target = rule.weekDay ?? start.getDay();
+      if (dow === 0 || dow === 6) return false;
+      if (interval > 1) {
+        const diffWeeks = Math.floor(diffDays / 7);
+        if (diffWeeks % interval !== 0) return false;
+      }
+      return true;
+    case 'weekly': {
+      const target = rule.weekDay ?? dayOfWeek(startStr);
       if (dow !== target) return false;
-      const diff = Math.round((d.getTime() - start.getTime()) / 86400000);
-      return diff >= 0 && diff % 14 === 0;
+      const diffWeeks = Math.round(diffDays / 7);
+      return diffWeeks >= 0 && diffWeeks % interval === 0;
+    }
+    case 'biweekly': {
+      const target = rule.weekDay ?? dayOfWeek(startStr);
+      if (dow !== target) return false;
+      return diffDays >= 0 && diffDays % 14 === 0;
     }
     case 'monthly':
     case 'quarterly':
     case 'yearly': {
-      if (date < startDate) return false;
-      const start = new Date(startDate + 'T00:00:00');
-      // quarterly anchors to months startMonth + k*3; yearly to the start month
       if (rule.kind === 'yearly' && d.getMonth() !== start.getMonth()) return false;
       if (rule.kind === 'quarterly') {
         const delta = ((d.getMonth() - start.getMonth()) % 12 + 12) % 12;
         if (delta % 3 !== 0) return false;
       }
+      if (rule.kind === 'monthly' && interval > 1) {
+        const monthDiff = (d.getFullYear() - start.getFullYear()) * 12 + (d.getMonth() - start.getMonth());
+        if (monthDiff % interval !== 0) return false;
+      }
       if (rule.lastWeekday) {
         if (dow !== (rule.weekDay ?? 0)) return false;
-        // last <weekday> of its month?
         const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
         return d.getDate() > last - 7;
       }
@@ -69,13 +118,10 @@ export function isOccurrenceOn(rule: TaskRecurrence, date: DateStr, startDate: D
 }
 
 /**
- * Next occurrence strictly after `after` (or on/after `after` when
- * `inclusive`), from series anchored at `startDate`. Returns null when the
- * series ends first or no occurrence exists (monthDay 29–31 in short months
- * skips that month — documented).
+ * Next occurrence strictly after `after` (or on/after `after` when `inclusive`).
  */
 export function nextOccurrence(
-  def: Pick<RecurringTask, 'rule' | 'startDate' | 'endDate'>,
+  def: Pick<RecurringTask, 'rule' | 'startDate' | 'endDate' | 'pauseUntil' | 'skippedOccurrences'>,
   after: string,
   inclusive = false,
 ): string | null {
@@ -83,13 +129,13 @@ export function nextOccurrence(
   const limit = def.endDate ?? addYears('2030-01-01', 40);
   if (cursor > limit) return null;
   if (cursor < def.startDate) cursor = def.startDate;
-  // Plain bounded day scan. Windows are small (<=30 days) in normal use, and
-  // a day scan is exact for every rule (incl. "last Friday", monthDay 31,
-  // leap-year Feb 29) without month-overflow edge cases.
+
   let steps = 0;
   while (steps < MAX_STEPS) {
     if (cursor > limit) return null;
-    if (isOccurrenceOn(def.rule, cursor, def.startDate)) return cursor;
+    if (isOccurrenceOn(def.rule, cursor, def.startDate, { pauseUntil: def.pauseUntil, skippedOccurrences: def.skippedOccurrences })) {
+      return cursor;
+    }
     cursor = addDays(cursor, 1);
     steps++;
   }
@@ -98,7 +144,7 @@ export function nextOccurrence(
 
 /** All occurrence dates in [from, to] (inclusive), bounded. */
 export function occurrenceDates(
-  def: Pick<RecurringTask, 'rule' | 'startDate' | 'endDate'>,
+  def: Pick<RecurringTask, 'rule' | 'startDate' | 'endDate' | 'pauseUntil' | 'skippedOccurrences'>,
   from: string,
   to: string,
 ): string[] {
@@ -108,7 +154,9 @@ export function occurrenceDates(
   const limit = def.endDate && def.endDate < to ? def.endDate : to;
   let guard = 0;
   while (cursor <= limit && guard < MAX_STEPS) {
-    if (isOccurrenceOn(def.rule, cursor, def.startDate)) out.push(cursor);
+    if (isOccurrenceOn(def.rule, cursor, def.startDate, { pauseUntil: def.pauseUntil, skippedOccurrences: def.skippedOccurrences })) {
+      out.push(cursor);
+    }
     cursor = addDays(cursor, 1);
     guard++;
   }
@@ -123,6 +171,15 @@ export function instanceId(seriesId: string, date: string): string {
 /** Human label for a rule, e.g. "Monthly on the 1st" / "Last Friday of the month". */
 export function recurrenceLabel(rule: TaskRecurrence, startDate: string): string {
   const base = RECUR_KIND_LABELS[rule.kind];
+  if (rule.customWeekdays && rule.customWeekdays.length > 0) {
+    const daysStr = rule.customWeekdays.map((w) => WEEKDAY_SHORT[w]).join(', ');
+    return `Every ${daysStr}`;
+  }
+  if (rule.interval && rule.interval > 1) {
+    if (rule.kind === 'daily') return `Every ${rule.interval} days`;
+    if (rule.kind === 'weekly') return `Every ${rule.interval} weeks on ${WEEKDAY_LABELS[rule.weekDay ?? dayOfWeek(startDate)]}`;
+    if (rule.kind === 'monthly') return `Every ${rule.interval} months`;
+  }
   if (rule.kind === 'daily' || rule.kind === 'weekdays' || rule.kind === 'biweekly') {
     if (rule.kind === 'biweekly') return `Every 2 weeks on ${WEEKDAY_LABELS[rule.weekDay ?? dayOfWeek(startDate)]}`;
     return base;
@@ -140,19 +197,12 @@ export function recurrenceLabel(rule: TaskRecurrence, startDate: string): string
 
 export interface MaterializeResult {
   tasks: PlannedTask[];
-  /** Series definitions with advanced `lastMaterialized` cursors. */
   defs: RecurringTask[];
   created: string[];
 }
 
 /**
  * Idempotent forward materialization.
- * - Only open series (`active`) are considered.
- * - Instances are created for occurrence dates inside [today, today+window].
- * - Missed occurrences (date < today) are skipped unless `skipMissed` is false,
- *   in which case the *most recent* missed occurrence is created once as an
- *   overdue instance (never a back-fill flood) — documented behavior.
- * - Existing instances (by deterministic id) are never duplicated.
  */
 export function materializeRecurringTasks(
   defs: RecurringTask[] | undefined,
@@ -171,7 +221,8 @@ export function materializeRecurringTasks(
 
   for (const def of nextDefs) {
     if (!def.active) continue;
-    // cursor: first date that still needs materialization
+    if (def.pauseUntil && today <= def.pauseUntil) continue;
+
     let cursor = def.lastMaterialized ? nextOccurrence(def, def.lastMaterialized) : def.startDate;
     if (!cursor) continue;
     if (cursor > horizon) continue;
@@ -179,13 +230,9 @@ export function materializeRecurringTasks(
     if (cursor < today) {
       const firstFromToday = nextOccurrence(def, addDays(today, -1));
       if (def.skipMissed) {
-        // Skip the gap silently; start materializing at the first occurrence >= today.
         cursor = firstFromToday && firstFromToday <= horizon ? firstFromToday : null;
         if (!cursor) continue;
       } else {
-        // Create the most recent missed occurrence once (never a back-fill
-        // flood), then keep the cursor at today-1 so the loop below emits only
-        // current/future instances.
         let probeDate: string | null = cursor;
         let candidate: string | null = null;
         let guard2 = 0;
@@ -261,9 +308,7 @@ export function materializeRecurringTasks(
 }
 
 /**
- * Delete a series safely: the definition is removed; completed instances and
- * past history stay untouched. Open future instances (date >= today, undone)
- * are removed with the definition — they are derived records of this series.
+ * Delete a series safely.
  */
 export function deleteSeries(
   defs: RecurringTask[] | undefined,
@@ -274,18 +319,261 @@ export function deleteSeries(
   const remaining = (defs ?? []).filter((d) => d.id !== seriesId);
   const kept = (tasks ?? []).filter((t) => {
     if (t.seriesId !== seriesId) return true;
-    if (t.done) return true; // history stays
+    if (t.done) return true;
     if (!t.date) return true;
-    return t.date < today; // past open instances are history too
+    return t.date < today;
   });
   return { defs: remaining, tasks: kept };
 }
 
 /**
- * Future-only series edit: text/minutes/priority/time/goal/notes changes apply
- * to the definition AND to open instances dated today or later (completed and
- * past instances are never altered).
+ * Edit recurring occurrence:
+ * - 'this-occurrence': updates only the single instance
+ * - 'this-and-following': sets endDate on original series to day before occurrence, creates new series from occurrence date
+ * - 'entire-series': updates original series and future open instances
  */
+export function editOccurrence(
+  arg1: AppData | RecurringTask[] | undefined,
+  arg2: PlannedTask[] | PlannedTask | string,
+  arg3: any,
+  arg4?: any,
+  arg5?: any,
+): any {
+  let defs: RecurringTask[];
+  let tasks: PlannedTask[];
+  let instanceId: string;
+  let mode: 'this-occurrence' | 'this-and-following' | 'entire-series';
+  let patch: Partial<PlannedTask>;
+  let isData = false;
+  let dataObj: AppData | undefined;
+
+  if (arg1 && 'recurringTasks' in arg1) {
+    isData = true;
+    dataObj = arg1;
+    defs = arg1.recurringTasks ?? [];
+    tasks = arg1.tasks ?? [];
+    instanceId = typeof arg2 === 'string' ? arg2 : (arg2 as PlannedTask).id;
+    mode = arg3;
+    patch = arg4 ?? {};
+  } else {
+    defs = (arg1 as RecurringTask[]) ?? [];
+    tasks = (arg2 as PlannedTask[]) ?? [];
+    instanceId = typeof arg3 === 'string' ? arg3 : (arg3 as any).id;
+    mode = arg4;
+    patch = arg5 ?? {};
+  }
+
+  const targetTask = tasks.find((t) => t.id === instanceId);
+  if (!targetTask || !targetTask.seriesId) {
+    const updatedTasks = tasks.map((t) => (t.id === instanceId ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t));
+    const res = { defs, tasks: updatedTasks };
+    return isData && dataObj ? { ...dataObj, recurringTasks: res.defs, tasks: res.tasks, updatedAt: new Date().toISOString() } : res;
+  }
+
+  const seriesId = targetTask.seriesId;
+  const occDate = targetTask.occurrence ?? targetTask.date ?? todayStr();
+  const series = defs.find((d) => d.id === seriesId);
+
+  let resDefs = [...defs];
+  let resTasks = [...tasks];
+
+  if (mode === 'this-occurrence') {
+    resTasks = tasks.map((t) => (t.id === instanceId ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t));
+  } else if (mode === 'this-and-following') {
+    if (series) {
+      const dayBeforeOcc = addDays(occDate, -1);
+      resDefs = defs.map((d) => (d.id === seriesId ? { ...d, endDate: dayBeforeOcc, updatedAt: new Date().toISOString() } : d));
+
+      const newSeriesId = uid('rec');
+      const newSeries: RecurringTask = {
+        ...series,
+        id: newSeriesId,
+        text: patch.text ?? series.text,
+        startDate: occDate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      resDefs.push(newSeries);
+
+      resTasks = tasks.map((t) => {
+        if (t.seriesId === seriesId && t.date && t.date >= occDate && !t.done) {
+          return { ...t, ...patch, seriesId: newSeriesId, updatedAt: new Date().toISOString() };
+        }
+        return t;
+      });
+    }
+  } else if (mode === 'entire-series') {
+    if (series) {
+      const updatedSeries = {
+        ...series,
+        ...(patch.text ? { text: patch.text } : {}),
+        updatedAt: new Date().toISOString(),
+      };
+      resDefs = defs.map((d) => (d.id === seriesId ? updatedSeries : d));
+      resTasks = tasks.map((t) => {
+        if (t.seriesId === seriesId && !t.done) {
+          return { ...t, ...patch, updatedAt: new Date().toISOString() };
+        }
+        return t;
+      });
+    }
+  }
+
+  const res = { defs: resDefs, tasks: resTasks };
+  return isData && dataObj ? { ...dataObj, recurringTasks: res.defs, tasks: res.tasks, updatedAt: new Date().toISOString() } : res;
+}
+
+export function deleteOccurrence(
+  arg1: AppData | RecurringTask[] | undefined,
+  arg2: PlannedTask[] | PlannedTask | string,
+  arg3?: any,
+  arg4?: any,
+): any {
+  let defs: RecurringTask[];
+  let tasks: PlannedTask[];
+  let instanceId: string;
+  let mode: 'this-occurrence' | 'this-and-following' | 'entire-series';
+  let isData = false;
+  let dataObj: AppData | undefined;
+
+  if (arg1 && 'recurringTasks' in arg1) {
+    isData = true;
+    dataObj = arg1;
+    defs = arg1.recurringTasks ?? [];
+    tasks = arg1.tasks ?? [];
+    instanceId = typeof arg2 === 'string' ? arg2 : (arg2 as PlannedTask).id;
+    mode = arg3;
+  } else {
+    defs = (arg1 as RecurringTask[]) ?? [];
+    tasks = (arg2 as PlannedTask[]) ?? [];
+    instanceId = typeof arg3 === 'string' ? arg3 : (arg3 as any).id;
+    mode = arg4;
+  }
+
+  const targetTask = tasks.find((t) => t.id === instanceId);
+  if (!targetTask || !targetTask.seriesId) {
+    const updatedTasks = tasks.filter((t) => t.id !== instanceId);
+    const res = { defs, tasks: updatedTasks };
+    return isData && dataObj ? { ...dataObj, recurringTasks: res.defs, tasks: res.tasks, updatedAt: new Date().toISOString() } : res;
+  }
+
+  const seriesId = targetTask.seriesId;
+  const occDate = targetTask.occurrence ?? targetTask.date ?? todayStr();
+
+  let resDefs = [...defs];
+  let resTasks = [...tasks];
+
+  if (mode === 'this-occurrence') {
+    resDefs = defs.map((d) =>
+      d.id === seriesId
+        ? { ...d, skippedOccurrences: [...(d.skippedOccurrences ?? []), occDate], updatedAt: new Date().toISOString() }
+        : d
+    );
+    resTasks = tasks.filter((t) => t.id !== instanceId);
+  } else if (mode === 'this-and-following') {
+    const dayBeforeOcc = addDays(occDate, -1);
+    resDefs = defs.map((d) => (d.id === seriesId ? { ...d, endDate: dayBeforeOcc, updatedAt: new Date().toISOString() } : d));
+    resTasks = tasks.filter((t) => !(t.seriesId === seriesId && t.date && t.date >= occDate && !t.done));
+  } else if (mode === 'entire-series') {
+    resDefs = defs.filter((d) => d.id !== seriesId);
+    resTasks = tasks.filter((t) => t.seriesId !== seriesId);
+  }
+
+  const res = { defs: resDefs, tasks: resTasks };
+  return isData && dataObj ? { ...dataObj, recurringTasks: res.defs, tasks: res.tasks, updatedAt: new Date().toISOString() } : res;
+}
+
+export function pauseSeriesUntil(
+  arg: AppData | RecurringTask[] | undefined,
+  seriesId: string,
+  pauseUntilDate?: DateStr,
+): any {
+  if (arg && 'recurringTasks' in arg) {
+    const updated = (arg.recurringTasks ?? []).map((d: RecurringTask) =>
+      d.id === seriesId ? { ...d, active: true, pauseUntil: pauseUntilDate, updatedAt: new Date().toISOString() } : d
+    );
+    return { ...arg, recurringTasks: updated, updatedAt: new Date().toISOString() };
+  }
+  const defs = arg as RecurringTask[] | undefined;
+  return (defs ?? []).map((d: RecurringTask) =>
+    d.id === seriesId ? { ...d, active: true, pauseUntil: pauseUntilDate, updatedAt: new Date().toISOString() } : d
+  );
+}
+
+export function resumeSeries(
+  arg: AppData | RecurringTask[] | undefined,
+  seriesId: string,
+): any {
+  if (arg && 'recurringTasks' in arg) {
+    const updated = (arg.recurringTasks ?? []).map((d: RecurringTask) =>
+      d.id === seriesId ? { ...d, active: true, pauseUntil: undefined, updatedAt: new Date().toISOString() } : d
+    );
+    return { ...arg, recurringTasks: updated, updatedAt: new Date().toISOString() };
+  }
+  const defs = arg as RecurringTask[] | undefined;
+  return (defs ?? []).map((d: RecurringTask) =>
+    d.id === seriesId ? { ...d, active: true, pauseUntil: undefined, updatedAt: new Date().toISOString() } : d
+  );
+}
+
+/**
+ * Skip a specific occurrence date on a series.
+ */
+export function skipOccurrence(
+  arg1: AppData | RecurringTask[] | undefined,
+  arg2: PlannedTask[] | string,
+  arg3?: string,
+  arg4?: DateStr,
+): any {
+  if (arg1 && 'recurringTasks' in arg1 && typeof arg2 === 'string' && typeof arg3 === 'string') {
+    const data = arg1;
+    const seriesId = arg2;
+    const date = arg3;
+    const updatedDefs = (data.recurringTasks ?? []).map((d: RecurringTask) =>
+      d.id === seriesId
+        ? { ...d, skippedOccurrences: [...(d.skippedOccurrences ?? []), date], updatedAt: new Date().toISOString() }
+        : d
+    );
+    const updatedTasks = (data.tasks ?? []).map((t: PlannedTask) =>
+      t.seriesId === seriesId && (t.occurrence === date || t.date === date)
+        ? { ...t, skipped: true, done: false, updatedAt: new Date().toISOString() }
+        : t
+    );
+    return { ...data, recurringTasks: updatedDefs, tasks: updatedTasks, updatedAt: new Date().toISOString() };
+  }
+
+  if (Array.isArray(arg1) && Array.isArray(arg2) && typeof arg3 === 'string' && arg4) {
+    const defs = arg1;
+    const tasks = arg2;
+    const seriesId = arg3;
+    const date = arg4;
+    const updatedDefs = defs.map((d: RecurringTask) =>
+      d.id === seriesId
+        ? { ...d, skippedOccurrences: [...(d.skippedOccurrences ?? []), date], updatedAt: new Date().toISOString() }
+        : d
+    );
+    const updatedTasks = tasks.map((t: PlannedTask) =>
+      t.seriesId === seriesId && (t.occurrence === date || t.date === date)
+        ? { ...t, skipped: true, done: false, updatedAt: new Date().toISOString() }
+        : t
+    );
+    return { defs: updatedDefs, tasks: updatedTasks };
+  }
+
+  if (Array.isArray(arg1) && typeof arg2 === 'string' && typeof arg3 === 'string') {
+    const defs = arg1;
+    const seriesId = arg2;
+    const date = arg3;
+    return defs.map((d: RecurringTask) =>
+      d.id === seriesId
+        ? { ...d, skippedOccurrences: [...(d.skippedOccurrences ?? []), date], updatedAt: new Date().toISOString() }
+        : d
+    );
+  }
+
+  return arg1;
+}
+
 export function applySeriesEdits(
   defs: RecurringTask[] | undefined,
   tasks: PlannedTask[] | undefined,
@@ -295,8 +583,8 @@ export function applySeriesEdits(
   const defsOut = (defs ?? []).map((d) => (d.id === edited.id ? { ...edited, updatedAt: new Date().toISOString() } : d));
   const tasksOut = (tasks ?? []).map((t) => {
     if (t.seriesId !== edited.id) return t;
-    if (t.done) return t; // completed history stays
-    if (t.date && t.date < today) return t; // past stays
+    if (t.done) return t;
+    if (t.date && t.date < today) return t;
     return {
       ...t,
       text: edited.text,
@@ -311,11 +599,6 @@ export function applySeriesEdits(
   return { defs: defsOut, tasks: tasksOut };
 }
 
-/**
- * Pause/resume. Pausing stops future materialization but leaves already-open
- * instances alone. Resuming follows the same skip-missed policy: the gap is
- * not back-filled; the next relevant occurrence is created on the next tick.
- */
 export function setSeriesActive(
   defs: RecurringTask[] | undefined,
   seriesId: string,
@@ -324,14 +607,12 @@ export function setSeriesActive(
   return (defs ?? []).map((d) => (d.id === seriesId ? { ...d, active, updatedAt: new Date().toISOString() } : d));
 }
 
-/** Days in month helper reused by occurrence math. */
 export function lastDayOfMonth(date: string): number {
   const d = new Date(date + 'T00:00:00');
   return daysInMonth(d.getFullYear(), d.getMonth());
 }
 
-/** Deterministic sorted list of the next `n` occurrence dates at/after `from`. */
-export function upcomingOccurrences(def: Pick<RecurringTask, 'rule' | 'startDate' | 'endDate'>, from: string, n: number): string[] {
+export function upcomingOccurrences(def: Pick<RecurringTask, 'rule' | 'startDate' | 'endDate' | 'pauseUntil' | 'skippedOccurrences'>, from: string, n: number): string[] {
   const out: string[] = [];
   let cursor = from;
   let guard = 0;
@@ -343,4 +624,37 @@ export function upcomingOccurrences(def: Pick<RecurringTask, 'rule' | 'startDate
     guard++;
   }
   return out;
+}
+
+export interface SeriesAnalytics {
+  completed: number;
+  skipped: number;
+  missed: number;
+  upcoming: number;
+  streak: number;
+}
+
+export function getSeriesAnalytics(
+  series: RecurringTask,
+  tasks: PlannedTask[],
+  today: string = todayStr(),
+): SeriesAnalytics {
+  const seriesTasks = tasks.filter((t) => t.seriesId === series.id);
+  const completed = seriesTasks.filter((t) => t.done).length;
+  const skipped = seriesTasks.filter((t) => t.skipped).length + (series.skippedOccurrences?.length ?? 0);
+  const missed = seriesTasks.filter((t) => !t.done && !t.skipped && t.date && t.date < today).length;
+  const upcoming = seriesTasks.filter((t) => !t.done && !t.skipped && t.date && t.date >= today).length;
+
+  // Streak calculation (consecutive completed instances sorted descending)
+  const completedDates = seriesTasks.filter((t) => t.done && t.date).map((t) => t.date!).sort((a, b) => b.localeCompare(a));
+  let streak = 0;
+  let lastDate = today;
+  for (const d of completedDates) {
+    if (d <= lastDate) {
+      streak++;
+      lastDate = d;
+    }
+  }
+
+  return { completed, skipped, missed, upcoming, streak };
 }

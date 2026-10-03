@@ -392,6 +392,21 @@ export interface Settings {
   homeWidgets?: HomeWidgetPreferences;
 }
 
+export interface SchedulingPreferences {
+  preferredFocusStart?: string;
+  preferredFocusEnd?: string;
+  preferredLearningStart?: string;
+  preferredLearningEnd?: string;
+  preferredExerciseStart?: string;
+  preferredExerciseEnd?: string;
+  preferredAdminStart?: string;
+  preferredAdminEnd?: string;
+  preferMornings?: boolean;
+  avoidLunch?: boolean;
+  avoidWeekends?: boolean;
+  avoidMeetingsWhenFocusing?: boolean;
+}
+
 /** Working-hours model for availability & scheduling. All times are local `HH:MM`. */
 export interface PlanningSettings {
   /** Workday start, e.g. '09:00'. */
@@ -403,6 +418,8 @@ export interface PlanningSettings {
   breakEnd?: string;
   /** Focus-block presets offered by the scheduler (minutes). */
   focusOptions?: number[];
+  /** Smart scheduling preferences (V5 Phase 12). */
+  preferences?: SchedulingPreferences;
 }
 
 // ── Money / finance ──────────────────────────────────────────────────────────
@@ -752,6 +769,8 @@ export interface PlannedTask {
   seriesId?: ID;
   /** Occurrence date this recurring instance represents — deterministic identity with seriesId. */
   occurrence?: DateStr;
+  /** Optional skipped state for recurring instance (distinguishable from completed/missed). */
+  skipped?: boolean;
   notes?: string;
   createdAt: string;
   /** ISO timestamps of reschedules (bounded; used to notice repeated postponing). */
@@ -891,6 +910,8 @@ export interface AppData {
   tasks?: PlannedTask[];
   /** Optional universal Inbox (V4) — additive; absent in older documents. */
   inbox?: InboxItem[];
+  /** Reusable planning templates (V5 Phase 12) — additive. */
+  templates?: PlanningTemplate[];
   /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
   periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;
@@ -898,18 +919,12 @@ export interface AppData {
   updatedAt: string;
 }
 
-// ── Recurring tasks + routines + notifications (Slice 6) ─────────────────────
+// ── Recurring tasks + routines + notifications (Slice 6 & V5 Phase 12) ─────
 
 export type RecurrenceKind = 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 
 /**
- * Recurrence rule for a recurring task (Slice 6).
- * - daily: every calendar day from startDate
- * - weekdays: Monday–Friday
- * - weekly / biweekly: on `weekDay` (defaults to startDate's weekday)
- * - monthly / quarterly / yearly: on `monthDay` (1–31; months lacking the day
- *   are skipped, e.g. the 31st in April), or — when `lastWeekday` is set —
- *   on the *last* `weekDay` of the month ("last Friday of month").
+ * Recurrence rule for a recurring task.
  */
 export interface TaskRecurrence {
   kind: RecurrenceKind;
@@ -919,9 +934,13 @@ export interface TaskRecurrence {
   monthDay?: number;
   /** monthly/quarterly/yearly on the last `weekDay` of the month instead of `monthDay`. */
   lastWeekday?: boolean;
+  /** Interval multiplier (e.g. every 2 days, every 3 weeks). Default 1. */
+  interval?: number;
+  /** Custom weekdays array for custom weekly recurrence (e.g. [1, 3, 5] for Mon/Wed/Fri). */
+  customWeekdays?: number[];
 }
 
-/** A user-defined recurring task definition (Slice 6). Instances are real PlannedTasks. */
+/** A user-defined recurring task definition. Instances are real PlannedTasks. */
 export interface RecurringTask {
   id: ID;
   text: string;
@@ -931,6 +950,8 @@ export interface RecurringTask {
   startDate: DateStr;
   /** Optional series end — no occurrences after this date. */
   endDate?: DateStr;
+  /** Optional maximum occurrences limit. */
+  maxOccurrences?: number;
   /** Preferred time of day for generated instances (HH:MM). */
   plannedTime?: string;
   /** Estimated duration in minutes. */
@@ -942,8 +963,44 @@ export interface RecurringTask {
   active: boolean;
   /** Default true: occurrences missed while away are skipped, never back-filled. */
   skipMissed: boolean;
+  /** Optional pause until date (inclusive). */
+  pauseUntil?: DateStr;
+  /** Manually skipped occurrence dates. */
+  skippedOccurrences?: DateStr[];
   /** Last occurrence date that has been materialized (idempotency cursor). */
   lastMaterialized?: DateStr;
+  createdAt: DateStr;
+  updatedAt?: string;
+}
+
+// ── Planning Templates (V5 Phase 12) ────────────────────────────────────────
+
+export type TemplateCategory = 'day' | 'week' | 'goal' | 'learning' | 'routine';
+
+export interface TemplateItem {
+  id: ID;
+  title: string;
+  kind: 'task' | 'routine' | 'learning' | 'focus' | 'break';
+  /** 0 = Day 1 (or Mon), 1 = Tue ... 6 = Sun (or 0 for day template) */
+  dayOffset: number;
+  preferredTime?: string; // HH:MM
+  durationMin?: number;
+  priority?: number;
+  goalId?: ID;
+  routineId?: ID;
+  learningId?: ID;
+  notes?: string;
+}
+
+export interface PlanningTemplate {
+  id: ID;
+  name: string;
+  description?: string;
+  category: TemplateCategory;
+  items: TemplateItem[];
+  isBuiltIn?: boolean;
+  userCreated?: boolean;
+  lastUsedAt?: string;
   createdAt: DateStr;
   updatedAt?: string;
 }
