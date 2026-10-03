@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
-import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle } from './icons';
+import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle, IconChart } from './icons';
 import { QuickAddModal, type QuickAddKind } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
@@ -25,6 +25,7 @@ const NAV_MAIN: NavItem[] = [
   { path: 'money', label: 'Money', icon: IconMoney, group: 'grow' },
   { path: 'journal', label: 'Journal', icon: IconJournal, group: 'grow' },
   { path: 'reviews', label: 'Reviews', icon: IconReviews, group: 'do' },
+  { path: 'analytics', label: 'Analytics', icon: IconChart, group: 'grow' },
   { path: 'insights', label: 'Insights', icon: IconInsights, group: 'grow' },
   { path: 'settings', label: 'Settings', icon: IconSettings, group: 'system' },
 ];
