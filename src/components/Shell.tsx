@@ -135,10 +135,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (key === 'f') {
+        e.preventDefault();
+        setQuickAdd('task');
+        return;
+      }
+
+      const tStr = new Date().toISOString().slice(0, 10);
+      const mStr = tStr.slice(0, 7);
+
       const map: Record<string, string> = {
         t: 'today',
+        w: `plan/week/${tStr}`,
+        m: `plan/calendar/${mStr}`,
         g: 'goals',
-        m: 'money',
         p: 'plan',
         i: 'inbox',
         r: 'reviews',

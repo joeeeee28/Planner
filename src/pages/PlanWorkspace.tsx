@@ -33,11 +33,15 @@ function occursOnDate(tx: Transaction, date: string): boolean {
   return cur === date;
 }
 
+import { CalendarCapacityBanner } from '../components/CalendarCapacityBanner';
+import { FocusModeModal, type FocusSessionItem } from '../components/FocusMode';
+
 // ── Day ──────────────────────────────────────────────────────────────────────
 
 export function DayWorkspace({ date }: { date: string }) {
   const { data, update } = useApp();
   const [quickOpen, setQuickOpen] = useState(false);
+  const [focusItem, setFocusItem] = useState<FocusSessionItem | null>(null);
   const tasks = tasksOf(data);
   const dayTasks = sortTasks(tasksOn(tasks, date));
   const timed = dayTasks.filter((x) => x.start);
@@ -90,8 +94,10 @@ export function DayWorkspace({ date }: { date: string }) {
         )}
       </div>
 
-
       {quickOpen && <QuickAddModal initialKind="task" onClose={() => setQuickOpen(false)} />}
+      {focusItem && <FocusModeModal item={focusItem} onClose={() => setFocusItem(null)} />}
+
+      <CalendarCapacityBanner date={date} />
 
       {(timed.length > 0 || externalEventsOn(data, date).length > 0) && (
         <section className="panel mb-16" aria-label="Timeline">
