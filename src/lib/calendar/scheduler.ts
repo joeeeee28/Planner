@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AppData, DateStr, PlannedTask } from '../types';
-import { addDays, parseDateStr } from '../dates';
+import { addDays, parseDateStr, todayStr } from '../dates';
 import { estimateMin, fmtMinutes, topGoals } from '../plan';
 import { dayAvailability, spanLabel } from './availability';
 import { dayBandLabel, fromMin, workWindowOf } from './time';
@@ -77,10 +77,51 @@ function scoreWindow(w: WindowUse, data: AppData, target: ScheduleTarget, from: 
   const why: string[] = [];
   const today = w.date === from;
   const dIdx = dayIndex(w.date, from);
+  const prefs = data.settings?.planning?.preferences;
+  let bonusScore = 0;
+
+  const dateObj = new Date(w.date + 'T00:00:00');
+  const dayOfWeek = dateObj.getDay();
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+  if (prefs?.avoidWeekends && isWeekend) {
+    bonusScore += 500; // penalize weekends if user prefers weekdays
+  }
+
+  // Morning preference check (< 12:00 PM = 720 min)
+  if (prefs?.preferMornings && w.from < 720) {
+    bonusScore -= 100;
+    why.push('matches preferred morning work window');
+  }
+
+  // Lunch avoidance check (12:00 - 13:00 = 720 - 780 min)
+  if (prefs?.avoidLunch && w.from < 780 && w.to > 720) {
+    bonusScore += 300;
+  } else if (prefs?.avoidLunch) {
+    why.push('avoids lunch hour (12:00–13:00)');
+  }
+
+  // Preferred category hours
+  if (target.text && target.text.toLowerCase().includes('learning') && prefs?.preferredLearningStart && prefs?.preferredLearningEnd) {
+    const lStart = startToMin(prefs.preferredLearningStart);
+    const lEnd = startToMin(prefs.preferredLearningEnd);
+    if (w.from >= lStart && w.to <= lEnd) {
+      bonusScore -= 200;
+      why.push(`matches preferred learning hours (${prefs.preferredLearningStart}–${prefs.preferredLearningEnd})`);
+    }
+  } else if (target.priority === 1 && prefs?.preferredFocusStart && prefs?.preferredFocusEnd) {
+    const fStart = startToMin(prefs.preferredFocusStart);
+    const fEnd = startToMin(prefs.preferredFocusEnd);
+    if (w.from >= fStart && w.to <= fEnd) {
+      bonusScore -= 200;
+      why.push(`matches preferred focus hours (${prefs.preferredFocusStart}–${prefs.preferredFocusEnd})`);
+    }
+  }
 
   if (today) why.push('the calendar is free for the rest of today');
   else if (dIdx === 1) why.push('your calendar is free tomorrow');
   else why.push('your calendar is free on this day');
+
   if (hasNextCommitmentAfter(data, w.date, w.to)) {
     why.push(`there is an uninterrupted ${fmtMinutes(w.minutes)} window before your next commitment`);
   }
@@ -96,9 +137,44 @@ function scoreWindow(w: WindowUse, data: AppData, target: ScheduleTarget, from: 
   }
   why.push('the slot fits inside your working hours');
 
-  // Deterministic ranking: soonest realistic day first; ties keep insertion
-  // order stable (sort is by score, then date, then start time).
-  return { score: Math.max(0, dIdx) * 1000, why };
+  return { score: Math.max(0, dIdx * 1000 + bonusScore), why };
+}
+
+/**
+ * Smart rescheduling suggestions when a conflict or missed instance occurs.
+ */
+export interface RescheduleOption {
+  label: string; // e.g. "Next available slot today", "Tomorrow at 09:00", "Next Tuesday"
+  date: DateStr;
+  start: string;
+  reason: string;
+}
+
+export function suggestRescheduleSlots(
+  data: AppData,
+  task: { text: string; minutes?: number; priority?: number; goalId?: string; date?: DateStr; start?: string },
+  fromDate: DateStr = todayStr()
+): RescheduleOption[] {
+  const suggestions = suggestSlots(
+    data,
+    { text: task.text, minutes: task.minutes ?? 45, priority: task.priority, goalId: task.goalId, after: fromDate, max: 4 },
+    fromDate
+  );
+
+  return suggestions.map((s) => {
+    const timeStr = fromMin(s.startMin);
+    let label = `${s.label} at ${timeStr}`;
+    if (s.date === fromDate) label = `Next slot today at ${timeStr}`;
+    else if (s.date === addDays(fromDate, 1)) label = `Tomorrow at ${timeStr}`;
+
+    const reason = s.why.length > 0 ? s.why.join(' · ') : 'Fits available capacity and working hours';
+    return {
+      label,
+      date: s.date,
+      start: timeStr,
+      reason,
+    };
+  });
 }
 
 /**
