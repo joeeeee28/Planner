@@ -43,15 +43,29 @@ jobs:
 
       - run: npm ci
 
-      - name: Verify (types, lint, tests)
-        run: |
-          npx tsc -b
-          npm run lint
-          npm test
-          npm run test:v3
-          npm run test:v4
-          npm run test:auth
-          npm run test:v5
+      - name: Verify TypeScript
+        run: npx tsc -b
+
+      - name: Verify Lint
+        run: npm run lint
+
+      - name: Run Base Tests
+        run: npm test
+
+      - name: Run Engine V3 Tests
+        run: npm run test:v3
+
+      - name: Run Engine V4 Tests
+        run: npm run test:v4
+
+      - name: Run Auth Tests
+        run: npm run test:auth
+
+      - name: Run V5 Core Tests
+        run: npm run test:v5
+
+      - name: Run V5 Phase 24 Tests
+        run: npm run test:v5:phase24
 
       # Fail BEFORE building rather than silently shipping a local-mode bundle.
       # This is the exact regression that put a local default account into
