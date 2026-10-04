@@ -73,6 +73,9 @@ jobs:
       - name: Run V5 Phase 26 Tests
         run: npm run test:v5:phase26
 
+      - name: Run V5 Phase 27 Tests
+        run: npm run test:v5:phase27
+
       # Fail BEFORE building rather than silently shipping a local-mode bundle.
       # This is the exact regression that put a local default account into
       # production: the build ran without credentials, so Vite compiled

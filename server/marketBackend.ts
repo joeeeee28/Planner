@@ -202,11 +202,35 @@ export interface DetailedMarketStatus {
   nextCloseTime?: string;
 }
 
+export const NSE_TRADING_HOLIDAYS_2026 = new Set([
+  '2026-01-26', // Republic Day
+  '2026-03-03', // Holi
+  '2026-03-27', // Id-Ul-Fitr
+  '2026-04-03', // Good Friday
+  '2026-04-14', // Dr. B. R. Ambedkar Jayanti
+  '2026-05-01', // Maharashtra Day
+  '2026-05-27', // Bakri Id
+  '2026-06-26', // Moharram
+  '2026-08-15', // Independence Day
+  '2026-09-04', // Milad-un-Nabi
+  '2026-10-02', // Mahatma Gandhi Jayanti
+  '2026-10-20', // Dussehra
+  '2026-11-09', // Diwali Laxmi Pujan
+  '2026-11-10', // Diwali Balipratipada
+  '2026-11-24', // Gurunanak Jayanti
+  '2026-12-25', // Christmas
+]);
+
 export function calculateIndianMarketStatus(date: Date = new Date(), exchange: string = 'NSE'): DetailedMarketStatus {
   // IST is UTC + 5:30 (330 minutes)
   const utcMs = date.getTime();
   const istOffsetMs = 330 * 60 * 1000;
   const istDate = new Date(utcMs + istOffsetMs);
+
+  const istYear = istDate.getUTCFullYear();
+  const istMonth = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+  const istDayOfMonth = String(istDate.getUTCDate()).padStart(2, '0');
+  const istDateKey = `${istYear}-${istMonth}-${istDayOfMonth}`;
 
   const istDay = istDate.getUTCDay(); // 0 = Sun, 6 = Sat
   const istHours = istDate.getUTCHours();
@@ -216,6 +240,21 @@ export function calculateIndianMarketStatus(date: Date = new Date(), exchange: s
   const istTimeString = `${String(istHours).padStart(2, '0')}:${String(istMinutes).padStart(2, '0')} IST`;
 
   const isWeekend = istDay === 0 || istDay === 6;
+
+  // Check Exchange Holidays
+  if (NSE_TRADING_HOLIDAYS_2026.has(istDateKey)) {
+    return {
+      status: 'Closed',
+      state: 'CLOSED',
+      exchange,
+      isOpen: false,
+      isDelayed: false,
+      message: 'Market closed (Exchange Holiday)',
+      istTime: istTimeString,
+      timestamp: date.toISOString(),
+      nextOpenTime: '09:15 IST (Next trading day)',
+    };
+  }
 
   // NSE Schedule:
   // 09:00 - 09:08: Pre-open
@@ -478,62 +517,148 @@ export class MarketBackendService {
       return this.generateMockQuote(symbol, exchange);
     }
 
+    // Support Zerodha Kite Connect if configured via env
+    if (this.config.provider === 'kite' && this.config.apiKey && process.env.KITE_ACCESS_TOKEN) {
+      return this.fetchKiteQuote(symbol, exchange);
+    }
+
     const ticker = this.resolveTicker(symbol, exchange);
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`;
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Growth OS V5 Market Engine; Node.js; +https://joeeeee28.github.io/Planner)',
-        'Accept': 'application/json',
-      },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.warn(`MarketBackendService: ticker not found: ${ticker}`);
-        return null;
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Growth OS V5 Market Engine; Node.js; +https://joeeeee28.github.io/Planner)',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn(`MarketBackendService: ticker not found: ${ticker}`);
+          return null;
+        }
+        throw new Error(`Upstream market provider returned status ${response.status} for ${ticker}`);
       }
-      throw new Error(`Upstream market provider returned status ${response.status} for ${ticker}`);
+
+      const data = await response.json();
+      const result = data?.chart?.result?.[0];
+      if (!result) return null;
+
+      const meta = result.meta;
+      const price = Number(meta.regularMarketPrice);
+      if (!Number.isFinite(price) || price <= 0) return null;
+
+      const rawPrevClose = meta.previousClose ?? meta.chartPreviousClose;
+      const hasPreviousClose = rawPrevClose != null && Number.isFinite(Number(rawPrevClose)) && Number(rawPrevClose) > 0;
+      const previousClose = hasPreviousClose ? Number(rawPrevClose) : undefined;
+      const dayChange = hasPreviousClose ? Number((price - previousClose!).toFixed(2)) : undefined;
+      const dayChangePercent = hasPreviousClose && previousClose! > 0
+        ? Number((((price - previousClose!) / previousClose!) * 100).toFixed(2))
+        : undefined;
+
+      const mktStatus = calculateIndianMarketStatus(new Date(), exchange);
+      const quality: MarketDataQuality = mktStatus.isOpen ? 'DELAYED' : 'LAST_KNOWN';
+
+      const normalized: MarketQuote = {
+        symbol,
+        exchange,
+        price,
+        previousClose,
+        dayChange,
+        dayChangePercent,
+        hasDayChange: hasPreviousClose,
+        currency: meta.currency || 'INR',
+        marketStatus: mktStatus.status,
+        marketState: mktStatus.state,
+        dataQuality: quality,
+        provider: 'Yahoo Finance (Delayed NSE)',
+        timestamp: new Date().toISOString(),
+        sourceTimestamp: meta.regularMarketTime
+          ? new Date(meta.regularMarketTime * 1000).toISOString()
+          : new Date().toISOString(),
+        isDelayed: true,
+        isCached: false,
+      };
+
+      return normalized;
+    } finally {
+      clearTimeout(timeoutId);
     }
+  }
 
-    const data = await response.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
+  // ── Zerodha Kite Connect Adapter ───────────────────────────────────────────
 
-    const meta = result.meta;
-    const price = Number(meta.regularMarketPrice);
-    if (!Number.isFinite(price) || price <= 0) return null;
+  private async fetchKiteQuote(symbol: string, exchange: string): Promise<MarketQuote | null> {
+    const apiKey = this.config.apiKey;
+    const accessToken = process.env.KITE_ACCESS_TOKEN;
+    if (!apiKey || !accessToken) return null;
 
-    const previousClose = Number(meta.previousClose || meta.chartPreviousClose || price);
-    const dayChange = Number((price - previousClose).toFixed(2));
-    const dayChangePercent = Number(
-      previousClose > 0 ? (((price - previousClose) / previousClose) * 100).toFixed(2) : 0
-    );
+    const instrumentKey = `${exchange.toUpperCase()}:${symbol.toUpperCase()}`;
+    const url = `https://api.kite.trade/quote?i=${encodeURIComponent(instrumentKey)}`;
 
-    const mktStatus = calculateIndianMarketStatus(new Date(), exchange);
-    const quality: MarketDataQuality = mktStatus.isOpen ? 'DELAYED' : 'LAST_KNOWN';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    const normalized: MarketQuote = {
-      symbol,
-      exchange,
-      price,
-      previousClose,
-      dayChange,
-      dayChangePercent,
-      currency: meta.currency || 'INR',
-      marketStatus: mktStatus.status,
-      marketState: mktStatus.state,
-      dataQuality: quality,
-      provider: 'Yahoo Finance (Delayed NSE)',
-      timestamp: new Date().toISOString(),
-      sourceTimestamp: meta.regularMarketTime
-        ? new Date(meta.regularMarketTime * 1000).toISOString()
-        : new Date().toISOString(),
-      isDelayed: true,
-      isCached: false,
-    };
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'X-Kite-Version': '3',
+          'Authorization': `token ${apiKey}:${accessToken}`,
+          'Accept': 'application/json',
+        },
+      });
 
-    return normalized;
+      if (!res.ok) {
+        throw new Error(`Kite Connect returned HTTP ${res.status}`);
+      }
+
+      const json = await res.json();
+      const item = json?.data?.[instrumentKey];
+      if (!item) return null;
+
+      const price = Number(item.last_price);
+      if (!Number.isFinite(price) || price <= 0) return null;
+
+      const prevClose = item.ohlc?.close != null ? Number(item.ohlc.close) : undefined;
+      const hasPreviousClose = prevClose != null && Number.isFinite(prevClose) && prevClose > 0;
+      const dayChange = hasPreviousClose ? Number((price - prevClose!).toFixed(2)) : undefined;
+      const dayChangePercent = hasPreviousClose && prevClose! > 0
+        ? Number((((price - prevClose!) / prevClose!) * 100).toFixed(2))
+        : undefined;
+
+      const mktStatus = calculateIndianMarketStatus(new Date(), exchange);
+
+      return {
+        symbol,
+        exchange,
+        price,
+        previousClose: prevClose,
+        dayChange,
+        dayChangePercent,
+        hasDayChange: hasPreviousClose,
+        open: item.ohlc?.open,
+        high: item.ohlc?.high,
+        low: item.ohlc?.low,
+        volume: item.volume,
+        currency: 'INR',
+        marketStatus: mktStatus.status,
+        marketState: mktStatus.state,
+        dataQuality: mktStatus.isOpen ? 'LIVE' : 'LAST_KNOWN',
+        provider: 'Zerodha Kite Connect',
+        timestamp: new Date().toISOString(),
+        sourceTimestamp: item.timestamp ? new Date(item.timestamp).toISOString() : new Date().toISOString(),
+        isDelayed: false,
+        isCached: false,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   // ── Historical Prices for Sparklines ────────────────────────────────────────
@@ -580,19 +705,22 @@ export class MarketBackendService {
 
   // ── Mock Generator for Test Isolation ──────────────────────────────────────
 
-  private generateMockQuote(symbol: string, exchange: string): MarketQuote {
-    const mapping = VERIFIED_INSTRUMENTS[symbol];
+  private generateMockQuote(symbol: string, exchange: string): MarketQuote | null {
+    const cleanSym = symbol.trim().toUpperCase();
+    const mapping = VERIFIED_INSTRUMENTS[cleanSym];
+    if (!mapping) return null;
     const prev = 100.0;
     const price = 102.5;
     const mkt = calculateIndianMarketStatus(new Date(), exchange);
 
     return {
-      symbol,
-      exchange,
+      symbol: cleanSym,
+      exchange: mapping.exchange || exchange,
       price,
       previousClose: prev,
       dayChange: 2.5,
       dayChangePercent: 2.5,
+      hasDayChange: true,
       currency: 'INR',
       marketStatus: mkt.status,
       marketState: mkt.state,
