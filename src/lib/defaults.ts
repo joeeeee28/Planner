@@ -224,6 +224,7 @@ export function createInitialData(): AppData {
     investmentHoldings: [],
     investmentTransactions: [],
     investmentPlans: [],
+    investmentMigrationVersion: 1,
     cachedMarketQuotes: {},
     periodReviews: {},
     cycleReviews: {},

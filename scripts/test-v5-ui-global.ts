@@ -117,12 +117,17 @@ assert((tsGroww?.quantity ?? 0) + (tsZerodha?.quantity ?? 0) === 62, 'TATSILV co
 
 // ── 4. Combined Portfolio Valuation & Quotes ────────────────────────────────
 console.log('\n─── 4. Combined Portfolio Metrics & Revaluation ──────────────────────');
-const summary = calculatePortfolioSummary(jothikaHoldings, jothikaData.investmentInstruments ?? [], testQuotes);
-assert(summary.holdingsCount === 18, 'Portfolio summary calculates all 18 holdings');
-assert(summary.totalInvested > 10000, `Total invested is realistic (${summary.totalInvested.toFixed(2)})`);
-assert(summary.totalCurrentValue > 10000, `Total current value is calculated (${summary.totalCurrentValue.toFixed(2)})`);
-assert(Number.isFinite(summary.totalPL), 'Total P&L is a finite number');
-assert(Number.isFinite(summary.totalReturnPct), 'Total return percentage is a finite number');
+// Canonical Snapshot Fixture (must strictly evaluate to ₹28,616.60 without quote mutation)
+const canonicalSummary = calculatePortfolioSummary(jothikaHoldings, jothikaData.investmentInstruments ?? [], {});
+assert(canonicalSummary.holdingsCount === 18, 'Portfolio summary calculates all 18 holdings');
+assert(canonicalSummary.totalInvested.toFixed(2) === '31399.42', `Canonical invested is ₹31,399.42 (got ${canonicalSummary.totalInvested.toFixed(2)})`);
+assert(canonicalSummary.totalCurrentValue.toFixed(2) === '28616.60', `Canonical current value is ₹28,616.60 (got ${canonicalSummary.totalCurrentValue.toFixed(2)})`);
+assert(canonicalSummary.totalPL.toFixed(2) === '-2782.82', `Canonical total P&L is -₹2,782.82 (got ${canonicalSummary.totalPL.toFixed(2)})`);
+assert(canonicalSummary.totalReturnPct.toFixed(2) === '-8.86', `Canonical return is -8.86% (got ${canonicalSummary.totalReturnPct.toFixed(2)}%)`);
+
+// Isolated Test Mutation Fixture (never leaks or overrides canonical snapshot)
+const mutationSummary = calculatePortfolioSummary(jothikaHoldings, jothikaData.investmentInstruments ?? [], testQuotes);
+assert(mutationSummary.totalCurrentValue > 10000, `Isolated mutation summary calculates revaluation (${mutationSummary.totalCurrentValue.toFixed(2)})`);
 
 // ── 5. Money Separation & Financial Invariants ──────────────────────────────
 console.log('\n─── 5. Financial Invariants & Cash Separation (Section 40) ───────────');

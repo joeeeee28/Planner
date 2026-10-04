@@ -28,7 +28,12 @@ import { uid } from './uid';
 //
 function jothikaUserId(): string | null {
   try {
-    const id = String(import.meta.env.VITE_JOTHIKA_USER_ID ?? '').trim();
+    const globalProcess = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process;
+    const id = String(
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_JOTHIKA_USER_ID) ||
+      globalProcess?.env?.VITE_JOTHIKA_USER_ID ||
+      ''
+    ).trim();
     return id || null;
   } catch {
     return null;
@@ -306,48 +311,63 @@ function findExistingInstrument(
 
 // ── Main seed function ─────────────────────────────────────────────────────
 
+// ── Versioned Migration (V5 Phase 24) ──────────────────────────────────────
+
+export const INVESTMENT_MIGRATION_VERSION = 1;
+
 /**
- * Idempotently initialize Jothika's Groww + Zerodha portfolio.
+ * Versioned, one-time migration for investment portfolio.
  *
- * Returns null if the authenticated user is NOT Jothika or if all 18
- * source positions already exist (no changes needed).
- *
- * Never overwrites existing positions — only adds missing ones.
- * Uses sourceKey (e.g. "GROWW:ADANI_POWER") as idempotency key.
- *
- * SECURITY:
- *   - Only runs when userId === VITE_JOTHIKA_USER_ID
- *   - Never seeds for any other user
- *   - Never uses display name as security boundary
+ * Rules:
+ * 1. Migration executes ONLY when required (version < 1).
+ * 2. Migration is strictly idempotent.
+ * 3. Never recreates a record simply because it was deleted by the user.
+ * 4. Existing persisted user state is authoritative once migrated.
+ * 5. Other users receive 0 Jothika holdings.
+ * 6. Authenticated user ID determines scoping.
  */
-export function maybeInitJothikaPortfolio(
+export function migrateInvestments(
   userId: string | null,
   data: AppData
 ): AppData | null {
-  // ── Guard: only Jothika ────────────────────────────────────────────────
-  if (!isJothika(userId)) return null;
+  // If already migrated, user state is authoritative — NEVER recreate anything!
+  if (typeof data.investmentMigrationVersion === 'number' && data.investmentMigrationVersion >= INVESTMENT_MIGRATION_VERSION) {
+    return null;
+  }
 
-  const instruments = [...(data.investmentInstruments ?? [])];
-  const holdings = [...(data.investmentHoldings ?? [])];
-
-  // Build set of existing sourceKeys for idempotency check
-  const existingSourceKeys = new Set<string>(
-    holdings.map((h) => h.sourceKey).filter(Boolean) as string[]
-  );
-
-  let changed = false;
-  const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+
+  // If this user is NOT Jothika (fresh user or other user)
+  if (!isJothika(userId)) {
+    return {
+      ...data,
+      investmentInstruments: data.investmentInstruments ?? [],
+      investmentHoldings: data.investmentHoldings ?? [],
+      investmentTransactions: data.investmentTransactions ?? [],
+      investmentPlans: data.investmentPlans ?? [],
+      cachedMarketQuotes: data.cachedMarketQuotes ?? {},
+      investmentMigrationVersion: INVESTMENT_MIGRATION_VERSION,
+      updatedAt: now,
+    };
+  }
+
+  // User is Jothika:
+  // If user already has holdings, preserve them and stamp migration version
+  if (data.investmentHoldings && data.investmentHoldings.length > 0) {
+    return {
+      ...data,
+      investmentMigrationVersion: INVESTMENT_MIGRATION_VERSION,
+      updatedAt: now,
+    };
+  }
+
+  // First-time legacy initialization for Jothika: populate the 18 canonical holdings
+  const instruments = [...(data.investmentInstruments ?? [])];
+  const holdings: InvestmentHolding[] = [];
 
   for (const entry of ALL_SEED) {
-    // ── Idempotency: skip if already exists ──────────────────────────────
-    if (existingSourceKeys.has(entry.sourceKey)) continue;
-
-    changed = true;
-
-    // ── Instrument: find or create ───────────────────────────────────────
     let inst = findExistingInstrument(instruments, entry.symbol, entry.exchange);
-
     if (!inst) {
       inst = {
         id: uid('inst'),
@@ -361,8 +381,7 @@ export function maybeInitJothikaPortfolio(
       instruments.push(inst);
     }
 
-    // ── Holding: create with source metadata ─────────────────────────────
-    const holding: InvestmentHolding = {
+    holdings.push({
       id: uid('hld'),
       instrumentId: inst.id,
       quantity: entry.quantity,
@@ -373,19 +392,29 @@ export function maybeInitJothikaPortfolio(
       source: entry.source,
       snapshotPrice: entry.snapshotPrice,
       sourceKey: entry.sourceKey,
-    };
-
-    holdings.push(holding);
+      previousClose: undefined,
+      snapshotStatus: 'IMPORTED_SNAPSHOT',
+    });
   }
-
-  if (!changed) return null;
 
   return {
     ...data,
     investmentInstruments: instruments,
     investmentHoldings: holdings,
+    investmentMigrationVersion: INVESTMENT_MIGRATION_VERSION,
     updatedAt: now,
   };
+}
+
+/**
+ * Legacy compatibility wrapper: delegates directly to migrateInvestments.
+ * Never recreates deleted holdings once migrated.
+ */
+export function maybeInitJothikaPortfolio(
+  userId: string | null,
+  data: AppData
+): AppData | null {
+  return migrateInvestments(userId, data);
 }
 
 /**
@@ -437,6 +466,7 @@ export function applyJothikaSeed(data: AppData): AppData {
     ...data,
     investmentInstruments: instruments,
     investmentHoldings: holdings,
+    investmentMigrationVersion: INVESTMENT_MIGRATION_VERSION,
     updatedAt: now,
   };
 }
@@ -490,26 +520,39 @@ export function verifyJothikaSeed(data: AppData): {
 }
 
 /**
+ * Row-derived reference calculations (P1-002).
+ * All portfolio totals are calculated strictly from the holding rows.
+ * No hardcoded totals.
+ */
+function deriveSeedSummary(entries: SeedEntry[]) {
+  let invested = 0;
+  let currentValue = 0;
+  for (const e of entries) {
+    invested += e.investedAmount;
+    currentValue += e.quantity * e.snapshotPrice;
+  }
+  const totalPL = Number((currentValue - invested).toFixed(2));
+  const returnPct = Number(((totalPL / invested) * 100).toFixed(2));
+  return {
+    invested: Number(invested.toFixed(2)),
+    currentValue: Number(currentValue.toFixed(2)),
+    totalPL,
+    returnPct,
+    positionCount: entries.length,
+  };
+}
+
+const growwRef = deriveSeedSummary(GROWW_SEED);
+const zerodhaRef = deriveSeedSummary(ZERODHA_SEED);
+const combinedRef = deriveSeedSummary(ALL_SEED);
+
+/**
  * Expected invested totals for testing/verification.
- * These are REFERENCE values only — production always calculates from holdings.
+ * Derived dynamically from holding rows — never hardcoded independently.
  */
 export const JOTHIKA_REFERENCE = {
-  groww: {
-    invested: 4938.94,
-    currentValue: 6303.06,
-    totalPL: 1364.12,
-    positionCount: 6,
-  },
-  zerodha: {
-    invested: 26460.48,
-    currentValue: 22313.54,
-    totalPL: -4146.95,
-    positionCount: 12,
-  },
-  combined: {
-    invested: 31399.42,
-    currentValue: 28616.60,
-    totalPL: -2782.82,
-    positionCount: 18,
-  },
+  groww: growwRef,
+  zerodha: zerodhaRef,
+  combined: combinedRef,
 } as const;
+

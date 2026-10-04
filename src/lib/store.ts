@@ -14,6 +14,7 @@ import type {
   AssetType,
   InvestmentTxType,
   MarketStatus,
+  BrokerSource,
 } from './types';
 import { SCHEMA_VERSION, STORAGE_KEY, createInitialData } from './defaults';
 import { mergeDeep } from './merge';
@@ -716,12 +717,15 @@ function normalizeInvestmentHoldings(list: unknown): AppData['investmentHoldings
   if (!Array.isArray(list)) return [];
   const seen = new Set<string>();
   const out: NonNullable<AppData['investmentHoldings']> = [];
+  const BROKERS = new Set<string>(['GROWW', 'ZERODHA', 'MANUAL', 'OTHER']);
   for (const raw of list) {
     if (!raw || typeof raw !== 'object') continue;
     const r = raw as Record<string, unknown>;
     const instrumentId = typeof r.instrumentId === 'string' ? r.instrumentId : '';
     if (!instrumentId) continue;
-    const id = typeof r.id === 'string' && r.id ? r.id : `hld-${instrumentId}`;
+    const sourceStr = typeof r.source === 'string' ? r.source.toUpperCase() : 'MANUAL';
+    const source: BrokerSource = BROKERS.has(sourceStr) ? (sourceStr as BrokerSource) : 'MANUAL';
+    const id = typeof r.id === 'string' && r.id ? r.id : `hld-${source}-${instrumentId}`;
     if (seen.has(id)) continue;
     seen.add(id);
     const quantity = typeof r.quantity === 'number' && Number.isFinite(r.quantity) && r.quantity >= 0 ? r.quantity : 0;
@@ -729,6 +733,22 @@ function normalizeInvestmentHoldings(list: unknown): AppData['investmentHoldings
     const investedAmount = typeof r.investedAmount === 'number' && Number.isFinite(r.investedAmount) && r.investedAmount >= 0
       ? r.investedAmount
       : quantity * averageCost;
+    const sourceKey = typeof r.sourceKey === 'string' && r.sourceKey ? r.sourceKey : undefined;
+    const snapshotPrice = typeof r.snapshotPrice === 'number' && Number.isFinite(r.snapshotPrice) && r.snapshotPrice > 0
+      ? r.snapshotPrice
+      : undefined;
+    const previousClose = typeof r.previousClose === 'number' && Number.isFinite(r.previousClose) && r.previousClose > 0
+      ? r.previousClose
+      : undefined;
+    const snapshotDayChange = typeof r.snapshotDayChange === 'number' && Number.isFinite(r.snapshotDayChange)
+      ? r.snapshotDayChange
+      : undefined;
+    const snapshotDayChangePct = typeof r.snapshotDayChangePct === 'number' && Number.isFinite(r.snapshotDayChangePct)
+      ? r.snapshotDayChangePct
+      : undefined;
+    const snapshotTimestamp = typeof r.snapshotTimestamp === 'string' ? r.snapshotTimestamp : undefined;
+    const snapshotStatus = typeof r.snapshotStatus === 'string' ? r.snapshotStatus : undefined;
+
     out.push({
       id,
       instrumentId,
@@ -737,6 +757,14 @@ function normalizeInvestmentHoldings(list: unknown): AppData['investmentHoldings
       investedAmount,
       openedAt: typeof r.openedAt === 'string' ? r.openedAt : new Date().toISOString().slice(0, 10),
       updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString(),
+      source,
+      sourceKey,
+      snapshotPrice,
+      previousClose,
+      snapshotDayChange,
+      snapshotDayChangePct,
+      snapshotTimestamp,
+      snapshotStatus,
     });
   }
   return out;
@@ -816,9 +844,18 @@ function normalizeCachedMarketQuotes(obj: unknown): AppData['cachedMarketQuotes'
     const q = value as Record<string, unknown>;
     const symbol = typeof q.symbol === 'string' ? q.symbol.toUpperCase() : key.toUpperCase();
     const price = typeof q.price === 'number' && Number.isFinite(q.price) ? q.price : 0;
-    const previousClose = typeof q.previousClose === 'number' && Number.isFinite(q.previousClose) ? q.previousClose : price;
-    const dayChange = typeof q.dayChange === 'number' && Number.isFinite(q.dayChange) ? q.dayChange : price - previousClose;
-    const dayChangePercent = typeof q.dayChangePercent === 'number' && Number.isFinite(q.dayChangePercent) ? q.dayChangePercent : 0;
+    const previousClose = typeof q.previousClose === 'number' && Number.isFinite(q.previousClose) && q.previousClose > 0
+      ? q.previousClose
+      : undefined;
+    const hasDayChange = typeof q.dayChange === 'number' && Number.isFinite(q.dayChange)
+      ? true
+      : (previousClose !== undefined);
+    const dayChange = typeof q.dayChange === 'number' && Number.isFinite(q.dayChange)
+      ? q.dayChange
+      : (previousClose !== undefined ? price - previousClose : undefined);
+    const dayChangePercent = typeof q.dayChangePercent === 'number' && Number.isFinite(q.dayChangePercent)
+      ? q.dayChangePercent
+      : (previousClose !== undefined && previousClose > 0 && dayChange !== undefined ? ((dayChange / previousClose) * 100) : undefined);
     const marketStatus = STATUSES.has(q.marketStatus as MarketStatus) ? (q.marketStatus as MarketStatus) : 'Unavailable';
     out[key] = {
       instrumentId: typeof q.instrumentId === 'string' ? q.instrumentId : undefined,
@@ -827,11 +864,16 @@ function normalizeCachedMarketQuotes(obj: unknown): AppData['cachedMarketQuotes'
       previousClose,
       dayChange,
       dayChangePercent,
+      hasDayChange,
       currency: typeof q.currency === 'string' && q.currency ? q.currency.toUpperCase() : 'INR',
       marketStatus,
+      marketState: typeof q.marketState === 'string' ? (q.marketState as any) : undefined,
+      dataQuality: typeof q.dataQuality === 'string' ? (q.dataQuality as any) : undefined,
       provider: typeof q.provider === 'string' ? q.provider : 'cache',
       timestamp: typeof q.timestamp === 'string' ? q.timestamp : new Date().toISOString(),
+      sourceTimestamp: typeof q.sourceTimestamp === 'string' ? q.sourceTimestamp : undefined,
       isDelayed: q.isDelayed === true,
+      isCached: q.isCached === true,
     };
   }
   return out;
@@ -860,6 +902,9 @@ export function normalizeData(cached: AppData): AppData {
   cached.investmentTransactions = normalizeInvestmentTransactions(cached.investmentTransactions);
   cached.investmentPlans = normalizeInvestmentPlans(cached.investmentPlans);
   cached.cachedMarketQuotes = normalizeCachedMarketQuotes(cached.cachedMarketQuotes);
+  if (typeof cached.investmentMigrationVersion === 'number') {
+    cached.investmentMigrationVersion = cached.investmentMigrationVersion;
+  }
   if (!cached.settings.automation || typeof cached.settings.automation !== 'object') cached.settings.automation = {};
   if (!cached.periodReviews || typeof cached.periodReviews !== 'object') cached.periodReviews = {};
   cached.periodReviews = normalizePeriodReviews(cached.periodReviews);

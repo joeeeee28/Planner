@@ -930,6 +930,8 @@ export interface AppData {
   investmentTransactions?: InvestmentTransaction[];
   /** Planned upcoming investments (V5) — additive. */
   investmentPlans?: InvestmentPlan[];
+  /** Investment migration version (V5 Phase 24) — tracks one-time migration. */
+  investmentMigrationVersion?: number;
   /** Normalized cached market quotes keyed by symbol/id (V5) — additive. */
   cachedMarketQuotes?: Record<string, MarketQuote>;
   /** Timestamp of last market data refresh (V5) — additive. */
@@ -1239,6 +1241,16 @@ export interface InvestmentHolding {
    * e.g. 'GROWW:ADANI_POWER', 'ZERODHA:COALINDIA'
    */
   sourceKey?: string;
+  /** Previous close price for day P&L calculations (if available from broker/snapshot) */
+  previousClose?: number;
+  /** Explicit snapshot day change (if available from broker/snapshot) */
+  snapshotDayChange?: number;
+  /** Explicit snapshot day change percentage */
+  snapshotDayChangePct?: number;
+  /** Snapshot capture timestamp */
+  snapshotTimestamp?: string;
+  /** Snapshot status string e.g. 'IMPORTED_SNAPSHOT' */
+  snapshotStatus?: string;
 }
 
 export type InvestmentTxType = 'BUY' | 'SELL' | 'DIVIDEND' | 'SPLIT' | 'BONUS' | 'ADJUSTMENT';
@@ -1293,9 +1305,15 @@ export interface MarketQuote {
   symbol: string;
   exchange?: string;
   price: number;
-  previousClose: number;
-  dayChange: number;
-  dayChangePercent: number;
+  previousClose?: number;
+  dayChange?: number;
+  dayChangePercent?: number;
+  hasDayChange?: boolean;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
+  status?: string;
   currency: string;
   marketStatus: MarketStatus;
   marketState?: IndianMarketState;

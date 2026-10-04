@@ -40,6 +40,7 @@ import type {
   InvestmentTransaction,
   InvestmentTxType,
   BrokerSource,
+  MarketQuote,
 } from '../lib/types';
 import { uid } from '../lib/uid';
 import { Modal } from '../components/ui';
@@ -308,15 +309,27 @@ function HoldingDetailDrawer({
                 </div>
                 <div className="v5-sheet-metric-box">
                   <div className="v5-sheet-metric-lbl">Day P&L</div>
-                  <div className={`v5-sheet-metric-val t-num ${dayChange >= 0 ? 'text-pos' : 'text-neg'}`}>
-                    {dayChange >= 0 ? '+' : ''}{maskValue(fmt(dayChange), hidden)}
-                  </div>
+                  {metric.hasDayChange ? (
+                    <div className={`v5-sheet-metric-val t-num ${dayChange >= 0 ? 'text-pos' : 'text-neg'}`}>
+                      {dayChange >= 0 ? '+' : ''}{maskValue(fmt(dayChange), hidden)}
+                    </div>
+                  ) : (
+                    <div className="v5-sheet-metric-val" style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+                      Unavailable
+                    </div>
+                  )}
                 </div>
                 <div className="v5-sheet-metric-box">
                   <div className="v5-sheet-metric-lbl">Day Movement</div>
-                  <div className={`v5-sheet-metric-val t-num ${dayChangePercent >= 0 ? 'text-pos' : 'text-neg'}`}>
-                    {pct(dayChangePercent)}
-                  </div>
+                  {metric.hasDayChange ? (
+                    <div className={`v5-sheet-metric-val t-num ${dayChangePercent >= 0 ? 'text-pos' : 'text-neg'}`}>
+                      {pct(dayChangePercent)}
+                    </div>
+                  ) : (
+                    <div className="v5-sheet-metric-val" style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+                      Unavailable
+                    </div>
+                  )}
                 </div>
                 <div className="v5-sheet-metric-box">
                   <div className="v5-sheet-metric-lbl">Cost Basis</div>
@@ -768,12 +781,20 @@ function AllHoldingsTable({
 
                   {/* TODAY */}
                   <td style={{ padding: '9px 10px', textAlign: 'right' }}>
-                    <div style={{ color: plColor(m.dayChange) }}>
-                      {m.dayChange >= 0 ? '+' : ''}{maskValue(fmt(m.dayChange), hidden)}
-                    </div>
-                    <div style={{ fontSize: 11, color: plColor(m.dayChangePercent) }}>
-                      {pct(m.dayChangePercent)}
-                    </div>
+                    {m.hasDayChange ? (
+                      <>
+                        <div style={{ color: plColor(m.dayChange) }}>
+                          {m.dayChange >= 0 ? '+' : ''}{maskValue(fmt(m.dayChange), hidden)}
+                        </div>
+                        <div style={{ fontSize: 11, color: plColor(m.dayChangePercent) }}>
+                          {pct(m.dayChangePercent)}
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>
+                        Unavailable
+                      </div>
+                    )}
                   </td>
 
                   {/* INVESTED */}
@@ -812,8 +833,14 @@ function AllHoldingsTable({
                         <td style={{ textAlign: 'right' }}>{sib.quantity}</td>
                         <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.averageCost), hidden)}</td>
                         <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.currentPrice), hidden)}</td>
-                        <td style={{ textAlign: 'right', color: plColor(sib.dayChange) }}>
-                          {sib.dayChange >= 0 ? '+' : ''}{maskValue(fmt(sib.dayChange), hidden)}
+                        <td style={{ textAlign: 'right' }}>
+                          {sib.hasDayChange ? (
+                            <span style={{ color: plColor(sib.dayChange) }}>
+                              {sib.dayChange >= 0 ? '+' : ''}{maskValue(fmt(sib.dayChange), hidden)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--ink-2)' }}>—</span>
+                          )}
                         </td>
                         <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.investedAmount), hidden)}</td>
                         <td style={{ textAlign: 'right' }}>{maskValue(fmt(sib.currentValue), hidden)}</td>
@@ -1047,9 +1074,15 @@ function MobileHoldingCard({
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Day P&L</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: plColor(dayChange), fontVariantNumeric: 'tabular-nums' }}>
-            {maskValue(fmt(dayChange), hidden)} <span style={{ fontWeight: 400, fontSize: 11 }}>({pct(dayChangePercent)})</span>
-          </div>
+          {metric.hasDayChange ? (
+            <div style={{ fontSize: 13, fontWeight: 600, color: plColor(dayChange), fontVariantNumeric: 'tabular-nums' }}>
+              {maskValue(fmt(dayChange), hidden)} <span style={{ fontWeight: 400, fontSize: 11 }}>({pct(dayChangePercent)})</span>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--ink-2)', fontVariantNumeric: 'tabular-nums' }}>
+              Unavailable
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1307,6 +1340,212 @@ function AddTransactionModal({
   );
 }
 
+// ── Live Market Viewer (Section 24) ──────────────────────────────────────────
+
+function LiveMarketViewer({
+  marketStatus,
+  marketBadge,
+  quotes,
+  metrics,
+  hidden,
+  onSelectHolding,
+  isRefreshing,
+  onRefresh,
+}: {
+  marketStatus: MarketStatusResult | null;
+  marketBadge: { badge: string; label: string; icon: string; color: string; bgColor: string; borderColor: string };
+  quotes: Record<string, MarketQuote>;
+  metrics: CalculatedHoldingMetric[];
+  hidden: boolean;
+  onSelectHolding: (m: CalculatedHoldingMetric) => void;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const niftyQuote = quotes['NIFTY50'] ?? quotes['^NSEI'];
+  const sensexQuote = quotes['SENSEX'] ?? quotes['^BSESN'];
+  const bankNiftyQuote = quotes['BANKNIFTY'] ?? quotes['^NSEBANK'];
+
+  const indices = [
+    { name: 'NIFTY 50', exchange: 'NSE', quote: niftyQuote },
+    { name: 'SENSEX', exchange: 'BSE', quote: sensexQuote },
+    { name: 'BANK NIFTY', exchange: 'NSE', quote: bankNiftyQuote },
+  ];
+
+  return (
+    <div
+      className="v5-market-viewer"
+      style={{
+        marginBottom: 20,
+        background: 'var(--surface, rgba(255, 255, 255, 0.02))',
+        border: '1px solid var(--line, rgba(255, 255, 255, 0.08))',
+        borderRadius: 'var(--r-md, 12px)',
+        padding: '16px 20px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: collapsed ? 0 : 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink)' }}>
+              LIVE MARKET
+            </span>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: marketBadge.bgColor,
+                color: marketBadge.color,
+                border: `1px solid ${marketBadge.borderColor}`,
+              }}
+            >
+              <span>{marketBadge.icon}</span> <span>{marketBadge.label}</span>
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 3 }}>
+            {marketStatus?.message ?? 'Exchange Session: Regular trading hours 09:15 – 15:30 IST'}
+            {marketStatus?.nextOpenTime && ` · Opens at ${marketStatus.nextOpenTime}`}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            className="btn btn-secondary btn-xs"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <span>{isRefreshing ? '🔄' : '⚡'}</span>
+            <span>{isRefreshing ? 'Refreshing…' : 'Refresh Quotes'}</span>
+          </button>
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label="Toggle Live Market Watch view"
+          >
+            {collapsed ? '▼ Expand' : '▲ Collapse'}
+          </button>
+        </div>
+      </div>
+
+      {!collapsed && (
+        <>
+          {/* Indices Cards */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            {indices.map((idx) => {
+              const q = idx.quote;
+              const hasQuote = q && Number.isFinite(q.price) && q.price > 0;
+              const dayChange = q?.dayChange ?? 0;
+              const dayChangePct = q?.dayChangePercent ?? 0;
+              const hasDayChange = q?.hasDayChange ?? (q?.previousClose != null && q.previousClose > 0);
+
+              return (
+                <div
+                  key={idx.name}
+                  style={{
+                    background: 'var(--surface-2, rgba(255, 255, 255, 0.04))',
+                    border: '1px solid var(--line, rgba(255, 255, 255, 0.06))',
+                    borderRadius: 'var(--r-sm, 8px)',
+                    padding: '12px 14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{idx.name}</span>
+                    <span style={{ fontSize: 10, color: 'var(--ink-3)', padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.06)' }}>
+                      {idx.exchange}
+                    </span>
+                  </div>
+                  {hasQuote ? (
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--ink)' }}>
+                        {maskValue(`₹${q.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, hidden)}
+                      </div>
+                      <div style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', marginTop: 2, color: dayChange >= 0 ? '#10b981' : '#ef4444' }}>
+                        {hasDayChange ? (
+                          <>
+                            {dayChange >= 0 ? '+' : ''}{dayChange.toFixed(2)} ({dayChange >= 0 ? '+' : ''}{dayChangePct.toFixed(2)}%)
+                          </>
+                        ) : (
+                          <span style={{ color: 'var(--ink-2)' }}>Day change unavailable</span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '8px 0' }}>
+                      Quote pending / unconfigured
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* MY HOLDINGS LIVE STREAM */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-2)', marginBottom: 8 }}>
+              MY HOLDINGS LIVE STREAM
+            </div>
+            <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--line, rgba(255,255,255,0.06))' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-2, rgba(255,255,255,0.04))', borderBottom: '1px solid var(--line)' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--ink-2)' }}>Instrument</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--ink-2)' }}>Broker</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--ink-2)' }}>LTP</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--ink-2)' }}>Day %</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--ink-2)' }}>Day P&L</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--ink-2)' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metrics.map((m) => (
+                    <tr
+                      key={m.holding.id}
+                      onClick={() => onSelectHolding(m)}
+                      style={{ borderBottom: '1px solid var(--line, rgba(255,255,255,0.04))', cursor: 'pointer' }}
+                    >
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>
+                        {m.instrument.symbol}
+                        <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--ink-2)', marginLeft: 6 }}>{m.instrument.name}</span>
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <SourceBadge source={m.source} />
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                        {maskValue(fmt(m.currentPrice), hidden)}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: plColor(m.dayChangePercent) }}>
+                        {m.hasDayChange ? pct(m.dayChangePercent) : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: plColor(m.dayChange) }}>
+                        {m.hasDayChange ? `${m.dayChange >= 0 ? '+' : ''}${maskValue(fmt(m.dayChange), hidden)}` : 'Unavailable'}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                        <PriceLabel hasLiveQuote={m.hasLiveQuote} isDelayed={m.isDelayed} isSnapshot={m.isSnapshot} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main Investments Page ───────────────────────────────────────────────────
 
 export function InvestmentsPage() {
@@ -1399,10 +1638,21 @@ export function InvestmentsPage() {
     try {
       const status = await provider.getMarketStatus('NSE');
       setMarketStatus(status);
-      const symbolList = holdings.map((h) => {
-        const inst = instruments.find((i) => i.id === h.instrumentId);
-        return inst ? { symbol: inst.symbol, exchange: inst.exchange, instrumentId: inst.id } : null;
-      }).filter((x): x is NonNullable<typeof x> => x !== null);
+
+      // Include major market indices and portfolio holdings
+      const indexList = [
+        { symbol: 'NIFTY50', exchange: 'NSE' },
+        { symbol: 'SENSEX', exchange: 'BSE' },
+        { symbol: 'BANKNIFTY', exchange: 'NSE' },
+      ];
+
+      const symbolList = [
+        ...indexList,
+        ...holdings.map((h) => {
+          const inst = instruments.find((i) => i.id === h.instrumentId);
+          return inst ? { symbol: inst.symbol, exchange: inst.exchange, instrumentId: inst.id } : null;
+        }).filter((x): x is NonNullable<typeof x> => x !== null),
+      ];
 
       if (symbolList.length > 0) {
         const { quotes: nextQuotes, isOffline: offlineState, hasErrors } = await fetchQuotesWithFallback(symbolList, quotes, provider);
@@ -1782,9 +2032,15 @@ export function InvestmentsPage() {
 
           <div className="v5-wealth-stat">
             <span className="v5-wealth-stat-label">Today's P&L</span>
-            <span className={`v5-wealth-stat-val t-num ${kpi.todayChange >= 0 ? 'text-pos' : 'text-neg'}`}>
-              {kpi.todayChange >= 0 ? '+' : ''}{maskValue(fmt(kpi.todayChange), hidden)} ({pct(kpi.todayChangePercent)})
-            </span>
+            {kpi.hasDayChange ? (
+              <span className={`v5-wealth-stat-val t-num ${kpi.todayChange >= 0 ? 'text-pos' : 'text-neg'}`}>
+                {kpi.todayChange >= 0 ? '+' : ''}{maskValue(fmt(kpi.todayChange), hidden)} ({pct(kpi.todayChangePercent)})
+              </span>
+            ) : (
+              <span className="v5-wealth-stat-val" style={{ color: 'var(--ink-2)', fontSize: 13 }}>
+                Day change unavailable
+              </span>
+            )}
           </div>
 
           <div className="v5-wealth-stat">
@@ -1860,6 +2116,18 @@ export function InvestmentsPage() {
           </div>
         </div>
       )}
+
+      {/* ── Live Market Viewer (Section 24) ── */}
+      <LiveMarketViewer
+        marketStatus={marketStatus}
+        marketBadge={marketBadge}
+        quotes={quotes}
+        metrics={activePortfolio.metrics}
+        hidden={hidden}
+        onSelectHolding={(m) => setSelectedMetric(m)}
+        isRefreshing={isRefreshing}
+        onRefresh={refreshMarketData}
+      />
 
       {/* ── Segmented Broker Tabs (ALL, GROWW, ZERODHA) ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>

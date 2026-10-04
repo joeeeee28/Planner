@@ -164,6 +164,27 @@ export const VERIFIED_INSTRUMENTS: Record<string, InstrumentMapping> = {
     assetType: 'STOCK',
     providerTicker: 'VOGL.NS',
   },
+  NIFTY50: {
+    symbol: 'NIFTY50',
+    exchange: 'NSE',
+    name: 'NIFTY 50',
+    assetType: 'INDEX',
+    providerTicker: '^NSEI',
+  },
+  SENSEX: {
+    symbol: 'SENSEX',
+    exchange: 'BSE',
+    name: 'S&P BSE SENSEX',
+    assetType: 'INDEX',
+    providerTicker: '^BSESN',
+  },
+  BANKNIFTY: {
+    symbol: 'BANKNIFTY',
+    exchange: 'NSE',
+    name: 'NIFTY BANK',
+    assetType: 'INDEX',
+    providerTicker: '^NSEBANK',
+  },
 };
 
 // ── Market Schedule (Indian Standard Time) ───────────────────────────────────

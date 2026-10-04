@@ -83,6 +83,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_MARKET_DATA_BACKEND: ${{ secrets.VITE_MARKET_DATA_BACKEND }}
+          VITE_JOTHIKA_USER_ID: ${{ secrets.VITE_JOTHIKA_USER_ID }}
         run: npm run build
 
       - name: Add .nojekyll (Vite does not emit it)

@@ -46,7 +46,7 @@ import { cacheKeyFor, writeUserCache, readMeta, writeMeta } from '../lib/cloudDa
 import { hasMeaningfulData, migrateLocalToCloud, markMigrationSkipped, type MigrationOutcome } from '../lib/migrate';
 import { createInitialData } from '../lib/defaults';
 import { mergeDeep } from '../lib/merge';
-import { maybeInitJothikaPortfolio } from '../lib/investmentSeed';
+import { migrateInvestments } from '../lib/investmentSeed';
 
 const LOCAL_KEY = 'growth-os.v1';
 
@@ -178,15 +178,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         writeUserCache(uid, doc);
         setSync({ status: 'synced', lastSyncAt: new Date().toISOString(), pending: false, failures: 0 });
 
-        // ── Jothika portfolio seed (idempotent) ──────────────────────────
-        // Runs only when userId === VITE_JOTHIKA_USER_ID.
-        // Safe to call every login — returns null if all positions exist.
-        const seeded = maybeInitJothikaPortfolio(uid, doc);
-        if (seeded) {
-          dataRef.current = seeded;
-          setData(seeded);
-          writeUserCache(uid, seeded);
-          queue.enqueue(seeded);
+        // ── Investment portfolio versioned migration (one-time) ─────────
+        // Executes only when investmentMigrationVersion < 1.
+        // User state is strictly authoritative once migrated.
+        const migrated = migrateInvestments(uid, doc);
+        if (migrated) {
+          dataRef.current = migrated;
+          setData(migrated);
+          writeUserCache(uid, migrated);
+          queue.enqueue(migrated);
         }
       } else if (remoteRes.ok && !remoteRes.data) {
         // remote empty → maybe offer migration of the legacy local doc
@@ -198,14 +198,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         setSync({ status: 'synced', lastSyncAt: readMeta().lastSyncAt ?? new Date().toISOString(), pending: false, failures: 0 });
 
-        // ── Jothika portfolio seed for new/empty cloud documents ─────────
+        // ── Investment portfolio migration for new/empty cloud documents ─
         const freshDoc = dataRef.current;
-        const seededFresh = maybeInitJothikaPortfolio(uid, freshDoc);
-        if (seededFresh) {
-          dataRef.current = seededFresh;
-          setData(seededFresh);
-          writeUserCache(uid, seededFresh);
-          if (queueRef.current) queueRef.current.enqueue(seededFresh);
+        const migratedFresh = migrateInvestments(uid, freshDoc);
+        if (migratedFresh) {
+          dataRef.current = migratedFresh;
+          setData(migratedFresh);
+          writeUserCache(uid, migratedFresh);
+          if (queueRef.current) queueRef.current.enqueue(migratedFresh);
         }
       } else {
         // network failure: cache is authoritative for now

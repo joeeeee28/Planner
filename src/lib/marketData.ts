@@ -74,7 +74,9 @@ export class UnconfiguredMarketProvider implements MarketDataProvider {
 export class ProductionMarketProvider implements MarketDataProvider {
   readonly id: string = 'production-market';
   readonly name: string = 'Production Market Provider (NSE/BSE)';
-  readonly isConfigured = true;
+  get isConfigured(): boolean {
+    return Boolean(this.backendUrl && this.backendUrl.trim().length > 0);
+  }
 
   private backendUrl: string;
   private inFlightQuotes = new Map<string, Promise<Record<string, MarketQuote>>>();

@@ -26,6 +26,8 @@ export interface CalculatedHoldingMetric {
   returnPct: number;
   dayChange: number;
   dayChangePercent: number;
+  hasDayChange: boolean;
+  dayChangeUnavailable: boolean;
   hasLiveQuote: boolean;
   isDelayed: boolean;
   quoteUnavailable: boolean;
@@ -42,6 +44,8 @@ export interface PortfolioSummary {
   totalReturnPct: number;
   todayChange: number;
   todayChangePercent: number;
+  hasDayChange: boolean;
+  dayChangeUnavailable: boolean;
   holdingsCount: number;
   metrics: CalculatedHoldingMetric[];
   hasUnavailableQuotes: boolean;
@@ -155,11 +159,30 @@ export function calculateHoldingMetrics(
   const pl = currentValue - investedAmount;
   const returnPct = investedAmount > 0 ? (pl / investedAmount) * 100 : 0;
 
-  const dayChange = quote && Number.isFinite(quote.dayChange) ? quote.dayChange * quantity : 0;
-  const dayChangePercent = quote && Number.isFinite(quote.dayChangePercent) ? quote.dayChangePercent : 0;
+  // Truthful day change evaluation (P1-003):
+  // Never fabricate ₹0.00 if previous close is missing.
+  let hasDayChange = false;
+  let dayChange = 0;
+  let dayChangePercent = 0;
+
+  if (quote && typeof quote.dayChange === 'number' && Number.isFinite(quote.dayChange)) {
+    hasDayChange = true;
+    dayChange = quote.dayChange * quantity;
+    dayChangePercent = typeof quote.dayChangePercent === 'number' && Number.isFinite(quote.dayChangePercent)
+      ? quote.dayChangePercent
+      : 0;
+  } else if (holding.snapshotDayChange !== undefined && Number.isFinite(holding.snapshotDayChange)) {
+    hasDayChange = true;
+    dayChange = holding.snapshotDayChange * quantity;
+    dayChangePercent = holding.snapshotDayChangePct ?? 0;
+  } else if (holding.previousClose !== undefined && Number.isFinite(holding.previousClose) && holding.previousClose > 0) {
+    hasDayChange = true;
+    dayChange = (currentPrice - holding.previousClose) * quantity;
+    dayChangePercent = ((currentPrice - holding.previousClose) / holding.previousClose) * 100;
+  }
+
   const isDelayed = quote?.isDelayed === true;
   const quoteUnavailable = !hasQuote && !hasSnapshot;
-
   const source: BrokerSource = holding.source ?? 'MANUAL';
 
   return {
@@ -174,6 +197,8 @@ export function calculateHoldingMetrics(
     returnPct,
     dayChange,
     dayChangePercent,
+    hasDayChange,
+    dayChangeUnavailable: !hasDayChange,
     hasLiveQuote: hasQuote,
     isDelayed,
     quoteUnavailable,
@@ -184,6 +209,13 @@ export function calculateHoldingMetrics(
 
 /**
  * Calculate full portfolio summary from holdings, instruments, and quotes.
+ *
+ * SECTION 14 ROUNDING RULE:
+ * Never store an independently maintained portfolio P&L total if it can be derived.
+ * totalInvested = sum(investedAmount)
+ * totalCurrent = sum(currentValue)
+ * totalPnl = totalCurrent − totalInvested
+ * returnPct = (totalPnl / totalInvested) × 100
  */
 export function calculatePortfolioSummary(
   holdings: InvestmentHolding[],
@@ -200,6 +232,7 @@ export function calculatePortfolioSummary(
   let totalCurrentValue = 0;
   let todayChange = 0;
   let hasUnavailableQuotes = false;
+  let hasAnyDayChange = false;
 
   for (const h of holdings) {
     if (h.quantity <= 0) continue;
@@ -214,22 +247,27 @@ export function calculatePortfolioSummary(
 
     totalInvested += m.investedAmount;
     totalCurrentValue += m.currentValue;
-    todayChange += m.dayChange;
+    if (m.hasDayChange) {
+      hasAnyDayChange = true;
+      todayChange += m.dayChange;
+    }
     if (m.quoteUnavailable) hasUnavailableQuotes = true;
   }
 
   const totalPL = totalCurrentValue - totalInvested;
   const totalReturnPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
   const prevVal = totalCurrentValue - todayChange;
-  const todayChangePercent = prevVal > 0 ? (todayChange / prevVal) * 100 : 0;
+  const todayChangePercent = hasAnyDayChange && prevVal > 0 ? (todayChange / prevVal) * 100 : 0;
 
   return {
     totalInvested,
     totalCurrentValue,
     totalPL,
     totalReturnPct,
-    todayChange,
-    todayChangePercent,
+    todayChange: hasAnyDayChange ? todayChange : 0,
+    todayChangePercent: hasAnyDayChange ? todayChangePercent : 0,
+    hasDayChange: hasAnyDayChange,
+    dayChangeUnavailable: !hasAnyDayChange,
     holdingsCount: metrics.length,
     metrics,
     hasUnavailableQuotes,

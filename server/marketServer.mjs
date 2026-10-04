@@ -24,6 +24,10 @@ export const VERIFIED_INSTRUMENTS = {
   VEDPOWER: { symbol: 'VEDPOWER', exchange: 'NSE', name: 'Vedanta Power Ltd', assetType: 'STOCK', providerTicker: 'VEDPOWER.NS' },
   VISL: { symbol: 'VISL', exchange: 'NSE', name: 'Vedanta Iron & Steel Ltd', assetType: 'STOCK', providerTicker: 'VISL.NS' },
   VOGL: { symbol: 'VOGL', exchange: 'NSE', name: 'Vedanta Oil and Gas Ltd', assetType: 'STOCK', providerTicker: 'VOGL.NS' },
+  // Major Indian Market Indices (Phase 24)
+  NIFTY50: { symbol: 'NIFTY50', exchange: 'NSE', name: 'NIFTY 50', assetType: 'INDEX', providerTicker: '^NSEI' },
+  SENSEX: { symbol: 'SENSEX', exchange: 'BSE', name: 'S&P BSE SENSEX', assetType: 'INDEX', providerTicker: '^BSESN' },
+  BANKNIFTY: { symbol: 'BANKNIFTY', exchange: 'NSE', name: 'NIFTY BANK', assetType: 'INDEX', providerTicker: '^NSEBANK' },
 };
 
 export function calculateIndianMarketStatus(date = new Date(), exchange = 'NSE') {
@@ -339,5 +343,49 @@ export async function handleMarketApiRequest(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === '/health' && req.method === 'GET') {
+    json(200, { ok: true, service: 'Growth OS V5 Market Data Engine', timestamp: new Date().toISOString() });
+    return true;
+  }
+
   return false;
+}
+
+// ── Standalone CLI Runner ──────────────────────────────────────────────────
+import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
+
+const isMainModule = process.argv[1] && (
+  process.argv[1].endsWith('marketServer.mjs') ||
+  fileURLToPath(import.meta.url) === process.argv[1]
+);
+
+if (isMainModule) {
+  const PORT = Number(process.env.PORT || process.env.MARKET_PORT || 3002);
+  const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+
+  const server = createServer(async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204).end();
+      return;
+    }
+
+    const host = req.headers.host || `localhost:${PORT}`;
+    const url = new URL(req.url, `http://${host}`);
+    const pathname = url.pathname;
+
+    const handled = await handleMarketApiRequest(req, res, pathname, url);
+    if (!handled) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Endpoint not found' }));
+    }
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Growth OS V5 Market Server listening on http://0.0.0.0:${PORT}`);
+  });
 }

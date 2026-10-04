@@ -7,6 +7,7 @@ import type {
   AppData,
   InvestmentInstrument,
   InvestmentTransaction,
+  BrokerSource,
 } from './types';
 import { uid } from './uid';
 import { parseCsv } from './importMigrationEngine';
@@ -377,10 +378,39 @@ export function buildInvestmentImportPreview(
 /**
  * Execute investment import and produce updated AppData without mutating finances.
  */
+export function normalizeBrokerSource(raw?: string): BrokerSource {
+  if (!raw) return 'MANUAL';
+  const clean = raw.trim().toUpperCase();
+  if (clean.includes('GROWW')) return 'GROWW';
+  if (clean.includes('ZERODHA') || clean.includes('KITE')) return 'ZERODHA';
+  if (clean.includes('MANUAL')) return 'MANUAL';
+  return 'OTHER';
+}
+
+/**
+ * Execute investment import and produce updated AppData without mutating finances.
+ *
+ * CANONICAL IDENTITY RULE (P0-004):
+ * Positions are identified by (instrumentId, broker/source).
+ * GROWW / TATAGOLD and ZERODHA / TATAGOLD are two distinct, independent positions.
+ *
+ * DIFF / IDEMPOTENCY RULE:
+ * Distinguishes NEW, UPDATED, and UNCHANGED positions.
+ * Re-importing identical holdings reconciles cleanly without multiplying positions.
+ */
 export function executeInvestmentImport(
   data: AppData,
   preview: InvestmentImportPreview
-): { ok: boolean; nextData: AppData; createdCount: number; updatedCount: number; error?: string } {
+): {
+  ok: boolean;
+  nextData: AppData;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  duplicateCount: number;
+  invalidCount: number;
+  error?: string;
+} {
   const next: AppData = structuredClone(data);
   next.investmentInstruments = next.investmentInstruments ?? [];
   next.investmentHoldings = next.investmentHoldings ?? [];
@@ -389,6 +419,9 @@ export function executeInvestmentImport(
 
   let createdCount = 0;
   let updatedCount = 0;
+  let unchangedCount = 0;
+  let duplicateCount = 0;
+  const invalidCount = preview.invalidRows ?? 0;
 
   if (preview.mode === 'current-holdings' && preview.parsedHoldings) {
     for (const row of preview.parsedHoldings) {
@@ -416,48 +449,83 @@ export function executeInvestmentImport(
         if (row.name && inst.name === inst.symbol) inst.name = row.name;
       }
 
-      // 2. Find or create holding directly (IMPORT AS CURRENT HOLDINGS)
-      // DO NOT invent historical transactions!
-      const existingHoldingIdx = next.investmentHoldings.findIndex((h) => h.instrumentId === inst!.id);
+      // 2. Canonical source-aware holding lookup (userId + source + instrument + exchange)
+      const targetSource: BrokerSource = normalizeBrokerSource(row.broker);
+      const targetSourceKey = `${targetSource}:${inst.symbol.toUpperCase()}`;
+
+      // A holding matches ONLY if it belongs to the same broker/source AND instrument
+      const existingHoldingIdx = next.investmentHoldings.findIndex(
+        (h) =>
+          (h.instrumentId === inst!.id && (h.source ?? 'MANUAL') === targetSource) ||
+          (h.sourceKey && h.sourceKey === targetSourceKey)
+      );
+
       if (existingHoldingIdx >= 0) {
-        next.investmentHoldings[existingHoldingIdx] = {
-          ...next.investmentHoldings[existingHoldingIdx],
-          quantity: row.quantity,
-          averageCost: row.averageCost,
-          investedAmount: row.investedAmount,
-          updatedAt: new Date().toISOString(),
-        };
-        updatedCount++;
+        const existing = next.investmentHoldings[existingHoldingIdx];
+        const isUnchanged =
+          existing.quantity === row.quantity &&
+          Math.abs(existing.averageCost - row.averageCost) < 0.001 &&
+          Math.abs(existing.investedAmount - row.investedAmount) < 0.01;
+
+        if (isUnchanged) {
+          unchangedCount++;
+          // Preserve existing snapshot price or update if provided
+          if (row.currentPrice && row.currentPrice > 0) {
+            existing.snapshotPrice = row.currentPrice;
+          }
+        } else {
+          next.investmentHoldings[existingHoldingIdx] = {
+            ...existing,
+            quantity: row.quantity,
+            averageCost: row.averageCost,
+            investedAmount: row.investedAmount,
+            snapshotPrice: row.currentPrice ?? existing.snapshotPrice,
+            source: targetSource,
+            sourceKey: targetSourceKey,
+            updatedAt: new Date().toISOString(),
+          };
+          updatedCount++;
+        }
       } else {
+        // Create new holding with explicit broker source and snapshot metadata
         next.investmentHoldings.push({
           id: uid('hld'),
           instrumentId: inst.id,
           quantity: row.quantity,
           averageCost: row.averageCost,
           investedAmount: row.investedAmount,
+          source: targetSource,
+          sourceKey: targetSourceKey,
+          snapshotPrice: row.currentPrice,
+          snapshotStatus: 'IMPORTED_SNAPSHOT',
           openedAt: row.openedAt || new Date().toISOString().slice(0, 10),
           updatedAt: new Date().toISOString(),
         });
         createdCount++;
       }
 
-      // 3. Update cached quote if provided
+      // 3. Update cached quote if provided — NEVER fabricate previousClose from averageCost!
       if (row.currentPrice && row.currentPrice > 0) {
         const quoteKey = inst.symbol.toUpperCase();
-        const prevClose = row.averageCost > 0 ? row.averageCost : row.currentPrice;
-        next.cachedMarketQuotes[quoteKey] = {
-          instrumentId: inst.id,
-          symbol: inst.symbol,
-          price: row.currentPrice,
-          previousClose: prevClose,
-          dayChange: row.currentPrice - prevClose,
-          dayChangePercent: prevClose > 0 ? ((row.currentPrice - prevClose) / prevClose) * 100 : 0,
-          currency: inst.currency,
-          marketStatus: 'Delayed',
-          provider: 'import',
-          timestamp: new Date().toISOString(),
-          isDelayed: true,
-        };
+        const existingQuote = next.cachedMarketQuotes[quoteKey];
+        if (!existingQuote || existingQuote.provider === 'import' || existingQuote.dataQuality === 'IMPORTED_SNAPSHOT') {
+          next.cachedMarketQuotes[quoteKey] = {
+            instrumentId: inst.id,
+            symbol: inst.symbol,
+            exchange: inst.exchange,
+            price: row.currentPrice,
+            previousClose: undefined, // Truthful: not available in basic holdings CSV
+            dayChange: undefined,
+            dayChangePercent: undefined,
+            hasDayChange: false,
+            currency: inst.currency,
+            marketStatus: 'Delayed',
+            provider: 'import',
+            timestamp: new Date().toISOString(),
+            isDelayed: true,
+            dataQuality: 'IMPORTED_SNAPSHOT',
+          };
+        }
       }
     }
   } else if (preview.mode === 'transactions' && preview.parsedTransactions) {
@@ -501,5 +569,5 @@ export function executeInvestmentImport(
   }
 
   next.updatedAt = new Date().toISOString();
-  return { ok: true, nextData: next, createdCount, updatedCount };
+  return { ok: true, nextData: next, createdCount, updatedCount, unchangedCount, duplicateCount, invalidCount };
 }
