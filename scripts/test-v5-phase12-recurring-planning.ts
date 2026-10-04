@@ -133,7 +133,8 @@ data.settings = {
 const suggestions = suggestSlots(
   data,
   { text: 'Deep Focus Session', minutes: 60, priority: 1, after: '2026-10-06' },
-  '2026-10-06'
+  '2026-10-06',
+  540 // Deterministic test clock at 09:00 AM
 );
 assert(suggestions.length > 0, 'Scheduler returned suggestions');
 assert(suggestions[0].why.some((w) => w.includes('morning') || w.includes('focus')), 'Preference rationale included');
