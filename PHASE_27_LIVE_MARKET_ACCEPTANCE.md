@@ -8,24 +8,24 @@
 
 ## 1. Source SHA
 - **Git Branch:** `main`
-- **Main Commit HEAD:** `6c8c8fe99569e5027ca1acb7a5e2f24e6b684270`
-- **Latest Implementation Commit:** `6c8c8fe99569e5027ca1acb7a5e2f24e6b684270`
+- **Main Commit HEAD:** `d979b4cd66ab5c854c7eb0f4dda48bf524559ced`
+- **Latest Implementation Commit:** `d979b4cd66ab5c854c7eb0f4dda48bf524559ced`
 
 ## 2. Production SHA
-- **Deployed Source HEAD:** `6c8c8fe99569e5027ca1acb7a5e2f24e6b684270`
+- **Deployed Source HEAD:** `d979b4cd66ab5c854c7eb0f4dda48bf524559ced`
 - **Build Asset Chunk:** `assets/index-DF_gnRG5.js` (HTTP 200 on live domain)
 - **Investments Chunk:** `assets/Investments-D4stuwR1.js` (HTTP 200, 83,768 bytes)
 
 ## 3. Pages SHA
-- **Remote `gh-pages` Commit:** `76a53543448738b1995bc8217987c8a146eb6af8`
+- **Remote `gh-pages` Commit:** `a66610833746a2b33b2443dc97a86202783b0ce2`
 
 ## 4. GitHub Actions Run
-- **Build and Deploy Workflow Run:** `37214937501`
-- **Pages Deployment Run:** `37215176956`
+- **Build and Deploy Workflow Run:** `37215477012`
+- **Pages Deployment Run:** `37215700823`
 - **Run Conclusion:** `success` (All 22 verification, Phase 27 tests, and publishing steps green)
 
 ## 5. SHA Match
-- **Main HEAD vs Deployed Source Commit:** `6c8c8fe99569e5027ca1acb7a5e2f24e6b684270` == `6c8c8fe99569e5027ca1acb7a5e2f24e6b684270`
+- **Main HEAD vs Deployed Source Commit:** `d979b4cd66ab5c854c7eb0f4dda48bf524559ced` == `d979b4cd66ab5c854c7eb0f4dda48bf524559ced`
 - **Verdict:** **`PASS`** (Source HEAD strictly matches the deployment origin)
 
 ## 6. Portfolio Counts
