@@ -29,3 +29,30 @@ services:
         sync: false
       - key: MICROSOFT_REDIRECT_URI
         sync: false
+
+  - type: web
+    name: growth-os-market-backend
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/marketServer.mjs
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: https://joeeeee28.github.io
+      - key: MARKET_DATA_PROVIDER
+        value: yahoo
+      - key: MARKET_DATA_CACHE_TTL_MS
+        value: 30000
+      - key: KITE_API_KEY
+        sync: false
+      - key: KITE_ACCESS_TOKEN
+        sync: false
+      - key: GROWW_CONFIGURED
+        value: false

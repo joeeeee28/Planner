@@ -45,12 +45,23 @@
 - **Combined Current Snapshot:** ₹28,616.60
 - **Combined Total P&L:** -₹2,782.82 (-8.86%)
 
-## 8. Multi-Broker Verification
-- **`TATAGOLD` Groww:** 20 units @ ₹11.30 cost (Snapshot ₹14.28)
-- **`TATAGOLD` Zerodha:** 13 units @ ₹12.38 cost (Snapshot ₹14.40)
-- **`TATSILV` Groww:** 53 units @ ₹14.18 cost (Snapshot ₹12.07)
-- **`TATSILV` Zerodha:** 9 units @ ₹23.36 cost (Snapshot ₹12.07)
-- **Broker Key Collision:** Zero collisions. Key identity is strictly compound (`userId + source + exchange + instrumentId`).
+## 8. Multi-Broker Production Holdings vs Test Fixtures
+
+### A. Canonical Production Holdings
+The authentic, user-verified portfolio seeded for Jothika contains:
+- **`TATAGOLD` Groww:** 20 units @ ₹11.30 cost (Invested ₹226.00, Snapshot ₹14.28)
+- **`TATAGOLD` Zerodha:** 13 units @ ₹12.38 cost (Invested ₹160.94, Snapshot ₹14.29)
+- **`TATSILV` Groww:** 53 units @ ₹14.18 cost (Invested ₹751.54, Snapshot ₹21.20)
+- **`TATSILV` Zerodha:** 9 units @ ₹23.36 cost (Invested ₹210.23, Snapshot ₹18.77)
+
+### B. Test Fixture / Collision Test Data (Explicitly Labeled)
+The following rows previously referenced in test scripts (`scripts/test-v5-investments.ts`) are **synthetic test fixtures** created exclusively to test collision defense under varying prices:
+- *Groww TATAGOLD 22 @ ₹15.82* — **TEST FIXTURE ONLY**
+- *Zerodha TATAGOLD 36 @ ₹17.65* — **TEST FIXTURE ONLY**
+- *Groww TATSILV 25 @ ₹10.60* — **TEST FIXTURE ONLY**
+- *Zerodha TATSILV 14 @ ₹11.96* — **TEST FIXTURE ONLY**
+
+These fixture rows are never substituted for or confused with canonical production holdings.
 
 ## 9. Deletion Persistence (P0-002 Regression Check)
 - **Delete HATHWAY:** Record permanently excised from canonical collection in local persistence.
@@ -93,29 +104,63 @@
 - **Regular Hours:** 09:15 – 15:30 IST.
 - **Current Production Status:** `MARKET CLOSED` (Observed outside NSE/BSE trading window).
 
-## 18. Security Result
+## 18. Provider Research & Technical Evaluation (Step 3)
+- **Provider Selected:** Yahoo Finance (Delayed NSE/BSE) for public deployment + Zerodha Kite Connect v3 for authenticated private broker proxy.
+- **API / Endpoint:**
+  - Yahoo Finance: `GET https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.NS`
+  - Zerodha Kite Connect: `GET https://api.kite.trade/quote?i={exchange}:{symbol}`
+- **Auth Method:** Server-side HTTP Header `X-Kite-Version: 3`, `Authorization: token {api_key}:{access_token}`. Zero tokens exposed to browser.
+- **Required Server Environment Variables:**
+  - `PORT`: `10000`
+  - `NODE_ENV`: `production`
+  - `CORS_ORIGIN`: `https://joeeeee28.github.io`
+  - `MARKET_DATA_PROVIDER`: `yahoo` | `kite`
+  - `MARKET_DATA_CACHE_TTL_MS`: `30000`
+  - `KITE_API_KEY`: *(Private, server-side only)*
+  - `KITE_ACCESS_TOKEN`: *(Private, server-side only)*
+  - `VITE_MARKET_DATA_BACKEND`: *(Frontend GitHub secret, e.g. `https://growth-os-market-backend.onrender.com`)*
+- **Quote Limits:** 1 req/sec for Kite Connect; rate-limited with bounded backoff and 30s TTL cache.
+- **WebSocket vs Polling:** Controlled 60s client polling during open market hours; WebSocket adapter supported by Kite Connect streaming ticks if socket proxy deployed.
+
+## 19. Automatic Refresh Strategy (Step 11)
+- **Polling Interval:** 60,000ms (1 minute).
+- **Execution Guard:** Active ONLY when:
+  1. `isProviderConfigured === true`
+  2. `marketStatus === 'Open'` OR `marketStatus === 'Delayed'`
+  3. Document is visible (`!document.hidden`)
+- **Off-Hours / Inactive Suppression:** Polling timer is completely dormant when market is `CLOSED`, on weekends, on exchange holidays, or when provider is unconfigured.
+- **Request Storm Prevention:** In-flight coalescing (`inFlightQuotes` Map) deduplicates overlapping requests into a single promise.
+
+## 20. Failure Behavior & Resilience (Step 16)
+- **Network / Proxy Failure:** Retains last valid quote as `LAST_KNOWN` / `STALE`.
+- **Holding Valuations:** Never overwritten with ₹0.
+- **Financial Balances:** Invested amount, quantity, cost basis, and Money module balances remain strictly immutable.
+- **UI Truthfulness:** Displays `OFFLINE` or `UNAVAILABLE` badge. Suppresses day change display as `—` (Day change unavailable) when previous close is absent.
+
+## 21. Security Result
 - **Client Bundle Audit:** `0 API secrets`, `0 API keys`, `0 access tokens`, `0 private keys`, `0 service roles` in compiled JS.
 - **Passcode Security:** PBKDF2 Web Crypto with per-user device salt namespace.
 
-## 19. Regression Result
+## 22. Regression Result
 - **TypeScript:** 0 errors (`npx tsc -b`).
 - **Lint:** 0 errors (`npm run lint`).
 - **Vitest & Node Test Suites:** 100% PASS (`npm test`, `test:v3`, `test:v4`, `test:auth`, `test:v5`, `test:v5:phase24`, `test:v5:phase25`, `test:v5:phase26`, `test:v5:phase27`).
 
-## 20. Performance Result
-- **Revaluation Benchmark:** 500 holdings recalculated in 0.39ms (< 10ms threshold).
+## 23. Performance Result
+- **Revaluation Benchmark:** 500 holdings recalculated in 0.36ms (< 10ms threshold).
 - **Scalability:** Bounded batch chunks (size = 8) with in-flight deduplication.
 
-## 21. Production Verification Result
+## 24. Production Verification Result
 - **`scripts/verify-live-production.ts`:** 100% PASS.
 - **`scripts/audit-live-production-comprehensive.ts`:** 57/57 PASSED.
 - **`scripts/test-live-production-dom-walkthrough.ts`:** 55/55 PASSED.
 
-## 22. Final Classification
+## 25. Final Classification
 **`LIVE — INVESTMENT DATA INTEGRITY VERIFIED, MARKET DATA PENDING`**
 
-## 23. Conditions for Activating Live Market Quotes
-1. Deploy `server/marketServer.mjs` to an authenticated container or Node.js environment (e.g. Render, Railway, or Cloudflare Workers).
-2. Set `VITE_MARKET_DATA_BACKEND=https://<your-market-proxy>` in GitHub repository secrets.
+## 26. Conditions for Activating Live Market Quotes
+1. Deploy `server/marketServer.mjs` to Render (configured in [render.yaml](file:///Users/jothika/.gemini/antigravity-ide/scratch/Planner/render.yaml)) or any Node.js container.
+2. Set `VITE_MARKET_DATA_BACKEND=https://growth-os-market-backend.onrender.com` in GitHub repository secrets.
 3. Supply server-only provider secrets (`KITE_API_KEY`, `KITE_ACCESS_TOKEN`, etc.) strictly to the proxy environment.
 4. Trigger workflow deployment. The frontend will dynamically detect the backend URL, switch to `ProductionMarketProvider`, and begin streaming live quotes.
+

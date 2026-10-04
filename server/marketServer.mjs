@@ -375,7 +375,12 @@ export async function handleMarketApiRequest(req, res, pathname, url) {
     res.end(JSON.stringify(data));
   };
 
-  if (pathname === '/api/market/preflight' || pathname === '/api/market/status') {
+  if (
+    pathname === '/api/market/preflight' ||
+    pathname === '/api/market/status' ||
+    pathname === '/market/status' ||
+    pathname === '/market/preflight'
+  ) {
     const exchange = url.searchParams.get('exchange') || 'NSE';
     const status = calculateIndianMarketStatus(new Date(), exchange);
     json(200, {
@@ -395,7 +400,7 @@ export async function handleMarketApiRequest(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === '/api/market/search' && req.method === 'GET') {
+  if ((pathname === '/api/market/search' || pathname === '/market/search') && req.method === 'GET') {
     const q = (url.searchParams.get('q') || '').trim().toUpperCase();
     const instruments = [];
     if (q) {
@@ -423,7 +428,7 @@ export async function handleMarketApiRequest(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === '/api/market/quote' && req.method === 'GET') {
+  if ((pathname === '/api/market/quote' || pathname === '/market/quote') && req.method === 'GET') {
     const symbol = url.searchParams.get('symbol') || '';
     const exchange = url.searchParams.get('exchange') || 'NSE';
     if (!symbol) {
@@ -440,7 +445,7 @@ export async function handleMarketApiRequest(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === '/api/market/quotes' && req.method === 'GET') {
+  if ((pathname === '/api/market/quotes' || pathname === '/market/quotes') && req.method === 'GET') {
     const rawSymbols = url.searchParams.get('symbols') || '';
     if (!rawSymbols.trim()) {
       json(200, { ok: true, quotes: [], quotesMap: {} });

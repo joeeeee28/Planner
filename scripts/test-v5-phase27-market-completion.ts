@@ -176,24 +176,25 @@ const instTatagold: InvestmentInstrument = {
   active: true,
 };
 
+// Canonical Production Holding: Groww TATAGOLD (20 @ ₹11.30)
 const growwTatagoldHolding: InvestmentHolding = {
   id: 'groww-tatagold',
   instrumentId: 'inst-tatagold',
-  quantity: 22,
-  averageCost: 15.82,
-  investedAmount: 348.04,
+  quantity: 20,
+  averageCost: 11.30,
+  investedAmount: 226.00,
   openedAt: '2026-01-01',
   updatedAt: '2026-01-01',
   source: 'GROWW',
-  snapshotPrice: 21.40,
+  snapshotPrice: 14.28,
 };
 
 const metricUpdated = calculateHoldingMetrics(growwTatagoldHolding, instTatagold, liveTatagoldQuote);
-// Expected: currentValue = 22 * 25.00 = 550.00
+// Expected: currentValue = 20 * 25.00 = 500.00
 assert(metricUpdated.currentPrice === 25.00, 'currentPrice updated to 25.00');
-assert(metricUpdated.currentValue === 550.00, `currentValue = 550.00 (got ${metricUpdated.currentValue})`);
-assert(Math.abs(metricUpdated.pl - (550.00 - 348.04)) < 0.01, `pl = 550 - 348.04 = 201.96 (got ${metricUpdated.pl})`);
-assert(Math.abs(metricUpdated.dayChange - (22 * (25.00 - 20.00))) < 0.01, 'dayChange = 22 * 5 = 110.00');
+assert(metricUpdated.currentValue === 500.00, `currentValue = 500.00 (got ${metricUpdated.currentValue})`);
+assert(Math.abs(metricUpdated.pl - (500.00 - 226.00)) < 0.01, `pl = 500 - 226 = 274.00 (got ${metricUpdated.pl})`);
+assert(Math.abs(metricUpdated.dayChange - (20 * (25.00 - 20.00))) < 0.01, 'dayChange = 20 * 5 = 100.00');
 
 // ── 8. Financial Invariants A–R Preservation ────────────────────────────────
 console.log('\n─── 8. Financial Invariants Preservation ──────────────────────');
@@ -205,31 +206,32 @@ const preTxCount = appData.transactions.length;
 assert(appData.transactions.length === preTxCount, '0 new transactions created by quote update');
 const postCashBalance = appData.accounts.reduce((acc, a) => acc + (a.currency === 'INR' ? a.balance : 0), 0);
 assert(postCashBalance === preCashBalance, 'Cash balances completely unchanged by market revaluation');
-assert(growwTatagoldHolding.quantity === 22, 'Holding quantity unchanged');
-assert(growwTatagoldHolding.averageCost === 15.82, 'Holding averageCost unchanged');
-assert(growwTatagoldHolding.investedAmount === 348.04, 'Holding investedAmount unchanged');
+assert(growwTatagoldHolding.quantity === 20, 'Holding quantity unchanged');
+assert(growwTatagoldHolding.averageCost === 11.30, 'Holding averageCost unchanged');
+assert(growwTatagoldHolding.investedAmount === 226.00, 'Holding investedAmount unchanged');
 
 // ── 9. Broker Isolation & Multi-Broker Same Symbol ──────────────────────────
 console.log('\n─── 9. Multi-Broker Independence (TATAGOLD & TATSILV) ────────');
+// Canonical Production Holding: Zerodha TATAGOLD (13 @ ₹12.38)
 const zerodhaTatagoldHolding: InvestmentHolding = {
   id: 'zerodha-tatagold',
   instrumentId: 'inst-tatagold',
-  quantity: 36,
-  averageCost: 17.65,
-  investedAmount: 635.40,
+  quantity: 13,
+  averageCost: 12.38,
+  investedAmount: 160.94,
   openedAt: '2026-01-01',
   updatedAt: '2026-01-01',
   source: 'ZERODHA',
-  snapshotPrice: 21.40,
+  snapshotPrice: 14.29,
 };
 
 const metricZerodhaUpdated = calculateHoldingMetrics(zerodhaTatagoldHolding, instTatagold, liveTatagoldQuote);
-// Expected: currentValue = 36 * 25.00 = 900.00
-assert(metricZerodhaUpdated.currentValue === 900.00, `Zerodha TATAGOLD currentValue = 900.00 (got ${metricZerodhaUpdated.currentValue})`);
+// Expected: currentValue = 13 * 25.00 = 325.00
+assert(metricZerodhaUpdated.currentValue === 325.00, `Zerodha TATAGOLD currentValue = 325.00 (got ${metricZerodhaUpdated.currentValue})`);
 assert(metricZerodhaUpdated.source === 'ZERODHA', 'Zerodha holding retains source: ZERODHA');
 assert(metricUpdated.source === 'GROWW', 'Groww holding retains source: GROWW');
-assert(metricZerodhaUpdated.quantity !== metricUpdated.quantity, 'Groww quantity (22) != Zerodha quantity (36)');
-assert(metricZerodhaUpdated.investedAmount !== metricUpdated.investedAmount, 'Groww invested != Zerodha invested');
+assert(metricZerodhaUpdated.quantity === 13 && metricUpdated.quantity === 20, 'Groww quantity (20) != Zerodha quantity (13)');
+assert(metricZerodhaUpdated.investedAmount === 160.94 && metricUpdated.investedAmount === 226.00, 'Groww invested (₹226.00) != Zerodha invested (₹160.94)');
 
 // ── 10. Security Audit: Zero Leaked Credentials ─────────────────────────────
 console.log('\n─── 10. Security Audit: Zero Leaked Secrets in Bundle/Code ───');

@@ -761,8 +761,13 @@ export function handleMarketHttpRequest(
     res.end(JSON.stringify(data));
   };
 
-  // Route: /api/market/preflight or /api/market/status
-  if (pathname === '/api/market/preflight' || pathname === '/api/market/status') {
+  // Route: /api/market/preflight or /api/market/status or /market/status
+  if (
+    pathname === '/api/market/preflight' ||
+    pathname === '/api/market/status' ||
+    pathname === '/market/status' ||
+    pathname === '/market/preflight'
+  ) {
     const exchange = url.searchParams.get('exchange') || 'NSE';
     const status = calculateIndianMarketStatus(new Date(), exchange);
     json(200, {
@@ -782,16 +787,16 @@ export function handleMarketHttpRequest(
     return true;
   }
 
-  // Route: /api/market/search?q=...
-  if (pathname === '/api/market/search' && req.method === 'GET') {
+  // Route: /api/market/search?q=... or /market/search?q=...
+  if ((pathname === '/api/market/search' || pathname === '/market/search') && req.method === 'GET') {
     const query = url.searchParams.get('q') || '';
     const results = service.searchInstruments(query);
     json(200, { ok: true, instruments: results });
     return true;
   }
 
-  // Route: /api/market/quote?symbol=...
-  if (pathname === '/api/market/quote' && req.method === 'GET') {
+  // Route: /api/market/quote?symbol=... or /market/quote?symbol=...
+  if ((pathname === '/api/market/quote' || pathname === '/market/quote') && req.method === 'GET') {
     const symbol = url.searchParams.get('symbol') || '';
     const exchange = url.searchParams.get('exchange') || 'NSE';
     if (!symbol) {
@@ -813,8 +818,8 @@ export function handleMarketHttpRequest(
     return true;
   }
 
-  // Route: /api/market/quotes?symbols=...
-  if (pathname === '/api/market/quotes' && req.method === 'GET') {
+  // Route: /api/market/quotes?symbols=... or /market/quotes?symbols=...
+  if ((pathname === '/api/market/quotes' || pathname === '/market/quotes') && req.method === 'GET') {
     const rawSymbols = url.searchParams.get('symbols') || '';
     if (!rawSymbols.trim()) {
       json(200, { ok: true, quotes: [] });
