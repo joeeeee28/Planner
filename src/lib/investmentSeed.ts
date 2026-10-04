@@ -414,6 +414,7 @@ export function maybeInitJothikaPortfolio(
   userId: string | null,
   data: AppData
 ): AppData | null {
+  if (!isJothika(userId)) return null;
   return migrateInvestments(userId, data);
 }
 
