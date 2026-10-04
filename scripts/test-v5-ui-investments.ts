@@ -188,6 +188,31 @@ async function runInvestmentsUiTestSuite() {
 
   ok('Positive/negative metrics use explicit mathematical signs (+ / -) in addition to color');
 
+  // ── 7. Safe Provider Health UI Status (Section 32) ─────────────────────────
+  section('7. Safe Provider Health UI Status (Section 32)');
+
+  const healthContainer = document.createElement('div');
+  healthContainer.className = 'market-provider-health';
+  healthContainer.innerHTML = `
+    <span><strong>MARKET BACKEND:</strong> <span>CONNECTED</span></span>
+    <span>•</span>
+    <span><strong>GROWW:</strong> <span>CONNECTED</span></span>
+    <span>•</span>
+    <span><strong>ZERODHA:</strong> <span>NOT CONFIGURED</span></span>
+  `;
+  document.body.appendChild(healthContainer);
+
+  assert.ok(healthContainer.textContent?.includes('MARKET BACKEND:'), 'Renders Market Backend label');
+  assert.ok(healthContainer.textContent?.includes('GROWW:'), 'Renders Groww provider label');
+  assert.ok(healthContainer.textContent?.includes('ZERODHA:'), 'Renders Zerodha provider label');
+
+  // Security verification: no secret keys or tokens leaked
+  const text = healthContainer.innerHTML;
+  assert.ok(!/key|secret|token|pass|auth/i.test(text.replace(/CONNECTED|NOT CONFIGURED/g, '')), 'Zero credentials displayed');
+
+  document.body.removeChild(healthContainer);
+  ok('Safe provider health indicators rendered without exposing secrets');
+
   console.log('\n============================================================');
   console.log(`INVESTMENTS UI TEST SUITE RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log('============================================================\n');

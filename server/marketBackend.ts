@@ -643,6 +643,11 @@ export function handleMarketHttpRequest(
       provider: service.providerName,
       isConfigured: service.isConfigured,
       isDelayed: service.isDelayed,
+      backendStatus: 'CONNECTED',
+      providers: {
+        groww: { status: process.env.GROWW_CONFIGURED === 'true' ? 'CONNECTED' : 'NOT CONFIGURED' },
+        zerodha: { status: process.env.KITE_CONFIGURED === 'true' ? 'CONNECTED' : 'NOT CONFIGURED' },
+      },
       supportedInstrumentsCount: Object.keys(VERIFIED_INSTRUMENTS).length,
       marketStatus: status,
     });

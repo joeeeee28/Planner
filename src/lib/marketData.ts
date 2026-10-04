@@ -17,6 +17,9 @@ export interface MarketStatusResult {
   provider?: string;
   nextOpenTime?: string;
   nextCloseTime?: string;
+  backendStatus?: 'CONNECTED' | 'OFFLINE' | 'NOT CONFIGURED';
+  growwStatus?: 'CONNECTED' | 'NOT CONFIGURED' | 'ERROR';
+  zerodhaStatus?: 'CONNECTED' | 'NOT CONFIGURED' | 'ERROR';
 }
 
 export interface MarketDataProvider {
@@ -61,6 +64,9 @@ export class UnconfiguredMarketProvider implements MarketDataProvider {
       message: 'Market data provider not configured',
       exchange: exchange || 'NSE',
       timestamp: new Date().toISOString(),
+      backendStatus: 'NOT CONFIGURED',
+      growwStatus: 'NOT CONFIGURED',
+      zerodhaStatus: 'NOT CONFIGURED',
     };
   }
 }
@@ -231,6 +237,9 @@ export class ProductionMarketProvider implements MarketDataProvider {
               provider: data.provider,
               nextOpenTime: ms.nextOpenTime,
               nextCloseTime: ms.nextCloseTime,
+              backendStatus: data.backendStatus || 'CONNECTED',
+              growwStatus: data.providers?.groww?.status || 'NOT CONFIGURED',
+              zerodhaStatus: data.providers?.zerodha?.status || 'NOT CONFIGURED',
             };
           }
         }
@@ -240,7 +249,13 @@ export class ProductionMarketProvider implements MarketDataProvider {
     }
 
     // Client-side IST calculation fallback if backend status query unreachable
-    return calculateClientIstMarketStatus(exchange);
+    const fallback = calculateClientIstMarketStatus(exchange);
+    return {
+      ...fallback,
+      backendStatus: this.backendUrl ? 'OFFLINE' : 'NOT CONFIGURED',
+      growwStatus: 'NOT CONFIGURED',
+      zerodhaStatus: 'NOT CONFIGURED',
+    };
   }
 
   async getHistoricalPrices(symbol: string, range: string = '1M'): Promise<{ date: string; close: number }[]> {

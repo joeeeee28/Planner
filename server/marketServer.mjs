@@ -272,6 +272,11 @@ export async function handleMarketApiRequest(req, res, pathname, url) {
       provider: 'Yahoo Finance (Delayed NSE/BSE)',
       isConfigured: true,
       isDelayed: true,
+      backendStatus: 'CONNECTED',
+      providers: {
+        groww: { status: process.env.GROWW_CONFIGURED === 'true' ? 'CONNECTED' : 'NOT CONFIGURED' },
+        zerodha: { status: process.env.KITE_CONFIGURED === 'true' ? 'CONNECTED' : 'NOT CONFIGURED' },
+      },
       supportedInstrumentsCount: Object.keys(VERIFIED_INSTRUMENTS).length,
       marketStatus: status,
     });

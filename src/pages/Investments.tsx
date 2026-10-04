@@ -1431,6 +1431,39 @@ function LiveMarketViewer({
             {marketStatus?.message ?? 'Exchange Session: Regular trading hours 09:15 – 15:30 IST'}
             {marketStatus?.nextOpenTime && ` · Opens at ${marketStatus.nextOpenTime}`}
           </div>
+          {/* Provider Health (Section 32) */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+              fontSize: 11,
+              marginTop: 6,
+              color: 'var(--ink-2)',
+            }}
+          >
+            <span>
+              <strong>MARKET BACKEND:</strong>{' '}
+              <span style={{ fontWeight: 600, color: (marketStatus?.backendStatus ?? 'NOT CONFIGURED') === 'CONNECTED' ? '#10b981' : ((marketStatus?.backendStatus ?? '') === 'OFFLINE' ? '#ef4444' : 'var(--ink-3)') }}>
+                {marketStatus?.backendStatus ?? 'NOT CONFIGURED'}
+              </span>
+            </span>
+            <span>•</span>
+            <span>
+              <strong>GROWW:</strong>{' '}
+              <span style={{ fontWeight: 600, color: (marketStatus?.growwStatus ?? 'NOT CONFIGURED') === 'CONNECTED' ? '#10b981' : ((marketStatus?.growwStatus ?? '') === 'ERROR' ? '#ef4444' : 'var(--ink-3)') }}>
+                {marketStatus?.growwStatus ?? 'NOT CONFIGURED'}
+              </span>
+            </span>
+            <span>•</span>
+            <span>
+              <strong>ZERODHA:</strong>{' '}
+              <span style={{ fontWeight: 600, color: (marketStatus?.zerodhaStatus ?? 'NOT CONFIGURED') === 'CONNECTED' ? '#10b981' : ((marketStatus?.zerodhaStatus ?? '') === 'ERROR' ? '#ef4444' : 'var(--ink-3)') }}>
+                {marketStatus?.zerodhaStatus ?? 'NOT CONFIGURED'}
+              </span>
+            </span>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
