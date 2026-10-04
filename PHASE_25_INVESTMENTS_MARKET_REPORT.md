@@ -2,12 +2,29 @@
 **Growth OS / Planner**  
 **Role:** Senior Application Engineer + Financial Data Reliability Engineer + QA Engineer  
 **Date:** October 4, 2026  
-**Status:** ✅ PRODUCTION VERIFIED & DEPLOYED
+**Final Classification:** **LIVE — INVESTMENT DATA INTEGRITY VERIFIED, MARKET DATA PENDING**  
+**Stakeholder Decision:** **GO WITH CONDITIONS**
 
 ---
 
-### Executive Summary
-Phase 25 resolves the portfolio aggregation defect where the Hero section displayed 6 manual positions (₹4,939) while Groww and Zerodha broker cards showed 0 positions (₹0). Legacy manual seed data has been migrated into authenticated persistent Groww (6) and Zerodha (12) holdings. Multi-broker separation preserves distinct records for TATAGOLD and TATSILV across brokers. Deletion persistence is guaranteed via versioned one-time migration (`investmentMigrationVersion: 2`). Truthful market data status reporting and previous-close delta calculations are enforced with zero client secret exposure.
+### Executive Summary & Status Breakdown
+This report concludes Phase 25 and reconciles the repository status, production deployment, and live market-data behavior with strict truthfulness:
+
+- **IMPLEMENTED:**
+  - Complete portfolio data model with composite identity `userId + source + exchange + instrumentId`.
+  - Migration version 2 (`investmentMigrationVersion: 2`) actively purging legacy manual entries.
+  - Canonical selectors (`getInvestmentPositions`, `getAllPositions`, `getGrowwPositions`, `getZerodhaPositions`) powering Hero, Broker Cards, Tabs, Filters, and Table.
+  - Multi-broker position separation (`TATAGOLD` Groww vs Zerodha; `TATSILV` Groww vs Zerodha).
+  - Deletion persistence with permanent anti-resurrection guarantees.
+  - Safe MarketDataProvider architecture with IST market session calculation and Provider Health indicators.
+- **TESTED:**
+  - 100% PASS across TypeScript (`npx tsc -b`), Lint (`npm run lint`), Core base tests, Engine V3, Engine V4, Auth & Passcode, V5 Core, V5 Phase 24, V5 Phase 25, V5 Phase 26, and Section 46 Performance Benchmarks (< 3ms for 1000 holdings).
+- **PRODUCTION DEPLOYED:**
+  - Build and bundle deployed to GitHub Pages (`https://joeeeee28.github.io/Planner/`).
+  - Audited via `verify-live-production.ts`, `audit-live-production-comprehensive.ts` (57/57 passed), and `test-live-production-dom-walkthrough.ts` (55/55 passed) with zero leaked secrets.
+- **LIVE PROVIDER VERIFIED:**
+  - **NOT VERIFIED in production.** Since `VITE_MARKET_DATA_BACKEND` is not configured in the public GitHub Pages environment, the frontend truthfully reports `NOT CONFIGURED` and displays `IMPORTED_SNAPSHOT`.
+  - No fake movement, no fabricated prices, and no false `● LIVE` badge are displayed.
 
 ---
 
@@ -18,7 +35,7 @@ In the previous screen state:
 - **Zerodha Card:** ₹0 | 0 positions
 - **Market:** `NOT CONFIGURED`
 
-This state was incorrect: the 6 positions in the hero were legacy manual entries belonging to Groww, but because they lacked a explicit `source: 'GROWW'` tag or were stored under `source: 'MANUAL'`, broker filtering omitted them. Zerodha holdings were entirely missing from the hydrated state.
+This state was incorrect: the 6 positions in the hero were legacy manual entries belonging to Groww, but because they lacked an explicit `source: 'GROWW'` tag or were stored under `source: 'MANUAL'`, broker filtering omitted them. Zerodha holdings were entirely missing from the hydrated state.
 
 ---
 
@@ -56,9 +73,9 @@ This state was incorrect: the 6 positions in the hero were legacy manual entries
 
 ### 6. Zerodha Portfolio Totals
 - **Positions:** 12 (`COALINDIA`, `GOLDBEES`, `HATHWAY`, `ITBEES`, `ITC`, `TATAGOLD`, `TATSILV`, `VAML`, `VEDL`, `VEDPOWER`, `VISL`, `VOGL`)
-- **Invested Amount:** ₹26,460.48
+- **Invested Amount (Row-Derived):** ₹26,460.48
 - **Snapshot Current Value:** ₹22,313.54
-- **Snapshot P&L:** -₹4,146.94
+- **Snapshot P&L (Row-Derived):** -₹4,146.94
 - **Snapshot Return:** -15.67%
 
 ---
@@ -115,13 +132,16 @@ Holding identity is strictly scoped to `userId + source + exchange + instrumentI
 
 ---
 
-### 13. Live Quote Evidence & Proof
-- UI badge displays `● LIVE` only when:
-  1. Backend endpoint is reachable.
-  2. Provider is configured.
-  3. Real quote payload is returned with valid timestamp.
-  4. Timestamp reflects live market hours.
-- When unconfigured or offline, badge displays `IMPORTED_SNAPSHOT`, `MARKET_CLOSED`, or `OFFLINE`.
+### 13. Live Quote Evidence & Reconciliation
+- **Reconciliation of Status:**
+  - **LIVE MARKET DATA:** NOT VERIFIED
+  - **STATUS:** `IMPORTED_SNAPSHOT / NOT CONFIGURED`
+  - **FINAL CLASSIFICATION:** `LIVE — INVESTMENT DATA INTEGRITY VERIFIED, MARKET DATA PENDING`
+- **Rule of Evidence:** UI badge displays `● LIVE` only if:
+  1. Production backend is reachable.
+  2. Real provider request succeeds.
+  3. Actual quote payload with valid provider timestamp is received and rendered.
+- Because `VITE_MARKET_DATA_BACKEND` is not configured in the public static GitHub Pages deployment, the application truthfully displays `IMPORTED SNAPSHOT` and `NOT CONFIGURED`. No fake movement or false live status is fabricated.
 
 ---
 
@@ -162,12 +182,14 @@ Holding identity is strictly scoped to `userId + source + exchange + instrumentI
 | V5 Core Tests | `npm run test:v5` | ✅ PASS |
 | V5 Phase 24 Tests | `npm run test:v5:phase24` | ✅ PASS |
 | V5 Phase 25 Tests | `npm run test:v5:phase25` | ✅ PASS |
+| V5 Phase 26 Tests | `npm run test:v5:phase26` | ✅ PASS |
 | Investment Migration | `scripts/test-v5-investment-migration.ts` | ✅ PASS |
 | Multi-Broker Import | `scripts/test-v5-multibroker-import.ts` | ✅ PASS |
 | Portfolio State | `scripts/test-v5-investment-portfolio-state.ts` | ✅ PASS |
 | Market Live Provider | `scripts/test-v5-market-live.ts` | ✅ PASS |
 | Market Session | `scripts/test-v5-market-session.ts` | ✅ PASS |
 | Market Calculations | `scripts/test-v5-market-calculations.ts` | ✅ PASS |
+| Performance Benchmark | `scripts/test-v5-investments-performance.ts` | ✅ PASS |
 | Production Build Audit | `npm run check:build` | ✅ PASS |
 | Live Production Verification | `scripts/verify-live-production.ts` | ✅ PASS |
 | Live Comprehensive Audit | `scripts/audit-live-production-comprehensive.ts` | ✅ PASS (57/57) |
@@ -176,11 +198,12 @@ Holding identity is strictly scoped to `userId + source + exchange + instrumentI
 
 ---
 
-### 18. Deployment Verification
-- **Source SHA:** `e52514119ce84d5322bf50106a2682980edb8536`
-- **GitHub Actions Workflow Run:** `37212583990` (Conclusion: `success`)
-- **Published gh-pages Commit:** `23f528f95cf4881ceb6c60aba983e3af679ecf2a`
-- **Deployment Status:** `success` (GitHub Pages Deployment `6842852419`)
+### 18. Deployment Reconciliation
+- **Latest Main Source Commit:** `c68d159a4fbc5e6643d6b2939faac681e8847e49`
+- **GitHub Actions Workflow Run:** `37213512082` (Status: `completed`, Conclusion: `success`)
+- **Published gh-pages Commit:** `7aa16de5646caa769c1bf6a5c20eb6f29185bbcc`
+- **Deployment ID:** `6843020091`
+- **Live Deployed Bundles:** `assets/index-DF_gnRG5.js`, `assets/Investments-D4stuwR1.js`
 
 ---
 
@@ -195,4 +218,5 @@ Holding identity is strictly scoped to `userId + source + exchange + instrumentI
 ---
 
 ### 20. Remaining Blockers
-- **None.** Phase 25 objectives are fully verified and deployed to production.
+- **None for Investment Data Integrity.**
+- **Market Data Next Step:** Provision remote backend proxy (e.g. Render) with provider credentials and supply URL as `VITE_MARKET_DATA_BACKEND` secret.
