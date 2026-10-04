@@ -20,7 +20,9 @@ import {
   calculatePortfolioSummary,
   getPortfolioAllocation,
   applyInvestmentTransaction,
-  filterHoldingsBySource,
+  getAllPositions,
+  getGrowwPositions,
+  getZerodhaPositions,
   type CalculatedHoldingMetric,
   type BrokerTab,
 } from '../lib/investments';
@@ -149,6 +151,7 @@ function HoldingDetailDrawer({
   timestampDisplay,
   hidden,
   onClose,
+  onDeleteHolding,
 }: {
   metric: CalculatedHoldingMetric;
   allMetrics?: CalculatedHoldingMetric[];
@@ -157,6 +160,7 @@ function HoldingDetailDrawer({
   timestampDisplay?: string | null;
   hidden: boolean;
   onClose: () => void;
+  onDeleteHolding?: (holdingId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'Position' | 'Performance' | 'Market' | 'Transactions'>('Position');
   const { holding, instrument, quantity, averageCost, investedAmount,
@@ -284,6 +288,23 @@ function HoldingDetailDrawer({
               <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm, 8px)', border: '1px solid var(--line)' }}>
                 Exchange: <strong>{instrument.exchange}</strong> · ISIN: <code>{instrument.isin ?? 'Not specified'}</code>
               </div>
+
+              {onDeleteHolding && (
+                <div style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    className="btn btn-outline btn-sm text-neg"
+                    style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                    onClick={() => {
+                      if (window.confirm(`Permanently remove ${instrument.symbol} (${source}) from your portfolio?`)) {
+                        onDeleteHolding(holding.id);
+                        onClose();
+                      }
+                    }}
+                  >
+                    🗑 Delete Holding
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1269,7 +1290,7 @@ function AddTransactionModal({
   const [price, setPrice] = useState('');
   const [date, setDate] = useState(todayStr());
   const [fees, setFees] = useState('');
-  const [broker, setBroker] = useState<BrokerSource>('MANUAL');
+  const [broker, setBroker] = useState<BrokerSource>('GROWW');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1304,7 +1325,7 @@ function AddTransactionModal({
           <div>
             <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Broker</label>
             <select className="input-text" value={broker} onChange={(e) => setBroker(e.target.value as BrokerSource)} style={{ width: '100%' }}>
-              {['GROWW','ZERODHA','MANUAL','OTHER'].map(b => <option key={b} value={b}>{b}</option>)}
+              {['GROWW','ZERODHA','OTHER'].map(b => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
         </div>
@@ -1570,7 +1591,8 @@ export function InvestmentsPage() {
   const [chartRange, setChartRange] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL'>('ALL');
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
-  const holdings = useMemo(() => data.investmentHoldings ?? [], [data.investmentHoldings]);
+  const rawHoldings = useMemo(() => data.investmentHoldings ?? [], [data.investmentHoldings]);
+  const holdings = useMemo(() => getAllPositions(rawHoldings), [rawHoldings]);
   const instruments = useMemo(() => data.investmentInstruments ?? [], [data.investmentInstruments]);
   const quotes = useMemo(() => data.cachedMarketQuotes ?? {}, [data.cachedMarketQuotes]);
 
@@ -1583,8 +1605,8 @@ export function InvestmentsPage() {
   );
 
   // Source-filtered portfolios
-  const growwHoldings = useMemo(() => filterHoldingsBySource(holdings, 'GROWW'), [holdings]);
-  const zerodhaHoldings = useMemo(() => filterHoldingsBySource(holdings, 'ZERODHA'), [holdings]);
+  const growwHoldings = useMemo(() => getGrowwPositions(rawHoldings), [rawHoldings]);
+  const zerodhaHoldings = useMemo(() => getZerodhaPositions(rawHoldings), [rawHoldings]);
 
   const growwPortfolio = useMemo(
     () => calculatePortfolioSummary(growwHoldings, instruments, quotes),
@@ -1594,6 +1616,14 @@ export function InvestmentsPage() {
     () => calculatePortfolioSummary(zerodhaHoldings, instruments, quotes),
     [zerodhaHoldings, instruments, quotes]
   );
+
+  const handleDeleteHolding = useCallback((holdingId: string) => {
+    update((d) => ({
+      ...d,
+      investmentHoldings: (d.investmentHoldings ?? []).filter((h) => h.id !== holdingId),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [update]);
 
   const activePortfolio = brokerTab === 'GROWW' ? growwPortfolio : brokerTab === 'ZERODHA' ? zerodhaPortfolio : allPortfolio;
 
@@ -2293,6 +2323,7 @@ export function InvestmentsPage() {
           marketBadge={marketBadge}
           timestampDisplay={timestampDisplay}
           hidden={hidden}
+          onDeleteHolding={handleDeleteHolding}
           onClose={() => setSelectedMetric(null)}
         />
       )}

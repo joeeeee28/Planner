@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
+  AppData,
   InvestmentInstrument,
   InvestmentHolding,
   InvestmentTransaction,
@@ -69,8 +70,47 @@ export interface PortfolioAllocation {
 export type BrokerTab = 'ALL' | 'GROWW' | 'ZERODHA';
 
 /**
+ * Canonical position selector (Phase 25 - Section 10).
+ * Strips obsolete legacy MANUAL investment records (Section 5).
+ * Only valid active broker holdings (GROWW, ZERODHA) or user-owned active holdings are returned.
+ */
+export function getInvestmentPositions(
+  target: InvestmentHolding[] | AppData,
+  _userId?: string | null
+): InvestmentHolding[] {
+  const holdings: InvestmentHolding[] = Array.isArray(target)
+    ? target
+    : (target && typeof target === 'object' && Array.isArray((target as AppData).investmentHoldings))
+    ? (target as AppData).investmentHoldings!
+    : [];
+
+  return holdings.filter((h) => h.quantity > 0 && h.source !== 'MANUAL');
+}
+
+export function getAllPositions(
+  target: InvestmentHolding[] | AppData,
+  userId?: string | null
+): InvestmentHolding[] {
+  return getInvestmentPositions(target, userId);
+}
+
+export function getGrowwPositions(
+  target: InvestmentHolding[] | AppData,
+  userId?: string | null
+): InvestmentHolding[] {
+  return getInvestmentPositions(target, userId).filter((h) => h.source === 'GROWW');
+}
+
+export function getZerodhaPositions(
+  target: InvestmentHolding[] | AppData,
+  userId?: string | null
+): InvestmentHolding[] {
+  return getInvestmentPositions(target, userId).filter((h) => h.source === 'ZERODHA');
+}
+
+/**
  * Filter holdings by broker/source tab.
- * 'ALL' returns all holdings.
+ * 'ALL' returns all non-manual holdings (Groww + Zerodha).
  * 'GROWW' returns only Groww holdings.
  * 'ZERODHA' returns only Zerodha holdings.
  */
@@ -78,8 +118,10 @@ export function filterHoldingsBySource(
   holdings: InvestmentHolding[],
   tab: BrokerTab
 ): InvestmentHolding[] {
-  if (tab === 'ALL') return holdings;
-  return holdings.filter((h) => (h.source ?? 'MANUAL') === tab);
+  if (tab === 'ALL') return getAllPositions(holdings);
+  if (tab === 'GROWW') return getGrowwPositions(holdings);
+  if (tab === 'ZERODHA') return getZerodhaPositions(holdings);
+  return getInvestmentPositions(holdings).filter((h) => h.source === tab);
 }
 
 export interface ThisMonthInvestmentSummary {

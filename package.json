@@ -31,6 +31,7 @@
     "test:v5:ui": "tsx scripts/test-v5-ui-dashboard-redesign.ts && tsx scripts/test-v5-ui-investments.ts",
     "test:v5:global": "tsx scripts/test-v5-ui-global.ts",
     "test:v5:phase24": "tsx scripts/test-v5-investment-migration.ts && tsx scripts/test-v5-multibroker-import.ts && tsx scripts/test-v5-portfolio-calculation.ts && tsx scripts/test-v5-market-live-production.ts",
+    "test:v5:phase25": "tsx scripts/test-v5-investment-portfolio-state.ts && tsx scripts/test-v5-market-session.ts && tsx scripts/test-v5-market-calculations.ts && tsx scripts/test-v5-market-live.ts",
     "test:v5": "tsx scripts/test-v5-phase11-calendar-timeblocking.ts && tsx scripts/test-v5-phase12-recurring-planning.ts && tsx scripts/test-v5-phase13-notifications-automation.ts && tsx scripts/test-v5-phase14-analytics-reports.ts && tsx scripts/test-v5-phase15-offline-sync.ts && tsx scripts/test-v5-phase16-calendar-integrations.ts && tsx scripts/test-v5-phase17-import-migration.ts && tsx scripts/test-v5-phase18-release-candidate.ts && tsx scripts/test-v5-phase19-final-launch.ts && tsx scripts/test-v5-phase20-live-oauth.ts && tsx scripts/test-v5-investments.ts && tsx scripts/test-v5-ui-dashboard-redesign.ts && tsx scripts/test-v5-market-data.ts && tsx scripts/test-v5-ui-investments.ts && tsx scripts/test-v5-ui-global.ts"
   },
   "dependencies": {

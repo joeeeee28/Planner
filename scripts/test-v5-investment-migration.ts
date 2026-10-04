@@ -46,21 +46,43 @@ delete (jothikaData as any).investmentMigrationVersion;
 jothikaData.investmentHoldings = [];
 jothikaData.investmentInstruments = [];
 
-jothikaData = migrateInvestments(JOTHIKA_ID, jothikaData);
-assert(jothikaData.investmentMigrationVersion === INVESTMENT_MIGRATION_VERSION, 'Migration stamped version = 1');
+jothikaData = migrateInvestments(JOTHIKA_ID, jothikaData)!;
+assert(jothikaData.investmentMigrationVersion === INVESTMENT_MIGRATION_VERSION, `Migration stamped version = ${INVESTMENT_MIGRATION_VERSION}`);
 assert(jothikaData.investmentHoldings.length === 18, `Jothika migrated with 18 initial holdings (got ${jothikaData.investmentHoldings.length})`);
 assert(jothikaData.investmentInstruments.length === 15, `Jothika migrated with 15 unique instruments (got ${jothikaData.investmentInstruments.length})`);
 
 // Count by source
 const growwInitial = jothikaData.investmentHoldings.filter(h => h.source === 'GROWW');
 const zerodhaInitial = jothikaData.investmentHoldings.filter(h => h.source === 'ZERODHA');
+const manualInitial = jothikaData.investmentHoldings.filter(h => h.source === 'MANUAL');
+assert(manualInitial.length === 0, `MANUAL has 0 positions (got ${manualInitial.length})`);
 assert(growwInitial.length === 6, `Groww has 6 positions initially (got ${growwInitial.length})`);
 assert(zerodhaInitial.length === 12, `Zerodha has 12 positions initially (got ${zerodhaInitial.length})`);
+
+// ── Test A2: Phase 25 Migration from Legacy 6 MANUAL Holdings ──────────────
+console.log('\n─── 1b. Phase 25 Legacy MANUAL Records Stripped ─────────────');
+let legacyManualData = createInitialData();
+legacyManualData.investmentMigrationVersion = 1; // Prior version
+legacyManualData.investmentHoldings = [
+  { id: 'hld-legacy-1', instrumentId: 'inst-1', quantity: 9, averageCost: 145.18, investedAmount: 1306.62, openedAt: '2026-01-01', updatedAt: '2026-01-01', source: 'MANUAL' },
+  { id: 'hld-legacy-2', instrumentId: 'inst-2', quantity: 13, averageCost: 96.58, investedAmount: 1255.54, openedAt: '2026-01-01', updatedAt: '2026-01-01', source: 'MANUAL' },
+  { id: 'hld-legacy-3', instrumentId: 'inst-3', quantity: 53, averageCost: 14.18, investedAmount: 751.54, openedAt: '2026-01-01', updatedAt: '2026-01-01', source: 'MANUAL' },
+  { id: 'hld-legacy-4', instrumentId: 'inst-4', quantity: 13, averageCost: 54.78, investedAmount: 712.14, openedAt: '2026-01-01', updatedAt: '2026-01-01', source: 'MANUAL' },
+  { id: 'hld-legacy-5', instrumentId: 'inst-5', quantity: 5, averageCost: 137.42, investedAmount: 687.10, openedAt: '2026-01-01', updatedAt: '2026-01-01', source: 'MANUAL' },
+  { id: 'hld-legacy-6', instrumentId: 'inst-6', quantity: 20, averageCost: 11.30, investedAmount: 226.00, openedAt: '2026-01-01', updatedAt: '2026-01-01', source: 'MANUAL' },
+];
+const migratedManual = migrateInvestments(JOTHIKA_ID, legacyManualData);
+assert(migratedManual !== null, 'Legacy manual data triggered version 2 migration');
+assert(migratedManual!.investmentMigrationVersion === 2, 'Migration stamped version = 2');
+assert(!migratedManual!.investmentHoldings.some(h => h.source === 'MANUAL'), 'All legacy MANUAL holdings stripped');
+assert(migratedManual!.investmentHoldings.filter(h => h.source === 'GROWW').length === 6, 'Groww restored to 6 positions');
+assert(migratedManual!.investmentHoldings.filter(h => h.source === 'ZERODHA').length === 12, 'Zerodha restored to 12 positions');
+assert(migratedManual!.investmentHoldings.length === 18, 'Total holdings is exactly 18');
 
 // ── Test B: Idempotency: Running Migration Again Mutates Nothing ──────────
 console.log('\n─── 2. Migration Idempotency ───────────────────────────────');
 const reMigrated = migrateInvestments(JOTHIKA_ID, jothikaData);
-assert(reMigrated === null, 'Running migration on version 1 returns null (idempotent no-op)');
+assert(reMigrated === null, 'Running migration on version 2 returns null (idempotent no-op)');
 assert(jothikaData.investmentHoldings.length === 18, 'Holdings untouched after idempotent call');
 
 // ── Test C: Delete Single Groww and Single Zerodha Holding ──────────────────

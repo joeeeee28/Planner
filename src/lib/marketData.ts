@@ -71,6 +71,19 @@ export class UnconfiguredMarketProvider implements MarketDataProvider {
  * Zero private credentials exposed to browser; handles rate-limiting, deduplication,
  * and graceful fallback.
  */
+function getEnvBackendUrl(): string {
+  try {
+    const globalProcess = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process;
+    return String(
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_MARKET_DATA_BACKEND) ||
+      globalProcess?.env?.VITE_MARKET_DATA_BACKEND ||
+      ''
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
 export class ProductionMarketProvider implements MarketDataProvider {
   readonly id: string = 'production-market';
   readonly name: string = 'Production Market Provider (NSE/BSE)';
@@ -82,10 +95,7 @@ export class ProductionMarketProvider implements MarketDataProvider {
   private inFlightQuotes = new Map<string, Promise<Record<string, MarketQuote>>>();
 
   constructor(backendUrl?: string) {
-    let url = backendUrl;
-    if (!url && typeof import.meta !== 'undefined' && import.meta.env?.VITE_MARKET_DATA_BACKEND) {
-      url = import.meta.env.VITE_MARKET_DATA_BACKEND;
-    }
+    const url = backendUrl || getEnvBackendUrl();
     // Remove trailing slash
     this.backendUrl = (url || '').replace(/\/+$/, '');
   }
@@ -318,7 +328,7 @@ export function calculateClientIstMarketStatus(exchange = 'NSE'): MarketStatusRe
  * Factory to get active market provider.
  */
 export function getActiveMarketProvider(): MarketDataProvider {
-  const backend = typeof import.meta !== 'undefined' && import.meta.env?.VITE_MARKET_DATA_BACKEND;
+  const backend = getEnvBackendUrl();
   if (backend && backend.trim()) {
     return new ProductionMarketProvider(backend.trim());
   }

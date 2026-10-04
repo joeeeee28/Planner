@@ -116,15 +116,21 @@ assert(recheckCanonical.totalPL.toFixed(2) === '-2782.82', `Canonical total P&L 
 
 // ── 4. Truthful Day Change & Previous Close Handling (P1-003) ───────────────
 console.log('\n─── 4. Previous Close & Day Change Truthfulness (P1-003) ────');
-// When quotes do NOT have previousClose, hasDayChange must be false and never fabricate 0.00
-assert(combinedSummary.hasDayChange === false, 'Canonical snapshot summary hasDayChange is false');
-assert(combinedSummary.dayChangeUnavailable === true, 'Canonical snapshot reports dayChangeUnavailable = true');
-assert(combinedSummary.totalDayPL === undefined, 'Canonical snapshot does NOT fabricate totalDayPL = 0');
-assert(combinedSummary.totalDayChangePct === undefined, 'Canonical snapshot does NOT fabricate totalDayChangePct = 0%');
+// When snapshot records do NOT have previousClose (e.g. Groww), hasDayChange must be false and never fabricate 0.00
+assert(growwSummary.hasDayChange === false, 'Groww snapshot summary hasDayChange is false');
+assert(growwSummary.dayChangeUnavailable === true, 'Groww snapshot reports dayChangeUnavailable = true');
+assert(growwSummary.totalDayPL === undefined, 'Groww snapshot does NOT fabricate totalDayPL = 0');
+assert(growwSummary.totalDayChangePct === undefined, 'Groww snapshot does NOT fabricate totalDayChangePct = 0%');
 
-for (const m of combinedSummary.metrics) {
+for (const m of growwSummary.metrics) {
   assert(m.hasDayChange === false, `${m.instrument.symbol}: hasDayChange is false without verified previous close`);
   assert(m.dayChangeUnavailable === true, `${m.instrument.symbol}: dayChangeUnavailable is true`);
+}
+
+// When verified previousClose IS present in snapshot (Zerodha):
+for (const m of zerodhaSummary.metrics) {
+  assert(m.hasDayChange === true, `${m.instrument.symbol}: hasDayChange is true with verified snapshot previous close`);
+  assert(m.dayChangeUnavailable === false, `${m.instrument.symbol}: dayChangeUnavailable is false`);
 }
 
 // When verified previousClose IS provided by provider:

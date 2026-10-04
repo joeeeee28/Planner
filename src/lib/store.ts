@@ -723,7 +723,13 @@ function normalizeInvestmentHoldings(list: unknown): AppData['investmentHoldings
     const r = raw as Record<string, unknown>;
     const instrumentId = typeof r.instrumentId === 'string' ? r.instrumentId : '';
     if (!instrumentId) continue;
-    const sourceStr = typeof r.source === 'string' ? r.source.toUpperCase() : 'MANUAL';
+    let sourceStr = typeof r.source === 'string' ? r.source.toUpperCase() : '';
+    if (!sourceStr || sourceStr === 'MANUAL') {
+      const sk = typeof r.sourceKey === 'string' ? r.sourceKey.toUpperCase() : '';
+      if (sk.startsWith('GROWW:')) sourceStr = 'GROWW';
+      else if (sk.startsWith('ZERODHA:')) sourceStr = 'ZERODHA';
+      else sourceStr = 'MANUAL';
+    }
     const source: BrokerSource = BROKERS.has(sourceStr) ? (sourceStr as BrokerSource) : 'MANUAL';
     const id = typeof r.id === 'string' && r.id ? r.id : `hld-${source}-${instrumentId}`;
     if (seen.has(id)) continue;
@@ -902,9 +908,10 @@ export function normalizeData(cached: AppData): AppData {
   cached.investmentTransactions = normalizeInvestmentTransactions(cached.investmentTransactions);
   cached.investmentPlans = normalizeInvestmentPlans(cached.investmentPlans);
   cached.cachedMarketQuotes = normalizeCachedMarketQuotes(cached.cachedMarketQuotes);
-  if (typeof cached.investmentMigrationVersion === 'number') {
-    cached.investmentMigrationVersion = cached.investmentMigrationVersion;
-  }
+  cached.investmentMigrationVersion =
+    typeof cached.investmentMigrationVersion === 'number'
+      ? cached.investmentMigrationVersion
+      : undefined;
   if (!cached.settings.automation || typeof cached.settings.automation !== 'object') cached.settings.automation = {};
   if (!cached.periodReviews || typeof cached.periodReviews !== 'object') cached.periodReviews = {};
   cached.periodReviews = normalizePeriodReviews(cached.periodReviews);

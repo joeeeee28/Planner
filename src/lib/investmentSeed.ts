@@ -60,6 +60,8 @@ interface SeedEntry {
   averageCost: number;
   investedAmount: number;
   snapshotPrice: number;   // Reference market price from screenshots
+  previousClose?: number;
+  snapshotDayChangePct?: number;
 }
 
 // ── GROWW positions (6) ────────────────────────────────────────────────────
@@ -75,6 +77,8 @@ const GROWW_SEED: SeedEntry[] = [
     averageCost: 145.18,
     investedAmount: 1306.62,
     snapshotPrice: 196.21,
+    previousClose: undefined,
+    snapshotDayChangePct: undefined,
   },
   {
     sourceKey: 'GROWW:NIPPON_GOLD',
@@ -87,6 +91,8 @@ const GROWW_SEED: SeedEntry[] = [
     averageCost: 96.58,
     investedAmount: 1255.54,
     snapshotPrice: 121.43,
+    previousClose: undefined,
+    snapshotDayChangePct: undefined,
   },
   {
     sourceKey: 'GROWW:SILVERBEES',
@@ -99,6 +105,8 @@ const GROWW_SEED: SeedEntry[] = [
     averageCost: 137.42,
     investedAmount: 687.10,
     snapshotPrice: 208.71,
+    previousClose: undefined,
+    snapshotDayChangePct: undefined,
   },
   {
     sourceKey: 'GROWW:SUZLON',
@@ -111,6 +119,8 @@ const GROWW_SEED: SeedEntry[] = [
     averageCost: 54.78,
     investedAmount: 712.14,
     snapshotPrice: 38.91,
+    previousClose: undefined,
+    snapshotDayChangePct: undefined,
   },
   {
     sourceKey: 'GROWW:TATAGOLD',
@@ -123,6 +133,8 @@ const GROWW_SEED: SeedEntry[] = [
     averageCost: 11.30,
     investedAmount: 226.00,
     snapshotPrice: 14.28,
+    previousClose: undefined,
+    snapshotDayChangePct: undefined,
   },
   {
     sourceKey: 'GROWW:TATSILV',
@@ -135,6 +147,8 @@ const GROWW_SEED: SeedEntry[] = [
     averageCost: 14.18,
     investedAmount: 751.54,
     snapshotPrice: 21.20,
+    previousClose: undefined,
+    snapshotDayChangePct: undefined,
   },
 ];
 
@@ -151,6 +165,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 431.45,
     investedAmount: 1725.80,
     snapshotPrice: 421.50,
+    previousClose: 424.34,
+    snapshotDayChangePct: -0.67,
   },
   {
     sourceKey: 'ZERODHA:GOLDBEES',
@@ -163,6 +179,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 108.04,
     investedAmount: 3781.40,
     snapshotPrice: 121.45,
+    previousClose: 121.63,
+    snapshotDayChangePct: -0.15,
   },
   {
     sourceKey: 'ZERODHA:HATHWAY',
@@ -175,6 +193,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 12.45,
     investedAmount: 12.45,
     snapshotPrice: 9.30,
+    previousClose: 9.45,
+    snapshotDayChangePct: -1.59,
   },
   {
     sourceKey: 'ZERODHA:ITBEES',
@@ -187,6 +207,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 40.45,
     investedAmount: 2871.96,
     snapshotPrice: 31.45,
+    previousClose: 30.87,
+    snapshotDayChangePct: 1.88,
   },
   {
     sourceKey: 'ZERODHA:ITC',
@@ -199,6 +221,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 363.31,
     investedAmount: 13079.05,
     snapshotPrice: 257.00,
+    previousClose: 263.75,
+    snapshotDayChangePct: -2.56,
   },
   {
     sourceKey: 'ZERODHA:TATAGOLD',
@@ -211,6 +235,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 12.38,
     investedAmount: 160.94,
     snapshotPrice: 14.29,
+    previousClose: 14.29,
+    snapshotDayChangePct: 0.00,
   },
   {
     sourceKey: 'ZERODHA:TATSILV',
@@ -223,6 +249,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 23.36,
     investedAmount: 210.23,
     snapshotPrice: 21.21,
+    previousClose: 21.31,
+    snapshotDayChangePct: -0.47,
   },
   {
     sourceKey: 'ZERODHA:VAML',
@@ -236,6 +264,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     investedAmount: 223.64,
     // Reference LTP exactly as supplied — preserved without alteration
     snapshotPrice: 402.85,
+    previousClose: 413.01,
+    snapshotDayChangePct: -2.46,
   },
   {
     sourceKey: 'ZERODHA:VEDL',
@@ -248,6 +278,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 521.32,
     investedAmount: 3127.90,
     snapshotPrice: 252.05,
+    previousClose: 259.00,
+    snapshotDayChangePct: -2.68,
   },
   {
     sourceKey: 'ZERODHA:VEDPOWER',
@@ -260,6 +292,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 63.76,
     investedAmount: 382.54,
     snapshotPrice: 32.80,
+    previousClose: 32.87,
+    snapshotDayChangePct: -0.21,
   },
   {
     sourceKey: 'ZERODHA:VISL',
@@ -272,6 +306,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 35.40,
     investedAmount: 212.38,
     snapshotPrice: 31.28,
+    previousClose: 32.30,
+    snapshotDayChangePct: -3.16,
   },
   {
     sourceKey: 'ZERODHA:VOGL',
@@ -284,6 +320,8 @@ const ZERODHA_SEED: SeedEntry[] = [
     averageCost: 112.03,
     investedAmount: 672.19,
     snapshotPrice: 32.00,
+    previousClose: 33.15,
+    snapshotDayChangePct: -3.47,
   },
 ];
 
@@ -311,26 +349,28 @@ function findExistingInstrument(
 
 // ── Main seed function ─────────────────────────────────────────────────────
 
-// ── Versioned Migration (V5 Phase 24) ──────────────────────────────────────
+// ── Versioned Migration (V5 Phase 25) ──────────────────────────────────────
 
-export const INVESTMENT_MIGRATION_VERSION = 1;
+export const INVESTMENT_MIGRATION_VERSION = 2;
 
 /**
- * Versioned, one-time migration for investment portfolio.
+ * Versioned, one-time migration for investment portfolio (Phase 25).
  *
  * Rules:
- * 1. Migration executes ONLY when required (version < 1).
+ * 1. Migration executes ONLY when required (version < 2).
  * 2. Migration is strictly idempotent.
- * 3. Never recreates a record simply because it was deleted by the user.
- * 4. Existing persisted user state is authoritative once migrated.
- * 5. Other users receive 0 Jothika holdings.
- * 6. Authenticated user ID determines scoping.
+ * 3. Strips obsolete legacy MANUAL investment records (Section 5).
+ * 4. Populates canonical Groww (6) and Zerodha (12) positions.
+ * 5. Never recreates a record simply because it was deleted by the user.
+ * 6. Existing persisted user state is authoritative once migrated.
+ * 7. Other users receive 0 Jothika holdings.
+ * 8. Authenticated user ID determines scoping.
  */
 export function migrateInvestments(
   userId: string | null,
   data: AppData
 ): AppData | null {
-  // If already migrated, user state is authoritative — NEVER recreate anything!
+  // If already migrated to version 2+, user state is authoritative — NEVER recreate anything!
   if (typeof data.investmentMigrationVersion === 'number' && data.investmentMigrationVersion >= INVESTMENT_MIGRATION_VERSION) {
     return null;
   }
@@ -343,7 +383,7 @@ export function migrateInvestments(
     return {
       ...data,
       investmentInstruments: data.investmentInstruments ?? [],
-      investmentHoldings: data.investmentHoldings ?? [],
+      investmentHoldings: (data.investmentHoldings ?? []).filter((h) => h.source !== 'MANUAL'),
       investmentTransactions: data.investmentTransactions ?? [],
       investmentPlans: data.investmentPlans ?? [],
       cachedMarketQuotes: data.cachedMarketQuotes ?? {},
@@ -353,20 +393,19 @@ export function migrateInvestments(
   }
 
   // User is Jothika:
-  // If user already has holdings, preserve them and stamp migration version
-  if (data.investmentHoldings && data.investmentHoldings.length > 0) {
-    return {
-      ...data,
-      investmentMigrationVersion: INVESTMENT_MIGRATION_VERSION,
-      updatedAt: now,
-    };
-  }
+  // 1. Remove all obsolete MANUAL records (Phase 25 Section 5)
+  const existingNonManual = (data.investmentHoldings ?? []).filter(
+    (h) => h.source === 'GROWW' || h.source === 'ZERODHA'
+  );
 
-  // First-time legacy initialization for Jothika: populate the 18 canonical holdings
   const instruments = [...(data.investmentInstruments ?? [])];
-  const holdings: InvestmentHolding[] = [];
+  const holdings: InvestmentHolding[] = [...existingNonManual];
+  const existingKeys = new Set(holdings.map((h) => h.sourceKey).filter(Boolean));
 
+  // 2. Populate canonical Groww + Zerodha seed positions if not already present
   for (const entry of ALL_SEED) {
+    if (existingKeys.has(entry.sourceKey)) continue;
+
     let inst = findExistingInstrument(instruments, entry.symbol, entry.exchange);
     if (!inst) {
       inst = {
@@ -392,7 +431,8 @@ export function migrateInvestments(
       source: entry.source,
       snapshotPrice: entry.snapshotPrice,
       sourceKey: entry.sourceKey,
-      previousClose: undefined,
+      previousClose: entry.previousClose,
+      snapshotDayChangePct: entry.snapshotDayChangePct,
       snapshotStatus: 'IMPORTED_SNAPSHOT',
     });
   }
@@ -424,7 +464,10 @@ export function maybeInitJothikaPortfolio(
  */
 export function applyJothikaSeed(data: AppData): AppData {
   const instruments = [...(data.investmentInstruments ?? [])];
-  const holdings = [...(data.investmentHoldings ?? [])];
+  // Filter out any obsolete legacy manual records
+  const holdings = (data.investmentHoldings ?? []).filter(
+    (h) => h.source === 'GROWW' || h.source === 'ZERODHA'
+  );
   const existingSourceKeys = new Set<string>(
     holdings.map((h) => h.sourceKey).filter(Boolean) as string[]
   );
@@ -459,6 +502,9 @@ export function applyJothikaSeed(data: AppData): AppData {
       source: entry.source,
       snapshotPrice: entry.snapshotPrice,
       sourceKey: entry.sourceKey,
+      previousClose: entry.previousClose,
+      snapshotDayChangePct: entry.snapshotDayChangePct,
+      snapshotStatus: 'IMPORTED_SNAPSHOT',
     };
     holdings.push(holding);
   }
@@ -481,6 +527,7 @@ export { ALL_SEED, GROWW_SEED, ZERODHA_SEED };
  * Returns a verification report.
  */
 export function verifyJothikaSeed(data: AppData): {
+  manualCount: number;
   growwCount: number;
   zerodhaCount: number;
   totalCount: number;
@@ -488,6 +535,7 @@ export function verifyJothikaSeed(data: AppData): {
   duplicateSourceKeys: string[];
 } {
   const holdings = data.investmentHoldings ?? [];
+  const manualCount = holdings.filter((h) => h.source === 'MANUAL').length;
   const jothikaHoldings = holdings.filter(
     (h) => h.source === 'GROWW' || h.source === 'ZERODHA'
   );
@@ -512,6 +560,7 @@ export function verifyJothikaSeed(data: AppData): {
     .map(([key]) => key);
 
   return {
+    manualCount,
     growwCount,
     zerodhaCount,
     totalCount: growwCount + zerodhaCount,
