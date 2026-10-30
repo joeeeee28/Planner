@@ -1,0 +1,19 @@
+{
+  "name": "Growth OS — Personal & Professional Growth System",
+  "short_name": "Growth OS",
+  "description": "Local-first personal & professional operating system. Plan, execute, track, reflect, and improve.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0d9488",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
