@@ -178,8 +178,20 @@ function mkData(over: Partial<AppData>): AppData {
   assert(income.lastGenerated !== undefined, 'active schedule advanced');
   assert(rent.lastGenerated === undefined, 'paused schedule never advances');
   assert(run.txs.length === 2, 'no duplicate rows ever created');
-  const again = materializeRecurring(run.txs, daysFromNow(40));
-  assert(again.generated === 0, 'idempotent — no duplicates on repeated calls');
+  // The engine deliberately advances at most one first-of-month occurrence
+  // per call. Idempotency means no further advance once the cursor is current;
+  // a far-future `now` can legitimately contain another due occurrence.
+  const again = materializeRecurring(run.txs, income.lastGenerated!);
+  assert(again.generated === 0, 'idempotent at the generated cursor — no duplicate advance');
+  assert(again.txs.length === 2, 'catch-up never creates duplicate rows');
+  let catchUp = run.txs;
+  for (let i = 0; i < 4; i++) {
+    const step = materializeRecurring(catchUp, daysFromNow(40));
+    catchUp = step.txs;
+    if (step.generated === 0) break;
+  }
+  assert(materializeRecurring(catchUp, daysFromNow(40)).generated === 0, 'bounded catch-up eventually becomes idle');
+  assert(new Set(catchUp.map((x) => x.id)).size === 2, 'one row per recurring definition after catch-up');
   // resume
   const resumed = run.txs.map((x) => (x.id === 'r2' ? { ...x, recurrencePaused: false } : x));
   const resumedRun = materializeRecurring(resumed, daysFromNow(60));

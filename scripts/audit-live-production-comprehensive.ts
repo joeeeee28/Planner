@@ -62,7 +62,7 @@ async function runLiveAudit() {
     'Settings',
     'Analytics',
     'Money',
-    'Investments',
+    'Health',
     'Notifications',
     'Automation',
     'FocusMode',
@@ -158,7 +158,7 @@ async function runLiveAudit() {
   console.log('\n6. Live Feature Module Verification:');
   const analyticsChunk = downloadedChunks['Analytics'] || '';
   ok(analyticsChunk.includes('Personal Analytics') || analyticsChunk.includes('Analytics'), 'Analytics module verified');
-  ok(analyticsChunk.includes('Investments') || analyticsChunk.includes('Portfolio'), 'Investments present in Analytics');
+  ok(!analyticsChunk.includes('Investment Portfolio Analytics'), 'Retired portfolio analytics absent');
 
   const moneyChunk = downloadedChunks['Money'] || '';
   ok(moneyChunk.includes('Accounts'), 'Money Accounts tab present');
@@ -167,9 +167,11 @@ async function runLiveAudit() {
   ok(moneyChunk.includes('Transfers') || moneyChunk.includes('Transfer'), 'Money Transfers functionality present');
   ok(moneyChunk.includes('Credit Cards') || moneyChunk.includes('Cards'), 'Money Credit Cards tab present');
 
-  const invChunk = downloadedChunks['Investments'] || '';
-  ok(invChunk.includes('Portfolio') || invChunk.includes('Holdings'), 'Investments module contains Portfolio and Holdings');
-  ok(invChunk.includes('GROWW') || invChunk.includes('ZERODHA') || invChunk.includes('Groww') || invChunk.includes('Zerodha'), 'Investments module contains GROWW and ZERODHA broker views');
+  const healthChunk = downloadedChunks['Health'] || '';
+  ok(healthChunk.includes('Daily check-in'), 'Health daily check-in present');
+  ok(healthChunk.includes('Progress photos'), 'Health private photo UI present');
+  ok(healthChunk.includes('PHOTO UPLOADS BLOCKED'), 'Photo storage fails closed when unconfigured');
+  ok(!Object.keys(downloadedChunks).includes('Investments'), 'No retired portfolio chunk');
 
   const notifChunk = downloadedChunks['Notifications'] || '';
   ok(notifChunk.includes('Notifications') || notifChunk.includes('Notification Center') || notifChunk.includes('notification'), 'Notifications module verified');
@@ -184,17 +186,14 @@ async function runLiveAudit() {
   const planChunk = downloadedChunks['Plan'] || '';
   ok(planChunk.includes('Plan') || planChunk.includes('Calendar') || planChunk.includes('timeline'), 'Planning & calendar views present');
 
-  // ── 7. External Calendar & Market Data Provider State Verification ───────
+  // ── 7. External Calendar & Health Storage Truthfulness ───────
   console.log('\n7. External Provider Truthfulness Audit:');
   ok(
     settingsChunk.includes('Server backend not configured') || settingsChunk.includes('Not configured'),
     'External calendar UI clearly indicates unconfigured backend state'
   );
   ok(!settingsChunk.includes('fake-connected'), 'No fake calendar connection exists in bundle');
-  ok(
-    invChunk.includes('Market data provider not configured') || invChunk.includes('Unconfigured'),
-    'Investments UI truthfully displays unconfigured market data status when provider is unconfigured'
-  );
+  ok(healthChunk.includes('Private storage needs configuration'), 'Health explains missing private storage configuration');
 
   console.log('\n============================================================');
   console.log(`AUDIT COMPLETE: ${passed} passed, ${failed} failed`);

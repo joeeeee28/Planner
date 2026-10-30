@@ -22,11 +22,6 @@ import { deriveCommitments } from '../lib/commitments';
 import { ProgressBar, Stars, Modal } from '../components/ui';
 import { IconArrowRight, IconMoney } from '../components/icons';
 import { MetricCard, StatGrid } from '../components/v5';
-import {
-  calculatePortfolioSummary,
-  filterThisMonthInvestments,
-  filterUpcomingInvestments,
-} from '../lib/investments';
 import { uid } from '../lib/uid';
 import { QuickAddModal, type QuickAddKind } from '../components/QuickAdd';
 import { activeGoals, tasksOf, nextTaskForGoal } from '../lib/plan';
@@ -73,7 +68,6 @@ export function DashboardPage() {
   const showLearning = hw.learning !== false;
   const showHabits = hw.habits !== false;
   const showUpcoming = hw.upcoming !== false;
-  const showInvestments = hw.investments !== false;
   const showAnalytics = hw.analytics !== false;
 
   const dayP = dayProgress(entry, data.growthAreas);
@@ -123,14 +117,6 @@ export function DashboardPage() {
   const activeGoalsCount = data.goals.filter((g) => g.status === 'in-progress' || g.status === 'not-started').length;
   const tasksDoneThisWeek = tasks.filter((x) => x.done && x.doneAt && x.doneAt.slice(0, 10) >= addDays(t, -7)).length;
   const activeLearningCount = data.learning.filter((l) => l.status === 'in-progress' || l.status === 'planned').length;
-
-  // ── investments summary ──
-  const holdings = data.investmentHoldings ?? [];
-  const instruments = data.investmentInstruments ?? [];
-  const quotes = data.cachedMarketQuotes ?? {};
-  const portfolio = calculatePortfolioSummary(holdings, instruments, quotes);
-  const thisMonthInvest = filterThisMonthInvestments(data.investmentTransactions ?? [], data.investmentPlans ?? [], mk);
-  const upcomingInvest = filterUpcomingInvestments(data.investmentPlans ?? [], t);
 
   // ── "What Changed This Week" Financial Comparison (Sections 8-11) ──
   const weekScope = rangeFor(data, 'week', t);
@@ -594,62 +580,6 @@ export function DashboardPage() {
         </section>
       )}
 
-      {/* INVESTMENTS WIDGET (Section 43) */}
-      {showInvestments && (
-        <section className="section-gap" aria-label="Investments Portfolio">
-          <div className="flex mb-16" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <div className="flex items-center gap-8">
-              <h2 className="t-section" style={{ margin: 0 }}>Investments</h2>
-              <span className="v5-badge">{holdings.length} {holdings.length === 1 ? 'holding' : 'holdings'}</span>
-            </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate('investments')}>
-              Portfolio Dashboard <IconArrowRight size={13} />
-            </button>
-          </div>
-
-          {holdings.length === 0 ? (
-            <div className="v5-metric-card" style={{ padding: '24px 20px', textAlign: 'center' }}>
-              <p className="small muted mb-12">No active investment holdings yet.</p>
-              <div className="flex justify-center gap-8">
-                <button className="btn btn-sm btn-primary" onClick={() => navigate('investments')}>
-                  Open Investments
-                </button>
-              </div>
-            </div>
-          ) : (
-            <StatGrid cols={4}>
-              <MetricCard
-                label="PORTFOLIO VALUE"
-                value={formatMoney(portfolio.totalCurrentValue, currency, true)}
-                subtext={`Invested ${formatMoney(portfolio.totalInvested, currency, true)}`}
-                onClick={() => navigate('investments')}
-              />
-              <MetricCard
-                label="TOTAL P/L"
-                value={`${portfolio.totalPL >= 0 ? '+' : ''}${formatMoney(portfolio.totalPL, currency, true)}`}
-                delta={`${portfolio.totalReturnPct >= 0 ? '+' : ''}${portfolio.totalReturnPct.toFixed(1)}%`}
-                deltaLabel="all-time return"
-                trend={portfolio.totalPL >= 0 ? 'up' : 'down'}
-                semantic={portfolio.totalPL >= 0 ? 'positive' : 'negative'}
-                onClick={() => navigate('investments')}
-              />
-              <MetricCard
-                label="THIS MONTH"
-                value={formatMoney(thisMonthInvest.investedThisMonth, currency, true)}
-                subtext={`${thisMonthInvest.actionsCount} ${thisMonthInvest.actionsCount === 1 ? 'trade' : 'trades'} executed`}
-                onClick={() => navigate('investments')}
-              />
-              <MetricCard
-                label="UPCOMING"
-                value={formatMoney(thisMonthInvest.plannedAmount, currency, true)}
-                subtext={`${upcomingInvest.length} planned actions`}
-                onClick={() => navigate('investments')}
-              />
-            </StatGrid>
-          )}
-        </section>
-      )}
-
       {/* TOP GOALS */}
       {showGoals && (
         <section className="section-gap">
@@ -958,7 +888,6 @@ export function DashboardPage() {
               { key: 'today', label: 'Today & Top Priorities' },
               { key: 'attention', label: 'Needs Attention' },
               { key: 'money', label: 'Money Snapshot' },
-              { key: 'investments', label: 'Investments & Portfolio' },
               { key: 'goals', label: 'Goal Momentum' },
               { key: 'upcoming', label: 'Upcoming Commitments' },
               { key: 'learning', label: 'Learning Progress' },

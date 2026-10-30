@@ -11,15 +11,13 @@ import type {
   RecurrenceKind,
   RoutineStep,
   Transaction,
-  AssetType,
-  InvestmentTxType,
-  MarketStatus,
-  BrokerSource,
 } from './types';
 import { SCHEMA_VERSION, STORAGE_KEY, createInitialData } from './defaults';
 import { mergeDeep } from './merge';
+import { cleanRetiredFields, PHASE_30_CLEANUP_VERSION } from './phase30Cleanup';
 import { safeAmount } from './finance';
 import { isValidLast4, last4FromInput } from './cards';
+import { normalizeHealthData } from './health/domain';
 
 let cached: AppData | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -681,211 +679,8 @@ function normalizeStandaloneCommitments(list: unknown): AppData['standaloneCommi
   return out;
 }
 
-/** Normalize investment instruments (V5) */
-function normalizeInvestmentInstruments(list: unknown): AppData['investmentInstruments'] {
-  if (!Array.isArray(list)) return [];
-  const seen = new Set<string>();
-  const out: NonNullable<AppData['investmentInstruments']> = [];
-  const ASSET_TYPES = new Set<AssetType>(['STOCK', 'ETF', 'MUTUAL_FUND', 'BOND', 'OTHER']);
-  for (const raw of list) {
-    if (!raw || typeof raw !== 'object') continue;
-    const r = raw as Record<string, unknown>;
-    const symbol = typeof r.symbol === 'string' ? r.symbol.trim().toUpperCase() : '';
-    if (!symbol) continue;
-    const id = typeof r.id === 'string' && r.id ? r.id : `inst-${symbol.toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const assetType = ASSET_TYPES.has(r.assetType as AssetType) ? (r.assetType as AssetType) : 'STOCK';
-    out.push({
-      id,
-      symbol,
-      name: typeof r.name === 'string' && r.name.trim() ? r.name.trim() : symbol,
-      exchange: typeof r.exchange === 'string' && r.exchange.trim() ? r.exchange.trim().toUpperCase() : 'NSE',
-      assetType,
-      currency: typeof r.currency === 'string' && r.currency ? r.currency.toUpperCase() : 'INR',
-      isin: typeof r.isin === 'string' && r.isin.trim() ? r.isin.trim().toUpperCase() : undefined,
-      active: r.active !== false,
-      marketDataProvider: typeof r.marketDataProvider === 'string' ? r.marketDataProvider : undefined,
-      metadata: r.metadata && typeof r.metadata === 'object' ? (r.metadata as Record<string, unknown>) : undefined,
-    });
-  }
-  return out;
-}
-
-/** Normalize investment holdings (V5) */
-function normalizeInvestmentHoldings(list: unknown): AppData['investmentHoldings'] {
-  if (!Array.isArray(list)) return [];
-  const seen = new Set<string>();
-  const out: NonNullable<AppData['investmentHoldings']> = [];
-  const BROKERS = new Set<string>(['GROWW', 'ZERODHA', 'MANUAL', 'OTHER']);
-  for (const raw of list) {
-    if (!raw || typeof raw !== 'object') continue;
-    const r = raw as Record<string, unknown>;
-    const instrumentId = typeof r.instrumentId === 'string' ? r.instrumentId : '';
-    if (!instrumentId) continue;
-    let sourceStr = typeof r.source === 'string' ? r.source.toUpperCase() : '';
-    if (!sourceStr || sourceStr === 'MANUAL') {
-      const sk = typeof r.sourceKey === 'string' ? r.sourceKey.toUpperCase() : '';
-      if (sk.startsWith('GROWW:')) sourceStr = 'GROWW';
-      else if (sk.startsWith('ZERODHA:')) sourceStr = 'ZERODHA';
-      else sourceStr = 'MANUAL';
-    }
-    const source: BrokerSource = BROKERS.has(sourceStr) ? (sourceStr as BrokerSource) : 'MANUAL';
-    const id = typeof r.id === 'string' && r.id ? r.id : `hld-${source}-${instrumentId}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const quantity = typeof r.quantity === 'number' && Number.isFinite(r.quantity) && r.quantity >= 0 ? r.quantity : 0;
-    const averageCost = typeof r.averageCost === 'number' && Number.isFinite(r.averageCost) && r.averageCost >= 0 ? r.averageCost : 0;
-    const investedAmount = typeof r.investedAmount === 'number' && Number.isFinite(r.investedAmount) && r.investedAmount >= 0
-      ? r.investedAmount
-      : quantity * averageCost;
-    const sourceKey = typeof r.sourceKey === 'string' && r.sourceKey ? r.sourceKey : undefined;
-    const snapshotPrice = typeof r.snapshotPrice === 'number' && Number.isFinite(r.snapshotPrice) && r.snapshotPrice > 0
-      ? r.snapshotPrice
-      : undefined;
-    const previousClose = typeof r.previousClose === 'number' && Number.isFinite(r.previousClose) && r.previousClose > 0
-      ? r.previousClose
-      : undefined;
-    const snapshotDayChange = typeof r.snapshotDayChange === 'number' && Number.isFinite(r.snapshotDayChange)
-      ? r.snapshotDayChange
-      : undefined;
-    const snapshotDayChangePct = typeof r.snapshotDayChangePct === 'number' && Number.isFinite(r.snapshotDayChangePct)
-      ? r.snapshotDayChangePct
-      : undefined;
-    const snapshotTimestamp = typeof r.snapshotTimestamp === 'string' ? r.snapshotTimestamp : undefined;
-    const snapshotStatus = typeof r.snapshotStatus === 'string' ? r.snapshotStatus : undefined;
-
-    out.push({
-      id,
-      instrumentId,
-      quantity,
-      averageCost,
-      investedAmount,
-      openedAt: typeof r.openedAt === 'string' ? r.openedAt : new Date().toISOString().slice(0, 10),
-      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString(),
-      source,
-      sourceKey,
-      snapshotPrice,
-      previousClose,
-      snapshotDayChange,
-      snapshotDayChangePct,
-      snapshotTimestamp,
-      snapshotStatus,
-    });
-  }
-  return out;
-}
-
-/** Normalize investment transactions (V5) */
-function normalizeInvestmentTransactions(list: unknown): AppData['investmentTransactions'] {
-  if (!Array.isArray(list)) return [];
-  const seen = new Set<string>();
-  const out: NonNullable<AppData['investmentTransactions']> = [];
-  const TX_TYPES = new Set<InvestmentTxType>(['BUY', 'SELL', 'DIVIDEND', 'SPLIT', 'BONUS', 'ADJUSTMENT']);
-  for (const raw of list) {
-    if (!raw || typeof raw !== 'object') continue;
-    const r = raw as Record<string, unknown>;
-    const instrumentId = typeof r.instrumentId === 'string' ? r.instrumentId : '';
-    if (!instrumentId) continue;
-    const id = typeof r.id === 'string' && r.id ? r.id : `itx-${Math.random().toString(36).slice(2, 10)}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const type = TX_TYPES.has(r.type as InvestmentTxType) ? (r.type as InvestmentTxType) : 'BUY';
-    const quantity = typeof r.quantity === 'number' && Number.isFinite(r.quantity) && r.quantity > 0 ? r.quantity : 0;
-    const price = typeof r.price === 'number' && Number.isFinite(r.price) && r.price >= 0 ? r.price : 0;
-    const amount = typeof r.amount === 'number' && Number.isFinite(r.amount) && r.amount >= 0 ? r.amount : quantity * price;
-    out.push({
-      id,
-      date: typeof r.date === 'string' ? r.date : new Date().toISOString().slice(0, 10),
-      instrumentId,
-      type,
-      quantity,
-      price,
-      amount,
-      fees: typeof r.fees === 'number' && Number.isFinite(r.fees) && r.fees >= 0 ? r.fees : undefined,
-      broker: typeof r.broker === 'string' && r.broker ? r.broker : undefined,
-      currency: typeof r.currency === 'string' && r.currency ? r.currency.toUpperCase() : 'INR',
-      notes: typeof r.notes === 'string' && r.notes ? r.notes : undefined,
-      moneyTransactionId: typeof r.moneyTransactionId === 'string' && r.moneyTransactionId ? r.moneyTransactionId : undefined,
-    });
-  }
-  return out;
-}
-
-/** Normalize investment plans (V5) */
-function normalizeInvestmentPlans(list: unknown): AppData['investmentPlans'] {
-  if (!Array.isArray(list)) return [];
-  const seen = new Set<string>();
-  const out: NonNullable<AppData['investmentPlans']> = [];
-  const STATUSES = new Set(['planned', 'completed', 'cancelled']);
-  for (const raw of list) {
-    if (!raw || typeof raw !== 'object') continue;
-    const r = raw as Record<string, unknown>;
-    const id = typeof r.id === 'string' && r.id ? r.id : `ipl-${Math.random().toString(36).slice(2, 10)}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const amount = typeof r.amount === 'number' && Number.isFinite(r.amount) && r.amount >= 0 ? r.amount : 0;
-    const status = STATUSES.has(r.status as string) ? (r.status as 'planned' | 'completed' | 'cancelled') : 'planned';
-    out.push({
-      id,
-      plannedDate: typeof r.plannedDate === 'string' ? r.plannedDate : new Date().toISOString().slice(0, 10),
-      instrumentId: typeof r.instrumentId === 'string' ? r.instrumentId : undefined,
-      amount,
-      quantity: typeof r.quantity === 'number' && Number.isFinite(r.quantity) && r.quantity > 0 ? r.quantity : undefined,
-      frequency: typeof r.frequency === 'string' ? (r.frequency as 'once' | 'monthly' | 'weekly' | 'quarterly') : 'once',
-      status,
-      notes: typeof r.notes === 'string' && r.notes ? r.notes : undefined,
-    });
-  }
-  return out;
-}
-
-/** Normalize cached market quotes (V5) */
-function normalizeCachedMarketQuotes(obj: unknown): AppData['cachedMarketQuotes'] {
-  const out: NonNullable<AppData['cachedMarketQuotes']> = {};
-  if (!obj || typeof obj !== 'object') return out;
-  const STATUSES = new Set<MarketStatus>(['Open', 'Closed', 'Delayed', 'Unavailable']);
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (!value || typeof value !== 'object') continue;
-    const q = value as Record<string, unknown>;
-    const symbol = typeof q.symbol === 'string' ? q.symbol.toUpperCase() : key.toUpperCase();
-    const price = typeof q.price === 'number' && Number.isFinite(q.price) ? q.price : 0;
-    const previousClose = typeof q.previousClose === 'number' && Number.isFinite(q.previousClose) && q.previousClose > 0
-      ? q.previousClose
-      : undefined;
-    const hasDayChange = typeof q.dayChange === 'number' && Number.isFinite(q.dayChange)
-      ? true
-      : (previousClose !== undefined);
-    const dayChange = typeof q.dayChange === 'number' && Number.isFinite(q.dayChange)
-      ? q.dayChange
-      : (previousClose !== undefined ? price - previousClose : undefined);
-    const dayChangePercent = typeof q.dayChangePercent === 'number' && Number.isFinite(q.dayChangePercent)
-      ? q.dayChangePercent
-      : (previousClose !== undefined && previousClose > 0 && dayChange !== undefined ? ((dayChange / previousClose) * 100) : undefined);
-    const marketStatus = STATUSES.has(q.marketStatus as MarketStatus) ? (q.marketStatus as MarketStatus) : 'Unavailable';
-    out[key] = {
-      instrumentId: typeof q.instrumentId === 'string' ? q.instrumentId : undefined,
-      symbol,
-      price,
-      previousClose,
-      dayChange,
-      dayChangePercent,
-      hasDayChange,
-      currency: typeof q.currency === 'string' && q.currency ? q.currency.toUpperCase() : 'INR',
-      marketStatus,
-      marketState: typeof q.marketState === 'string' ? (q.marketState as any) : undefined,
-      dataQuality: typeof q.dataQuality === 'string' ? (q.dataQuality as any) : undefined,
-      provider: typeof q.provider === 'string' ? q.provider : 'cache',
-      timestamp: typeof q.timestamp === 'string' ? q.timestamp : new Date().toISOString(),
-      sourceTimestamp: typeof q.sourceTimestamp === 'string' ? q.sourceTimestamp : undefined,
-      isDelayed: q.isDelayed === true,
-      isCached: q.isCached === true,
-    };
-  }
-  return out;
-}
-
-export function normalizeData(cached: AppData): AppData {
+export function normalizeData(input: AppData): AppData {
+  const cached = cleanRetiredFields(input).value;
   if (cached.transactions) cached.transactions = normalizeTransactions(cached.transactions);
   if (cached.savingsGoals) cached.savingsGoals = normalizeSavingsGoals(cached.savingsGoals);
   if (cached.budgets) cached.budgets = normalizeBudgets(cached.budgets);
@@ -903,19 +698,12 @@ export function normalizeData(cached: AppData): AppData {
   cached.routines = normalizeRoutines(cached.routines);
   cached.routineRuns = normalizeRoutineRuns(cached.routineRuns);
   cached.notifications = normalizeNotifications(cached.notifications);
-  cached.investmentInstruments = normalizeInvestmentInstruments(cached.investmentInstruments);
-  cached.investmentHoldings = normalizeInvestmentHoldings(cached.investmentHoldings);
-  cached.investmentTransactions = normalizeInvestmentTransactions(cached.investmentTransactions);
-  cached.investmentPlans = normalizeInvestmentPlans(cached.investmentPlans);
-  cached.cachedMarketQuotes = normalizeCachedMarketQuotes(cached.cachedMarketQuotes);
-  cached.investmentMigrationVersion =
-    typeof cached.investmentMigrationVersion === 'number'
-      ? cached.investmentMigrationVersion
-      : undefined;
   if (!cached.settings.automation || typeof cached.settings.automation !== 'object') cached.settings.automation = {};
   if (!cached.periodReviews || typeof cached.periodReviews !== 'object') cached.periodReviews = {};
   cached.periodReviews = normalizePeriodReviews(cached.periodReviews);
   if (!cached.settings.finance.provider) cached.settings.finance.provider = 'manual';
+  cached.health = normalizeHealthData(cached.health);
+  cached.phase30CleanupVersion = PHASE_30_CLEANUP_VERSION;
   cached.version = SCHEMA_VERSION;
   return cached;
 }

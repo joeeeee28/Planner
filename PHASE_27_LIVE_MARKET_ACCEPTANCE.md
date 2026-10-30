@@ -1,3 +1,5 @@
+> **Historical record — superseded by Phase 30 (2026-10-30).** The portfolio module and its market-data infrastructure have been retired. This file is retained only as an audit trail; do not use its deployment instructions or treat its acceptance claims as current.
+
 # Growth OS V5 — Phase 27 Live Market Acceptance & Release SHA Reconciliation Report
 
 **Target Production:** `https://joeeeee28.github.io/Planner/`  

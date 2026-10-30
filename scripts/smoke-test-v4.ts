@@ -276,7 +276,7 @@ async function main() {
         ['bottom nav has the 5 core destinations', () => {
           const nav = s.win.document.querySelector('.mobile-nav');
           const text = nav?.textContent ?? '';
-          return ['Home', 'Today', 'Plan', 'Money', 'More'].every((x) => text.includes(x));
+          return ['Plan', 'Grow', 'Money', 'Health', 'Reflect'].every((x) => text.includes(x)) && !text.includes('Investments');
         }],
         ['floating quick-add button present', () => !!s.win.document.querySelector('.fab')],
         ['FAB opens quick add with all capture kinds', async () => {

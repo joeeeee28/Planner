@@ -15,7 +15,7 @@
 import { JSDOM } from 'jsdom';
 import { pushUserDocument } from '../src/lib/cloudData';
 import { changeReport, topChanges, changeDeltaLabel, changeRange, quarterOf } from '../src/lib/change';
-import { weekStartOf, addDays } from '../src/lib/dates';
+import { weekStartOf, addDays, addMonths, monthKeyOf } from '../src/lib/dates';
 import { taskPriority, nextBestAction, topGoal, postponeCount, adaptiveDay, dayWorkload, repeatedlyPostponed } from '../src/lib/priority';
 import { staleRows, staleCount } from '../src/lib/stale';
 import { nextMonthForecast, savingsProjection, contributedInMonth } from '../src/lib/forecast';
@@ -365,10 +365,10 @@ function mkData(over: Partial<AppData>): AppData {
   assert(fallback.enoughData === false, 'no history → forecast honestly says not enough data');
   const twoMonths = mkData({
     transactions: [
-      { id: 'm1', type: 'income', amount: 40000, date: daysFromNow(-20), category: 'Salary', createdAt: '' },
-      { id: 'm2', type: 'income', amount: 40000, date: daysFromNow(-50), category: 'Salary', createdAt: '' },
-      { id: 'e1', type: 'expense', amount: 10000, date: daysFromNow(-21), category: 'Food', createdAt: '' },
-      { id: 'e2', type: 'expense', amount: 12000, date: daysFromNow(-49), category: 'Food', createdAt: '' },
+      { id: 'm1', type: 'income', amount: 40000, date: `${monthKeyOf(addMonths(now, -1))}-10`, category: 'Salary', createdAt: '' },
+      { id: 'm2', type: 'income', amount: 40000, date: `${monthKeyOf(addMonths(now, -2))}-10`, category: 'Salary', createdAt: '' },
+      { id: 'e1', type: 'expense', amount: 10000, date: `${monthKeyOf(addMonths(now, -1))}-11`, category: 'Food', createdAt: '' },
+      { id: 'e2', type: 'expense', amount: 12000, date: `${monthKeyOf(addMonths(now, -2))}-09`, category: 'Food', createdAt: '' },
     ],
   });
   const fb = nextMonthForecast(twoMonths, now);

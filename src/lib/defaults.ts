@@ -18,6 +18,8 @@ import type {
   MonthKey,
 } from './types';
 import { monthKeyOf, parseDateStr, toDateStr } from './dates';
+import { emptyHealthData } from './health/types';
+import { PHASE_30_CLEANUP_VERSION } from './phase30Cleanup';
 
 export const SCHEMA_VERSION = 1;
 export const STORAGE_KEY = 'growth-os.v1';
@@ -174,6 +176,8 @@ export function createInitialData(): AppData {
   const today = new Date().toISOString().slice(0, 10);
   return {
     version: SCHEMA_VERSION,
+    phase30CleanupVersion: PHASE_30_CLEANUP_VERSION,
+    health: emptyHealthData(),
     onboarded: false,
     settings: {
       name: '',
@@ -220,12 +224,6 @@ export function createInitialData(): AppData {
     routines: [],
     routineRuns: {},
     notifications: [],
-    investmentInstruments: [],
-    investmentHoldings: [],
-    investmentTransactions: [],
-    investmentPlans: [],
-    investmentMigrationVersion: 2,
-    cachedMarketQuotes: {},
     periodReviews: {},
     cycleReviews: {},
     createdAt: today,

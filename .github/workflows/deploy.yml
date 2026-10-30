@@ -64,18 +64,6 @@ jobs:
       - name: Run V5 Core Tests
         run: npm run test:v5
 
-      - name: Run V5 Phase 24 Tests
-        run: npm run test:v5:phase24
-
-      - name: Run V5 Phase 25 Tests
-        run: npm run test:v5:phase25
-
-      - name: Run V5 Phase 26 Tests
-        run: npm run test:v5:phase26
-
-      - name: Run V5 Phase 27 Tests
-        run: npm run test:v5:phase27
-
       # Fail BEFORE building rather than silently shipping a local-mode bundle.
       # This is the exact regression that put a local default account into
       # production: the build ran without credentials, so Vite compiled
@@ -106,8 +94,6 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_MARKET_DATA_BACKEND: ${{ secrets.VITE_MARKET_DATA_BACKEND }}
-          VITE_JOTHIKA_USER_ID: ${{ secrets.VITE_JOTHIKA_USER_ID }}
         run: npm run build
 
       - name: Add .nojekyll (Vite does not emit it)

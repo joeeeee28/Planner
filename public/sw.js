@@ -2,7 +2,7 @@
 // Growth OS V5 Phase 15 — Service Worker (Safe Shell Cache Only)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CACHE_NAME = 'growth-os-shell-v5-1';
+const CACHE_NAME = 'growth-os-shell-v30-1';
 
 // Static assets to cache for offline application shell availability
 const STATIC_ASSETS = [
@@ -46,6 +46,8 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('supabase') ||
     url.pathname.includes('/rest/v1/') ||
     url.pathname.includes('/auth/v1/') ||
+    url.pathname.includes('/storage/v1/') ||
+    url.pathname.includes('/rest/v1/rpc/') ||
     event.request.method !== 'GET'
   ) {
     return; // Pass through to network

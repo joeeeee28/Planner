@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRoute, navigate } from '../lib/router';
 import { searchAll, searchGroupOf, SEARCH_GROUP_LABEL, type SearchResult, type SearchGroup } from '../lib/search';
-import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle, IconChart, IconTrendUp } from './icons';
+import { IconHome, IconToday, IconInbox, IconPlan, IconGoal, IconGrowth, IconMoney, IconJournal, IconReviews, IconInsights, IconSettings, IconSearch, IconPlus, IconClose, IconMenu, IconCycle, IconChart, IconHealth } from './icons';
 import { QuickAddModal, type QuickAddKind } from './QuickAdd';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
@@ -11,7 +11,7 @@ interface NavItem {
   path: string;
   label: string;
   icon: (p: { size?: number }) => React.ReactElement;
-  group: 'plan' | 'grow' | 'money' | 'reflect' | 'system';
+  group: 'plan' | 'grow' | 'money' | 'health' | 'reflect' | 'system';
 }
 
 const NAV_MAIN: NavItem[] = [
@@ -21,7 +21,6 @@ const NAV_MAIN: NavItem[] = [
   { path: 'automation', label: 'Automation', icon: IconCycle, group: 'plan' },
   { path: 'inbox', label: 'Inbox', icon: IconInbox, group: 'plan' },
   { path: 'plan', label: 'Plan', icon: IconPlan, group: 'plan' },
-  { path: 'reviews', label: 'Reviews', icon: IconReviews, group: 'plan' },
 
   // GROW
   { path: 'goals', label: 'Goals', icon: IconGoal, group: 'grow' },
@@ -30,9 +29,12 @@ const NAV_MAIN: NavItem[] = [
 
   // MONEY
   { path: 'money', label: 'Money', icon: IconMoney, group: 'money' },
-  { path: 'investments', label: 'Investments', icon: IconTrendUp, group: 'money' },
+
+  // HEALTH
+  { path: 'health', label: 'Health', icon: IconHealth, group: 'health' },
 
   // REFLECT
+  { path: 'reviews', label: 'Reviews', icon: IconReviews, group: 'reflect' },
   { path: 'journal', label: 'Journal', icon: IconJournal, group: 'reflect' },
   { path: 'analytics', label: 'Analytics', icon: IconChart, group: 'reflect' },
   { path: 'insights', label: 'Insights', icon: IconInsights, group: 'reflect' },
@@ -45,11 +47,12 @@ const GROUP_LABEL: Record<string, string> = {
   plan: 'Plan',
   grow: 'Grow',
   money: 'Money',
+  health: 'Health',
   reflect: 'Reflect',
   system: 'System',
 };
 
-const MOBILE_TABS = ['home', 'today', 'plan', 'money'];
+const MOBILE_TABS = ['plan', 'growth', 'money', 'health', 'journal'];
 
 import { SyncCenterModal } from './SyncCenterModal';
 
@@ -85,9 +88,7 @@ function SyncChip({ onClick }: { onClick?: () => void }) {
 }
 
 function pageTitle(section: string, sub: string | undefined): string {
-  if (section === 'investments') {
-    return 'Investments';
-  }
+  if (section === 'health') return 'Health';
   if (section === 'growth' && sub) {
     const map: Record<string, string> = { habits: 'Habits', learning: 'Learning', career: 'Career', cycles: 'Growth cycles' };
     return map[sub] ?? 'Growth';
@@ -214,7 +215,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const active = (path: string) => (section === path ? 'active' : '');
 
-  const groups = ['plan', 'grow', 'money', 'reflect'] as const;
+  const groups = ['plan', 'grow', 'money', 'health', 'reflect'] as const;
   const systemItems = NAV_MAIN.filter((n) => n.group === 'system');
 
   const sidebar = (
@@ -375,12 +376,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <button
               key={item.path}
               className={`mn-item ${section === item.path ? 'active' : ''}`}
+              aria-label={item.path === 'journal' ? 'Reflect' : item.path === 'growth' ? 'Grow' : item.label}
+              aria-current={section === item.path ? 'page' : undefined}
               onClick={() => navigate(item.path)}
             >
               <span className="ic">
                 <Icon size={18} />
               </span>
-              {item.label}
+              {item.path === 'journal' ? 'Reflect' : item.path === 'growth' ? 'Grow' : item.label}
             </button>
           );
         })}
