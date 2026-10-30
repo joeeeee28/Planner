@@ -1,3 +1,5 @@
+import type { HealthData } from './health/types';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Growth OS — core data model
 // Every entity is date-driven and persists indefinitely. Nothing is deleted
@@ -368,7 +370,6 @@ export interface HomeWidgetPreferences {
   today?: boolean;
   attention?: boolean;
   money?: boolean;
-  investments?: boolean;
   goals?: boolean;
   learning?: boolean;
   habits?: boolean;
@@ -852,6 +853,10 @@ export interface ExternalEvent {
 
 export interface AppData {
   version: number;
+  /** Phase 30 exact-key retirement migration. */
+  phase30CleanupVersion?: number;
+  /** Normalized Health domain; photo bytes/metadata are never stored here. */
+  health: HealthData;
   /** Connected external calendars (Slice 5) — additive, absent in older docs. */
   calendarConnections?: CalendarConnection[];
   /** Cached read-only external events (Slice 5) — additive. */
@@ -922,20 +927,6 @@ export interface AppData {
   automationLogs?: AutomationLogItem[];
   /** Migration and import history log (V5 Phase 17) — additive. */
   migrationHistory?: MigrationHistoryItem[];
-  /** Investment instruments (V5) — additive. */
-  investmentInstruments?: InvestmentInstrument[];
-  /** Portfolio holdings rolled up by instrument (V5) — additive. */
-  investmentHoldings?: InvestmentHolding[];
-  /** Investment transactions (V5) — additive. */
-  investmentTransactions?: InvestmentTransaction[];
-  /** Planned upcoming investments (V5) — additive. */
-  investmentPlans?: InvestmentPlan[];
-  /** Investment migration version (V5 Phase 24) — tracks one-time migration. */
-  investmentMigrationVersion?: number;
-  /** Normalized cached market quotes keyed by symbol/id (V5) — additive. */
-  cachedMarketQuotes?: Record<string, MarketQuote>;
-  /** Timestamp of last market data refresh (V5) — additive. */
-  lastMarketRefresh?: string;
   /** Quarterly & yearly review notes, keyed by `YYYY-Qn` / `YYYY`. */
   periodReviews: Record<string, PeriodReview>;
   cycleReviews: Record<ID, CycleReview>;
@@ -1187,142 +1178,6 @@ export interface MigrationHistoryItem {
   skippedCount: number;
   failedCount: number;
   status: 'completed' | 'partial' | 'failed' | 'rolled-back';
-}
-
-// ── Investments Module (V5) ────────────────────────────────────────────────
-
-export type AssetType = 'STOCK' | 'ETF' | 'MUTUAL_FUND' | 'BOND' | 'OTHER';
-
-/**
- * Broker / data-source that owns this holding.
- * GROWW   — imported from or held in Groww
- * ZERODHA — imported from or held in Zerodha
- * MANUAL  — manually entered by the user
- * OTHER   — any other source / broker
- */
-export type BrokerSource = 'GROWW' | 'ZERODHA' | 'MANUAL' | 'OTHER';
-
-export interface InvestmentInstrument {
-  id: ID;
-  symbol: string;
-  name: string;
-  exchange: string;
-  assetType: AssetType;
-  currency: string;
-  isin?: string;
-  active: boolean;
-  marketDataProvider?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface InvestmentHolding {
-  id: ID;
-  instrumentId: ID;
-  quantity: number;
-  averageCost: number;
-  investedAmount: number;
-  openedAt: string;
-  updatedAt: string;
-  /**
-   * Broker / data-source that owns this holding.
-   * Used to filter ALL / GROWW / ZERODHA views.
-   * Defaults to 'MANUAL' for legacy records without a source.
-   */
-  source?: BrokerSource;
-  /**
-   * Last imported reference price (snapshot from broker screenshot/export).
-   * Displayed as 'IMPORTED SNAPSHOT' until a live quote replaces it.
-   * Never labelled as LIVE.
-   */
-  snapshotPrice?: number;
-  /**
-   * Deterministic source-aware identifier for idempotent seeding.
-   * Format: '{SOURCE}:{SYMBOL_UPPER}'
-   * e.g. 'GROWW:ADANI_POWER', 'ZERODHA:COALINDIA'
-   */
-  sourceKey?: string;
-  /** Previous close price for day P&L calculations (if available from broker/snapshot) */
-  previousClose?: number;
-  /** Explicit snapshot day change (if available from broker/snapshot) */
-  snapshotDayChange?: number;
-  /** Explicit snapshot day change percentage */
-  snapshotDayChangePct?: number;
-  /** Snapshot capture timestamp */
-  snapshotTimestamp?: string;
-  /** Snapshot status string e.g. 'IMPORTED_SNAPSHOT' */
-  snapshotStatus?: string;
-}
-
-export type InvestmentTxType = 'BUY' | 'SELL' | 'DIVIDEND' | 'SPLIT' | 'BONUS' | 'ADJUSTMENT';
-
-export interface InvestmentTransaction {
-  id: ID;
-  date: DateStr;
-  instrumentId: ID;
-  type: InvestmentTxType;
-  quantity: number;
-  price: number;
-  amount: number;
-  fees?: number;
-  broker?: string;
-  currency: string;
-  notes?: string;
-  moneyTransactionId?: ID;
-}
-
-export interface InvestmentPlan {
-  id: ID;
-  plannedDate: DateStr;
-  instrumentId?: ID;
-  amount: number;
-  quantity?: number;
-  frequency?: 'once' | 'monthly' | 'weekly' | 'quarterly';
-  status: 'planned' | 'completed' | 'cancelled';
-  notes?: string;
-}
-
-export type MarketStatus = 'Open' | 'Closed' | 'Delayed' | 'Unavailable';
-
-export type MarketDataQuality =
-  | 'LIVE'
-  | 'DELAYED'
-  | 'LAST_KNOWN'
-  | 'IMPORTED_SNAPSHOT'
-  | 'OFFLINE'
-  | 'UNAVAILABLE'
-  | 'NOT_CONFIGURED';
-
-export type IndianMarketState =
-  | 'PRE_OPEN'
-  | 'OPEN'
-  | 'PAUSED'
-  | 'CLOSING'
-  | 'CLOSED'
-  | 'UNKNOWN';
-
-export interface MarketQuote {
-  instrumentId?: ID;
-  symbol: string;
-  exchange?: string;
-  price: number;
-  previousClose?: number;
-  dayChange?: number;
-  dayChangePercent?: number;
-  hasDayChange?: boolean;
-  open?: number;
-  high?: number;
-  low?: number;
-  volume?: number;
-  status?: string;
-  currency: string;
-  marketStatus: MarketStatus;
-  marketState?: IndianMarketState;
-  dataQuality?: MarketDataQuality;
-  provider: string;
-  timestamp: string;
-  sourceTimestamp?: string;
-  isDelayed: boolean;
-  isCached?: boolean;
 }
 
 declare global {

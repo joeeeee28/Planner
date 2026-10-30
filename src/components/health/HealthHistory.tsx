@@ -1,0 +1,20 @@
+import { useState } from 'react';
+import { navigate } from '../../lib/router';
+import { addDays, todayStr } from '../../lib/dates';
+import { measurementLabel } from '../../lib/health/domain';
+import { CM_PER_IN, HEALTH_MOODS } from '../../lib/health/types';
+import { dateLabel, fmt, HealthEmpty, HealthField, sleepLabel, useHealth } from './common';
+
+export function HealthHistory() {
+  const { health, weightUnit, waterUnit, measurementUnit } = useHealth();
+  const [from, setFrom] = useState(addDays(todayStr(), -29)); const [to, setTo] = useState(todayStr());
+  const [kind, setKind] = useState('all');
+  const entries = health.dailyEntries.filter((e) => e.entryDate >= from && e.entryDate <= to).reverse();
+  const measurements = health.measurements.filter((m) => m.recordedAt >= from && m.recordedAt <= to).reverse();
+  const notes = health.notes.filter((n) => n.entryDate >= from && n.entryDate <= to).reverse();
+  return <div className="health-stack"><section className="panel health-panel"><div className="health-section-head"><div><span className="health-eyebrow">LOOKING BACK</span><h2>Health history</h2><p className="small muted">Your actual records, with missing values left blank.</p></div></div><div className="health-form-grid"><HealthField id="history-from" label="From"><input id="history-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></HealthField><HealthField id="history-to" label="To"><input id="history-to" type="date" value={to} min={from} max={todayStr()} onChange={(e) => setTo(e.target.value)} /></HealthField><HealthField id="history-kind" label="Record type"><select id="history-kind" value={kind} onChange={(e) => setKind(e.target.value)}><option value="all">All records</option><option value="checkins">Check-ins</option><option value="measurements">Measurements</option><option value="notes">Additional notes</option></select></HealthField></div></section>
+    {(kind === 'all' || kind === 'checkins') && <section className="panel health-panel"><h2>Daily check-ins</h2>{entries.length === 0 ? <HealthEmpty title="No check-ins in this period" text="Choose another date range or record a check-in when you are ready." /> : <div className="health-table-scroll"><table className="health-table"><thead><tr><th>Date</th><th>Weight ({weightUnit})</th><th>Sleep</th><th>Water ({waterUnit})</th><th>Exercise</th><th>Mood</th><th>Actions</th></tr></thead><tbody>{entries.map((e) => <tr key={e.id}><td>{dateLabel(e.entryDate)}</td><td>{fmt(e.weightKg === undefined ? null : weightUnit === 'lb' ? e.weightKg / 0.45359237 : e.weightKg)}</td><td>{sleepLabel(e.sleepMinutes)}</td><td>{fmt(e.waterLitres === undefined ? null : waterUnit === 'glasses' ? e.waterLitres / 0.25 : e.waterLitres)}</td><td>{e.exerciseMinutes === undefined ? '—' : `${e.exerciseMinutes} min`}</td><td>{HEALTH_MOODS.find((m) => m.value === e.mood)?.label ?? '—'}</td><td><button className="btn btn-sm" onClick={() => navigate(`health/check-in/${e.entryDate}`)}>Edit</button></td></tr>)}</tbody></table></div>}</section>}
+    {(kind === 'all' || kind === 'measurements') && <section className="panel health-panel"><h2>Measurements</h2>{measurements.length === 0 ? <p className="small muted">No measurements in this period.</p> : <div className="health-table-scroll"><table className="health-table"><thead><tr><th>Date</th><th>Measurement</th><th>Value ({measurementUnit})</th></tr></thead><tbody>{measurements.map((m) => <tr key={m.id}><td>{dateLabel(m.recordedAt)}</td><td>{measurementLabel(m)}</td><td>{fmt(measurementUnit === 'in' ? m.value / CM_PER_IN : m.value, 2)}</td></tr>)}</tbody></table></div>}</section>}
+    {(kind === 'all' || kind === 'notes') && <section className="panel health-panel"><h2>Notes</h2>{notes.length === 0 && entries.every((e) => !e.notes) ? <p className="small muted">No notes in this period.</p> : <div className="health-note-list">{entries.filter((e) => e.notes).map((e) => <article key={e.id}><strong>{dateLabel(e.entryDate)}</strong><p>{e.notes}</p></article>)}{notes.map((n) => <article key={n.id}><strong>{dateLabel(n.entryDate)}</strong><p>{n.text}</p></article>)}</div>}</section>}
+  </div>;
+}

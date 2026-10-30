@@ -16,6 +16,7 @@
 import type { AppData } from './types';
 import { createInitialData } from './defaults';
 import { normalizeData } from './store';
+import { healthForOwner } from './health/domain';
 import type { SupabaseLike } from './cloud';
 import {
   dataHash,
@@ -110,6 +111,7 @@ export async function migrateLocalToCloud(opts: {
   let canonical: AppData;
   try {
     canonical = normalizeData(JSON.parse(JSON.stringify(local)) as AppData);
+    canonical.health = healthForOwner(canonical.health, userId);
   } catch {
     return { status: 'error', pushed: false, message: 'Your local data could not be read. Your data is untouched.' };
   }

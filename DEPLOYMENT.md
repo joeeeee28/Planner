@@ -1,82 +1,84 @@
-# Growth OS — Deployment Guide
+# Growth OS — Deployment Guide (Phase 30)
 
-The app is ready to deploy to GitHub Pages. The **built site is already pushed** to the
-`gh-pages` branch of this repository — only the Pages source setting needs to point at it.
+Production: **https://joeeeee28.github.io/Planner/**
 
-## Live URL (after the step below)
+Growth OS is a static Vite/React SPA published to the `gh-pages` branch by
+`.github/workflows/deploy.yml`. Do not publish `main` or an `arena/*` source branch
+directly to Pages.
 
-**https://joeeeee28.github.io/Planner/**
+## Deploy through GitHub Actions only
 
-## The one remaining step (repo owner, ~20 seconds)
+1. Merge the verified source branch into `main` (or run the workflow manually from
+   the intended source ref if repository policy allows it).
+2. The workflow runs TypeScript, lint, the regression suites, requires the Supabase
+   build secrets, builds, audits the compiled bundle, and publishes only `dist/` to
+   `gh-pages`.
+3. Confirm the published commit message is `deploy: <source-sha> (<branch>)` and
+   verify the live site loads the new Health chunk and no Investments chunk.
 
-1. Open **https://github.com/joeeeee28/Planner/settings/pages**
-2. Under **Build and deployment → Source**, select **Deploy from a branch**
-3. Branch: `gh-pages` · Folder: `/ (root)` → **Save**
-4. GitHub rebuilds in ~1 minute; the app goes live at
-   **https://joeeeee28.github.io/Planner/** (HTTPS, responsive, refresh-safe data).
+Required GitHub Actions secrets (client-safe Supabase configuration only):
 
-> ⚠️ Do **not** point Pages at `main` or `arena/01a05484-planner` — those branches contain
-> the *source code* (the Vite dev entry), not the built site. The `gh-pages` branch is an
-> orphan branch containing only the compiled `dist/` output (index.html + assets + .nojekyll).
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-## What is already done & verified
+Never add a Supabase `service_role` key, database password, OAuth client secret, or
+market-provider credential to a `VITE_*` variable or to the frontend bundle.
 
-- ✅ Production build passes (`npm run build`), assets use relative paths so the
-  `/Planner/` subpath works.
-- ✅ Built site pushed to `gh-pages` (verified: `index.html` + hashed assets + `.nojekyll`).
-- ✅ No localhost / dev-only services anywhere in the built app — pure static SPA,
-  data persists in the browser's localStorage.
-- ✅ `node server.mjs` production server serves the build correctly (smoke-tested).
-- ✅ Logic tests (`npm test`), TypeScript, lint all green.
+## Phase 30 Health photo storage (private Supabase Storage)
 
-## Future deploys
-
-After the initial setup, to publish updates: rebuild (`npm run build`) and push the new
-`dist/` output to `gh-pages`:
+Health records use the existing authenticated, user-scoped `user_data` document.
+Progress photos require the private Storage migration:
 
 ```bash
-npm run build
-git worktree add --detach /tmp/gh-pages-out HEAD
-cd /tmp/gh-pages-out && rm -rf assets index.html favicon.svg icons.svg .nojekyll
-cp -r ../dist/. .
-git add -A && git commit -m "deploy: update site"
-git push origin HEAD:refs/heads/gh-pages
-cd .. && git worktree remove /tmp/gh-pages-out --force
+# Apply in order against the production Supabase project, after the existing schema:
+supabase/migrations/202610300000_phase30_remove_investments.sql
+supabase/migrations/202610300001_phase30_private_health.sql
 ```
 
-(Or add the ready-made GitHub Actions workflow `.github/workflows/deploy.yml` once the
-repo owner grants `workflows` permission — then every push to `main` deploys automatically.)
+The second migration creates the private `health-photos` bucket, the
+`health_photos` metadata table, `auth.uid()`-based RLS/storage policies, a boolean
+configuration probe, and an account-deletion guard. It never makes the bucket
+public and never exposes object keys or tokens through the probe.
 
-## Secure Production Market Data Backend
+Before enabling photo uploads in production, verify with a real authenticated
+account:
 
-The market data architecture uses a dedicated server-side proxy so that market provider credentials never touch the client bundle:
+- upload an original JPEG/PNG/WebP ≤ 10 MB;
+- retrieve it through a short-lived signed URL;
+- confirm a second user and an unauthenticated request are denied;
+- delete the object and metadata, and confirm partial failures are reported;
+- confirm the service worker does not cache `/storage/v1/` responses.
 
-1. **Deploy Backend Service on Render:**
-   - In Render, click **Blueprints** → select this repository (or create Web Service `growth-os-market-backend`).
-   - Start Command: `node server/marketServer.mjs`
-   - Health Check Path: `/health`
-   - Port: `10000`
+Until those checks pass, the UI intentionally shows **PHOTO UPLOADS BLOCKED**.
+There is no localStorage, IndexedDB, public-bucket, or repository-asset fallback.
 
-2. **Server Environment Variable Names (Render Dashboard):**
-   - `PORT`: `10000`
-   - `NODE_ENV`: `production`
-   - `CORS_ORIGIN`: `https://joeeeee28.github.io`
-   - `MARKET_DATA_PROVIDER`: `yahoo` (or `kite`)
-   - `MARKET_DATA_CACHE_TTL_MS`: `30000`
-   - `KITE_API_KEY`: *(Optional Zerodha Kite Connect API key)*
-   - `KITE_ACCESS_TOKEN`: *(Optional Zerodha Kite Connect session token)*
+Account deletion first attempts Storage API cleanup. The database
+`delete_account()` function refuses to delete the account while Health photo
+metadata/objects remain; it does not delete `storage.objects` directly, because SQL
+metadata deletion does not guarantee removal of the underlying Storage file.
 
-3. **Frontend Connection (GitHub Secrets):**
-   - In GitHub repository **Settings → Secrets and variables → Actions**:
-     - Secret name: `VITE_MARKET_DATA_BACKEND`
-     - Value: `https://growth-os-market-backend.onrender.com` (public HTTPS URL, no secrets in URL)
-   - Trigger a deploy workflow. The client will discover the live endpoint and automatically refresh quotes during market hours.
+## Retired Investments market service — manual shutdown required
+
+Phase 30 permanently removes the Investments module and the dedicated market
+backend from source, CI, Render configuration, and the client bundle. The hosted
+Render service itself cannot be deleted from this repository.
+
+Repository owner action:
+
+1. In Render, delete or suspend the old `growth-os-market-backend` service.
+2. Remove its retired market-provider environment variables/secrets.
+3. Remove any retired market-backend GitHub Actions secret/variable.
+4. Confirm no production request targets the old market endpoint.
+
+The unrelated `growth-os-oauth-backend` Render service remains in `render.yaml`
+because Google/Microsoft OAuth token exchange is not exclusive to Investments.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| “There isn't a GitHub Pages site here” | Pages not enabled yet, or the last build failed — check Settings → Pages and the Actions/Pages build log. |
-| Page loads but app is blank | Source branch is a source-code branch (e.g. `main`/`arena/…`) — switch to `gh-pages`. |
-| Stale content after a deploy | GitHub Pages caches for a few minutes; hard-refresh. |
-| Market shows `NOT CONFIGURED` | `VITE_MARKET_DATA_BACKEND` is not set in GitHub Actions secrets. Add the backend URL to secrets and redeploy. |
+| Pages shows 404 | Check Settings → Pages source is `gh-pages / (root)` and the latest Actions deploy succeeded. |
+| Login screen missing / local default account | Supabase build secrets were absent; the workflow should fail before publishing. |
+| Stale shell after deploy | Hard-refresh; the Phase 30 service-worker cache is `growth-os-shell-v30-1`. |
+| Photo uploads blocked | Apply the private Health migration and complete the authenticated upload/retrieval/denial checks above. |
+| Old Investments route | It redirects to Home; no Investments page or market chunk should load. |

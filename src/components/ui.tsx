@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { IconClose } from './icons';
 import type { TaskItem } from '../lib/types';
 import { taskProgress } from '../lib/analytics';
@@ -17,23 +17,42 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]') ?? []).filter((el) => el.getClientRects().length > 0);
+    (focusable()[0] ?? dialog)?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); }
+      if (e.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) { e.preventDefault(); dialog?.focus(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    return () => { window.removeEventListener('keydown', onKey); previous?.focus(); };
+  }, []);
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
+        ref={dialogRef}
         className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         style={wide ? { maxWidth: 720 } : undefined}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="modal-head">
-          <h3 className="modal-title">{title}</h3>
+          <h3 className="modal-title" id={titleId}>{title}</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <IconClose />
           </button>

@@ -40,9 +40,9 @@ async function verifyLiveProduction() {
   const swRes = await fetch(new URL('sw.js', baseUrl));
   assert.strictEqual(swRes.status, 200, 'Live sw.js returned HTTP 200');
   const swText = await swRes.text();
-  assert.ok(swText.includes('growth-os-shell-v5'), 'Service worker contains V5 shell cache name');
+  assert.ok(swText.includes('growth-os-shell-v30'), 'Service worker contains Phase 30 shell cache name');
   assert.ok(swText.includes('supabase'), 'Service worker contains bypass rule for Supabase');
-  console.log('  ✅ Live sw.js verified (HTTP 200, v5 cache, bypass rules)');
+  console.log('  ✅ Live sw.js verified (HTTP 200, Phase 30 cache, private-storage bypass rules)');
 
   // 5. Fetch CSS bundle
   console.log(`\n4. Fetching stylesheet ${cssPath}...`);
@@ -92,16 +92,18 @@ async function verifyLiveProduction() {
   assert.ok(settingsText.includes('5.0.0 (V5.0-RC)'), 'Version 5.0.0 (V5.0-RC) present in live Settings UI');
   console.log(`  ✅ Live UI version verified: Growth OS 5.0.0 (V5.0-RC) (${settingsPath})`);
 
-  // 8. Fetch Investments chunk from live production
-  console.log('\n8. Fetching Investments chunk to verify V5 module deployment...');
-  const invMatch = jsText.match(/Investments-[A-Za-z0-9_-]+\.js/);
-  assert.ok(invMatch, 'Investments chunk referenced in main bundle');
-  const invPath = `assets/${invMatch[0]}`;
-  const invRes = await fetch(new URL(invPath, baseUrl));
-  assert.strictEqual(invRes.status, 200, 'Live Investments chunk returned HTTP 200');
-  const invText = await invRes.text();
-  assert.ok(invText.includes('Portfolio'), 'Investments module contains Portfolio UI');
-  console.log(`  ✅ Live Investments module verified (${invPath}, HTTP 200, size: ${invText.length} chars)`);
+  // 8. Health replaces the retired module; no archived route/chunk is shipped.
+  console.log('\n8. Verifying Health deployment and retirement...');
+  assert.ok(!/Investments-[A-Za-z0-9_-]+\.js/.test(jsText), 'No retired portfolio chunk referenced');
+  const healthMatch = jsText.match(/Health-[A-Za-z0-9_-]+\.js/);
+  assert.ok(healthMatch, 'Health chunk referenced in main bundle');
+  const healthRes = await fetch(new URL(`assets/${healthMatch[0]}`, baseUrl));
+  assert.strictEqual(healthRes.status, 200, 'Live Health chunk returned HTTP 200');
+  const healthText = await healthRes.text();
+  assert.ok(healthText.includes('Daily check-in'), 'Health check-in UI present');
+  assert.ok(healthText.includes('PHOTO UPLOADS BLOCKED'), 'Unconfigured private photos fail closed');
+  assert.ok(swText.includes('/storage/v1/'), 'Private photo responses bypass service-worker cache');
+  console.log('  ✅ Health chunk verified; retired module absent; private photo cache bypass present');
 
   console.log('\n🎉 ALL LIVE PRODUCTION VERIFICATIONS PASSED SUCCESSFULLY!');
 }

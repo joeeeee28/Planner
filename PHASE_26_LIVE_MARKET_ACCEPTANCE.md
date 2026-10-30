@@ -1,3 +1,5 @@
+> **Historical record — superseded by Phase 30 (2026-10-30).** The portfolio module and its market-data infrastructure have been retired. This file is retained only as an audit trail; do not use its deployment instructions or treat its acceptance claims as current.
+
 # PHASE 26 — INVESTMENT DATA INTEGRITY + PORTFOLIO CORRECTNESS + REAL LIVE MARKET DATA
 **Growth OS / Planner**  
 **Role:** Senior Full-Stack Engineer + Financial Data Reliability Engineer + DevOps Engineer + QA Engineer + Product Acceptance Owner  

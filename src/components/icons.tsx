@@ -342,3 +342,13 @@ export const IconTrendUp = ({ size = 18 }: IconProps) => (
 );
 
 
+
+export const IconHealth = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)} aria-hidden="true">
+    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+    <path d="M3.5 12h4l2-4 3 8 2-4h6" />
+  </svg>
+);
+export const IconCamera = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)} aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="4" /></svg>
+);

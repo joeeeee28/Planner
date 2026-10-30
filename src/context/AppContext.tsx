@@ -46,7 +46,8 @@ import { cacheKeyFor, writeUserCache, readMeta, writeMeta } from '../lib/cloudDa
 import { hasMeaningfulData, migrateLocalToCloud, markMigrationSkipped, type MigrationOutcome } from '../lib/migrate';
 import { createInitialData } from '../lib/defaults';
 import { mergeDeep } from '../lib/merge';
-import { migrateInvestments } from '../lib/investmentSeed';
+import { cleanupLocalInvestmentData } from '../lib/phase30Cleanup';
+import { healthForOwner, mergeHealthData } from '../lib/health/domain';
 
 const LOCAL_KEY = 'growth-os.v1';
 
@@ -66,6 +67,8 @@ interface AppCtx {
   data: AppData;
   update: (fn: (draft: AppData) => AppData) => void;
   replace: (next: AppData) => void;
+  /** Immediately persist and attempt cloud sync; false means still pending. */
+  flushSync: () => Promise<boolean>;
   downloadBackup: () => void;
   importBackup: (json: string, mode: 'merge' | 'replace') => AppData;
   resetAllData: () => AppData;
@@ -104,6 +107,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   userNameRef.current = auth.user?.name ?? '';
   const hydrateSeq = useRef(0);
 
+  // Retire embedded feature data once per load, without removing whole documents.
+  useEffect(() => { cleanupLocalInvestmentData(); }, []);
+
   // ── subscribe to local store changes (imports from other tabs) ──
   useEffect(() => {
     return subscribeStore(() => setData(loadData()));
@@ -132,6 +138,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    setCloudHydrated(false);
     const seq = ++hydrateSeq.current;
     const uid = userId;
 
@@ -172,22 +179,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Merge over fresh defaults so additive domains (tasks, inbox, …) are
         // always present even when the cloud doc predates them, then repair
         // shapes. Existing records are never dropped by the merge.
-        const doc = normalizeData(mergeDeep(createInitialData(), remoteRes.data) as AppData);
+        const remoteDoc = normalizeData(mergeDeep(createInitialData(), remoteRes.data) as AppData);
+        const remoteHealth = healthForOwner(remoteDoc.health, uid);
+        const doc = { ...remoteDoc, health: mergeHealthData(healthForOwner(cachedDoc.health, uid), remoteHealth, uid) };
         dataRef.current = doc;
         setData(doc);
         writeUserCache(uid, doc);
         setSync({ status: 'synced', lastSyncAt: new Date().toISOString(), pending: false, failures: 0 });
-
-        // ── Investment portfolio versioned migration (one-time) ─────────
-        // Executes only when investmentMigrationVersion < 1.
-        // User state is strictly authoritative once migrated.
-        const migrated = migrateInvestments(uid, doc);
-        if (migrated) {
-          dataRef.current = migrated;
-          setData(migrated);
-          writeUserCache(uid, migrated);
-          queue.enqueue(migrated);
+        // Write retirement cleanup and merged offline Health changes back to the
+        // authoritative row. A failed write stays visibly pending in SyncChip.
+        if (remoteRes.cleanupRequired || JSON.stringify(doc.health) !== JSON.stringify(remoteHealth)) {
+          queue.enqueue(doc);
+          void queue.flushNow().then((ok) => {
+            if (!ok && seq === hydrateSeq.current) setSync((s) => ({ ...s, status: 'pending', pending: true }));
+          });
         }
+
       } else if (remoteRes.ok && !remoteRes.data) {
         // remote empty → maybe offer migration of the legacy local doc
         const legacyRaw = rawLocalV1();
@@ -198,15 +205,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         setSync({ status: 'synced', lastSyncAt: readMeta().lastSyncAt ?? new Date().toISOString(), pending: false, failures: 0 });
 
-        // ── Investment portfolio migration for new/empty cloud documents ─
-        const freshDoc = dataRef.current;
-        const migratedFresh = migrateInvestments(uid, freshDoc);
-        if (migratedFresh) {
-          dataRef.current = migratedFresh;
-          setData(migratedFresh);
-          writeUserCache(uid, migratedFresh);
-          if (queueRef.current) queueRef.current.enqueue(migratedFresh);
-        }
       } else {
         // network failure: cache is authoritative for now
         setSync((s) => ({ status: 'pending', lastSyncAt: s.lastSyncAt, pending: true, failures: s.failures + 1 }));
@@ -306,6 +304,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isAuthedCloud, userId],
   );
 
+  const flushSync = useCallback(async () => {
+    flushData(dataRef.current);
+    if (!isAuthedCloud || !userId) return true;
+    return queueRef.current ? queueRef.current.flushNow() : false;
+  }, [isAuthedCloud, userId]);
+
   const replace = useCallback(
     (next: AppData) => {
       dataRef.current = next;
@@ -374,10 +378,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     if (outcome.status === 'success' || outcome.status === 'already-migrated') {
       // The migrated document is now the active user document.
-      dataRef.current = local;
-      flushData(local);
-      writeUserCache(userId, local);
-      setData(local);
+      const migrated = { ...local, health: healthForOwner(local.health, userId) };
+      dataRef.current = migrated;
+      flushData(migrated);
+      writeUserCache(userId, migrated);
+      setData(migrated);
     }
     setMigration({ pending: false, show: true, outcome, running: false });
     return outcome;
@@ -398,6 +403,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       data,
       update,
       replace,
+      flushSync,
       downloadBackup,
       importBackup,
       resetAllData,
@@ -414,7 +420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dismiss: dismissMigration,
       },
     }),
-    [data, update, replace, downloadBackup, importBackup, resetAllData, isAuthedCloud, userId, sync, migration, cloudHydrated, runMigration, skipMigration, dismissMigration],
+    [data, update, replace, flushSync, downloadBackup, importBackup, resetAllData, isAuthedCloud, userId, sync, migration, cloudHydrated, runMigration, skipMigration, dismissMigration],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

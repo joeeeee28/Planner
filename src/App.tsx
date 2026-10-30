@@ -16,6 +16,7 @@ const InboxPage = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.I
 const PlanPage = lazy(() => import('./pages/Plan').then((m) => ({ default: m.PlanPage })));
 const GoalsPage = lazy(() => import('./pages/Goals').then((m) => ({ default: m.GoalsPage })));
 const GrowthPage = lazy(() => import('./pages/Growth').then((m) => ({ default: m.GrowthPage })));
+const HealthPage = lazy(() => import('./pages/Health').then((m) => ({ default: m.HealthPage })));
 const MoneyPage = lazy(() => import('./pages/Money').then((m) => ({ default: m.MoneyPage })));
 const JournalPage = lazy(() => import('./pages/Journal').then((m) => ({ default: m.JournalPage })));
 const InsightsPage = lazy(() => import('./pages/Insights').then((m) => ({ default: m.InsightsPage })));
@@ -24,7 +25,6 @@ const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ defaul
 const AutomationPage = lazy(() => import('./pages/Automation').then((m) => ({ default: m.AutomationPage })));
 const AnalyticsPage = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.AnalyticsPage })));
 const NotificationsPage = lazy(() => import('./pages/Notifications').then((m) => ({ default: m.NotificationsPage })));
-const InvestmentsPage = lazy(() => import('./pages/Investments').then((m) => ({ default: m.InvestmentsPage })));
 
 function PageFallback() {
   return (
@@ -61,6 +61,8 @@ function redirectLegacy(route: string[]): string[] | null {
       return ['growth', 'career', p1 ?? ''];
     case 'cycles':
       return ['growth', 'cycles'];
+    case 'investments':
+      return ['home'];
     default:
       return null;
   }
@@ -102,7 +104,6 @@ function AppRouter() {
     case 'inbox':
       page = <InboxPage />;
       break;
-      break;
     case 'plan':
       page = <PlanPage />;
       break;
@@ -115,8 +116,8 @@ function AppRouter() {
     case 'money':
       page = <MoneyPage />;
       break;
-    case 'investments':
-      page = <InvestmentsPage />;
+    case 'health':
+      page = <HealthPage />;
       break;
     case 'journal':
       page = <JournalPage />;

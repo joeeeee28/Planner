@@ -131,7 +131,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const requestResetCb = useCallback(async (email: string) => cloudRequestReset(email), []);
   const updateNameCb = useCallback(async (name: string) => cloudUpdateName(name), []);
   const changePasswordCb = useCallback(async (pw: string) => cloudChangePassword(pw), []);
-  const deleteAccountCb = useCallback(async () => deleteCloudAccount(), []);
+  const deleteAccountCb = useCallback(async () => {
+    // Remove private Health objects through the Storage API first. If this cannot
+    // be verified, delete_account() below refuses while photo metadata/objects remain.
+    try {
+      const { healthPhotoStore } = await import('../lib/health/photoStorage');
+      const store = healthPhotoStore();
+      if (store) await store.removeAll();
+    } catch { /* RPC guard will fail closed if private photos remain. */ }
+    return deleteCloudAccount();
+  }, []);
 
   const value = useMemo<AuthCtx>(
     () => ({

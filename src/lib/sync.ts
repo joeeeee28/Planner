@@ -42,8 +42,8 @@ export function createSyncQueue(client: SupabaseLike, userId: string, cb: SyncCa
   const emit = (status: SyncStatus, pending: boolean) =>
     cb.onStatus({ status, lastSyncAt, pending: pending || dirty, failures });
 
-  const push = async () => {
-    if (inFlight || !dirty || !lastPayload) return;
+  const push = async (): Promise<boolean> => {
+    if (inFlight || !dirty || !lastPayload) return false;
     inFlight = true;
     dirty = false;
     emit('syncing', false);
@@ -59,12 +59,14 @@ export function createSyncQueue(client: SupabaseLike, userId: string, cb: SyncCa
         failures++;
         emit('pending', true);
         scheduleRetry();
+        return false;
       }
     } catch {
       dirty = true;
       failures++;
       emit('error', true);
       scheduleRetry();
+      return false;
     } finally {
       inFlight = false;
       if (dirty && !timer) {
@@ -75,6 +77,7 @@ export function createSyncQueue(client: SupabaseLike, userId: string, cb: SyncCa
         }, 800);
       }
     }
+    return !dirty;
   };
 
   const scheduleRetry = () => {
@@ -103,7 +106,7 @@ export function createSyncQueue(client: SupabaseLike, userId: string, cb: SyncCa
         clearTimeout(timer);
         timer = null;
       }
-      void push();
+      return push();
     },
     /** Retry immediately after an `online` event. */
     retryNow() {

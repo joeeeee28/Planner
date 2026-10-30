@@ -18,7 +18,6 @@ import {
   LoadingSkeleton,
   ErrorState,
   TimelineItem,
-  PortfolioCard,
   ActivityList,
   ChartCard,
   ResponsiveTable,
@@ -136,45 +135,20 @@ assert(htmlTrendUp.includes('v5-trend up'), 'TrendIndicator up renders with arro
 const htmlTrendDown = renderToString(React.createElement(TrendIndicator, { trend: 'down', text: '-5%' }));
 assert(htmlTrendDown.includes('v5-trend down'), 'TrendIndicator down renders with down class');
 
-// 5. PortfolioCard & MobileList
-console.log('\n5. PortfolioCard & MobileList for Mobile QA');
-const htmlPortfolio = renderToString(
-  React.createElement(PortfolioCard, {
-    symbol: 'RELIANCE',
-    name: 'Reliance Industries Ltd',
-    quantity: 10,
-    averageCost: '₹2,400',
-    currentPrice: '₹2,500',
-    currentValue: '₹25,000',
-    pl: '+₹1,000',
-    returnPct: '+4.17%',
-    dayChange: '+₹250',
-    isPositive: true,
-  })
-);
-assert(htmlPortfolio.includes('v5-portfolio-card'), 'PortfolioCard renders specialized portfolio layout');
-assert(htmlPortfolio.includes('RELIANCE'), 'PortfolioCard includes ticker symbol');
-assert(htmlPortfolio.includes('text-pos'), 'Positive holding styled with text-pos');
-
-const htmlMobileList = renderToString(
-  React.createElement(MobileList, null, React.createElement('div', null, 'Holding Item'))
-);
-assert(htmlMobileList.includes('v5-mobile-list'), 'MobileList renders v5-mobile-list container');
-
 // 6. TimelineItem & ActivityList
 console.log('\n6. TimelineItem & ActivityList');
 const htmlTimeline = renderToString(
   React.createElement(TimelineItem, {
     date: 'Oct 15, 2026',
-    title: 'Monthly SIP: NIFTYBEES',
-    description: 'Planned execution: 10 units at market price',
+    title: 'Monthly learning review',
+    description: 'Review notes and plan the next chapter',
     status: React.createElement(StatusBadge, { status: 'planned', label: 'Planned' }),
     amount: '₹5,000',
   })
 );
 assert(htmlTimeline.includes('v5-timeline-item'), 'TimelineItem renders dot and timeline rail');
 assert(htmlTimeline.includes('v5-status-badge') && htmlTimeline.includes('status-planned'), 'StatusBadge rendered with status-planned class');
-assert(htmlTimeline.includes('Monthly SIP: NIFTYBEES'), 'Timeline title present');
+assert(htmlTimeline.includes('Monthly learning review'), 'Timeline title present');
 
 const htmlActivity = renderToString(
   React.createElement(ActivityList, null, React.createElement('div', null, 'Activity 1'))
@@ -185,13 +159,13 @@ assert(htmlActivity.includes('v5-activity-list'), 'ActivityList renders v5-activ
 console.log('\n7. EmptyState, LoadingSkeleton & ErrorState');
 const htmlEmpty = renderToString(
   React.createElement(EmptyState, {
-    title: 'No investments yet.',
-    description: 'Import your current holdings from Zerodha, Groww or add a trade manually.',
-    actionLabel: 'Import Holdings',
+    title: 'No learning records yet.',
+    description: 'Add a course, book or skill to begin.',
+    actionLabel: 'Add learning',
   })
 );
 assert(htmlEmpty.includes('v5-empty-state'), 'EmptyState renders v5-empty-state container');
-assert(htmlEmpty.includes('Import Holdings'), 'EmptyState action button present');
+assert(htmlEmpty.includes('Add learning'), 'EmptyState action button present');
 
 const htmlSkeleton = renderToString(
   React.createElement(LoadingSkeleton, { count: 3, height: 48 })
@@ -200,13 +174,13 @@ assert(htmlSkeleton.includes('v5-skeleton'), 'LoadingSkeleton renders shimmer ef
 
 const htmlError = renderToString(
   React.createElement(ErrorState, {
-    title: 'Market data unavailable',
-    message: 'Your portfolio remains available using the last known market prices.',
-    retryLabel: 'Retry Market Sync',
+    title: 'Sync unavailable',
+    message: 'Your saved records remain available on this device.',
+    retryLabel: 'Retry sync',
   })
 );
 assert(htmlError.includes('v5-error-state'), 'ErrorState renders calm error container');
-assert(htmlError.includes('Your portfolio remains available using the last known market prices.'), 'Truthful non-panicking error message');
+assert(htmlError.includes('Your saved records remain available on this device.'), 'Truthful non-panicking error message');
 
 // 8. ResponsiveTable & ChartCard
 console.log('\n8. ResponsiveTable & ChartCard');
@@ -217,7 +191,7 @@ const htmlTable = renderToString(
     React.createElement(
       'thead',
       null,
-      React.createElement('tr', null, React.createElement('th', null, 'Asset'), React.createElement('th', null, 'Value'))
+      React.createElement('tr', null, React.createElement('th', null, 'Record'), React.createElement('th', null, 'Value'))
     )
   )
 );
@@ -226,26 +200,36 @@ assert(htmlTable.includes('v5-table'), 'ResponsiveTable applies v5-table styles'
 
 const htmlChart = renderToString(
   React.createElement(ChartCard, {
-    title: 'Portfolio Allocation',
-    subtitle: 'Current market value distribution across instruments',
-    summaryText: 'Equities: 75% · Cash: 25%',
+    title: 'Wellbeing rhythm',
+    subtitle: 'Recorded health check-ins this week',
+    summaryText: 'Sleep recorded: 6 nights · Water recorded: 5 days',
   })
 );
 assert(htmlChart.includes('v5-chart-card'), 'ChartCard provides accessible text summary container');
-assert(htmlChart.includes('Equities: 75% · Cash: 25%'), 'Accessible chart summary text present');
+assert(htmlChart.includes('Sleep recorded: 6 nights · Water recorded: 5 days'), 'Accessible chart summary text present');
 
 // 9. InsightCard
 console.log('\n9. InsightCard');
 const htmlInsight = renderToString(
   React.createElement(InsightCard, {
-    title: 'Asset Allocation Shift',
-    text: 'Your equity exposure increased by 4.2% following recent purchases.',
-    period: 'This Month',
-    metric: '+₹47,500 invested',
+    title: 'Weekly check-in rhythm',
+    text: 'You recorded five check-ins this week. Missing days remain blank.',
+    period: 'This Week',
+    metric: '+2 more than last week',
   })
 );
 assert(htmlInsight.includes('v5-insight-card'), 'InsightCard renders v5-insight-card container');
-assert(htmlInsight.includes('Asset Allocation Shift'), 'Insight title present');
+assert(htmlInsight.includes('Weekly check-in rhythm'), 'Insight title present');
+
+// 10. MobileList (generic responsive coverage formerly in retired global suite)
+console.log('\n10. MobileList');
+const htmlMobileList = renderToString(
+  React.createElement(MobileList, null,
+    React.createElement('article', { className: 'v5-mobile-card' }, 'Recorded check-in')
+  )
+);
+assert(htmlMobileList.includes('v5-mobile-list'), 'MobileList renders the mobile card-stack container');
+assert(htmlMobileList.includes('Recorded check-in'), 'MobileList preserves child record content');
 
 console.log('\n==================================================');
 console.log(`UI REDESIGN TEST SUITE RESULTS: ${passed} PASSED, ${failed} FAILED`);

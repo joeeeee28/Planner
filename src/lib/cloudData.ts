@@ -20,6 +20,7 @@ import type { AppData } from './types';
 import { SCHEMA_VERSION } from './defaults';
 import { createInitialData } from './defaults';
 import { normalizeData } from './store';
+import { cleanRetiredFields } from './phase30Cleanup';
 import type { SupabaseLike } from './cloud';
 
 export const CLOUD_SCHEMA_VERSION = 3;
@@ -61,7 +62,7 @@ export function dataHash(data: AppData): string {
 // ── Cloud document operations (DI-friendly: client passed in) ───────────────
 
 export type CloudDataFailure = { kind: 'network' | 'not-found' | 'unknown'; message: string };
-export type CloudFetchResult = { ok: true; data: AppData | null } | { ok: false; error: CloudDataFailure };
+export type CloudFetchResult = { ok: true; data: AppData | null; cleanupRequired?: boolean } | { ok: false; error: CloudDataFailure };
 export type CloudPushResult = { ok: true } | { ok: false; error: CloudDataFailure };
 
 function failureOf(e: unknown): CloudDataFailure {
@@ -90,7 +91,7 @@ export async function fetchUserDocument(client: SupabaseLike, _userId: string): 
     if (!row || !row.data) return { ok: true, data: null };
     const parsed = normalizeData({ ...createInitialData(), ...(row.data as Partial<AppData>) } as AppData);
     parsed.version = SCHEMA_VERSION;
-    return { ok: true, data: parsed };
+    return { ok: true, data: parsed, cleanupRequired: cleanRetiredFields(row.data).changed };
   } catch (e) {
     return { ok: false, error: failureOf(e) };
   }
@@ -105,7 +106,7 @@ export async function pushUserDocument(client: SupabaseLike, userId: string, dat
     const res = await table.upsert({
       user_id: userId,
       schema_version: CLOUD_SCHEMA_VERSION,
-      data,
+      data: cleanRetiredFields(data).value,
       updated_at: new Date().toISOString(),
     });
     if (res.error) return { ok: false, error: failureOf(res.error) };
